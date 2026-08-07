@@ -1,3 +1,4 @@
 .DS_Store
 metal-cpp
 build
+compile_commands.json

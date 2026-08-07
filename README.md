@@ -10,6 +10,18 @@ cmake --build .
 ./Renderer
 ```
 
+### clangd & compile_commands.json
+
+```
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+```
+
+and slink
+
+```
+ln -s build/compile_commands.json .
+```
+
 ## Goals
 
 ### Basics
