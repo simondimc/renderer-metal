@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.19)
 project(RendererProject LANGUAGES CXX OBJCXX)
 
-# compile_commands.json for clangd
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-
 # metal-cpp requires at least C++17
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
