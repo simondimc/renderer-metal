@@ -3,7 +3,7 @@
 ## Goals
 
 ### Basics
-- Triangle
+- ✔ Triangle
 - Cube
 - Textures
 - Lighting
