@@ -2,7 +2,7 @@
 using namespace metal;
 
 struct VertexInput {
-    float2 position [[attribute(0)]];
+    float3 position [[attribute(0)]];
     float3 color    [[attribute(1)]];
 };
 
@@ -11,15 +11,20 @@ struct RasterData {
     float3 color;
 };
 
+struct Uniforms {
+    float4x4 modelViewProjectionMatrix;
+};
+
 // Vertex Shader
-vertex RasterData vertexMain(VertexInput in [[stage_in]]) {
+vertex RasterData vertexMain(VertexInput in [[stage_in]],
+                             constant Uniforms& uniforms [[buffer(1)]]) {
     RasterData out;
-    out.position = float4(in.position, 0.0, 1.0);
+    out.position = uniforms.modelViewProjectionMatrix * float4(in.position, 1.0);
     out.color = in.color;
     return out;
 }
 
 // Fragment Shader
 fragment float4 fragmentMain(RasterData in [[stage_in]]) {
-    return float4(in.color, 1.0); // Output interpolated RGB color
+    return float4(in.color, 1.0);
 }

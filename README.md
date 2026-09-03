@@ -3,8 +3,8 @@
 ## Goals
 
 ### Basics
-- ✔ Triangle
-- Cube
+- [x] Triangle
+- [x] Cube
 - Textures
 - Lighting
 - Interactive Camera
