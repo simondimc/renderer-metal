@@ -1,6 +1,6 @@
 # renderer-metal
 
-## Cmake
+## CMake
 
 ```
 rm -rf build
