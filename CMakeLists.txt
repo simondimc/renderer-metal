@@ -36,6 +36,24 @@ find_library(QUARTZCORE_FRAMEWORK QuartzCore REQUIRED)
 # Include the headers
 target_include_directories(Renderer PRIVATE ${METAL_CPP_DIR})
 
+# Define path for the compiled output library
+set(METAL_OUTPUT_DIR ${CMAKE_BINARY_DIR})
+set(COMPILED_LIB "${METAL_OUTPUT_DIR}/default.metallib")
+
+# Manually invoke Apple's Metal tools to compile the shader
+add_custom_command(
+    OUTPUT ${COMPILED_LIB}
+    COMMAND xcrun -sdk macosx metal -c ${CMAKE_CURRENT_SOURCE_DIR}/src/Shader.metal -o ${METAL_OUTPUT_DIR}/Shader.air
+    COMMAND xcrun -sdk macosx metallib ${METAL_OUTPUT_DIR}/Shader.air -o ${COMPILED_LIB}
+    COMMAND ${CMAKE_COMMAND} -E remove ${METAL_OUTPUT_DIR}/Shader.air
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/Shader.metal
+    COMMENT "Compiling Metal shaders into default.metallib..."
+)
+
+# Bind the custom command target to your executable so it runs on build
+add_custom_target(CompileShaders DEPENDS ${COMPILED_LIB})
+add_dependencies(Renderer CompileShaders)
+
 # Link the discovered frameworks to your binary
 target_link_libraries(Renderer PRIVATE
     ${APPKIT_FRAMEWORK}

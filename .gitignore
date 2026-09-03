@@ -1,3 +1,5 @@
 .DS_Store
 library
 build
+doc.md
+.cache
