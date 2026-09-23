@@ -20,6 +20,7 @@ struct Uniforms {
     float4x4 mvpMatrix;
     float4x4 modelMatrix;
     float4 lightDirection;
+    float4 cameraPosition;
 };
 
 // Vertex Shader
@@ -44,10 +45,6 @@ fragment float4 fragmentMain(RasterData in [[stage_in]],
     constexpr float specularStrength = 0.5;
     constexpr float shininess = 32.0;
 
-    // No separate view matrix in this renderer - the model matrix already places
-    // objects relative to a camera fixed at the world origin (see perspectiveProjectionRightHanded).
-    constexpr float3 cameraPosition = float3(0.0, 0.0, 0.0);
-
     // Build the TBN basis and use it to rotate the tangent-space normal map sample into world space
     float3 N = normalize(in.worldNormal);
     float3 T = normalize(in.worldTangent);
@@ -58,7 +55,7 @@ fragment float4 fragmentMain(RasterData in [[stage_in]],
     float3 normal = normalize(TBN * tangentNormal);
 
     float3 lightDir = normalize(uniforms.lightDirection.xyz);
-    float3 viewDir = normalize(cameraPosition - in.worldPosition);
+    float3 viewDir = normalize(uniforms.cameraPosition.xyz - in.worldPosition);
     float3 halfVector = normalize(lightDir + viewDir);
 
     float diffuse = max(dot(normal, lightDir), 0.0);

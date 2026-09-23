@@ -7,7 +7,7 @@
 - [x] Cube
 - [x] Textures
 - [x] Lighting
-- Interactive Camera
+- [x] Interactive Camera
 
 ### Engine
 - Frame-Resource Synchronization
@@ -26,7 +26,8 @@
 
 ### Materials & Shading
 - Physically Based Rendering (PBR)
-- Normal/Bump/Parallax Mapping
+- [x] Normal Mapping
+- Bump/Parallax Mapping
 - Image-Based Lighting (IBL)
 - Anisotropic Shading
 

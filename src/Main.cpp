@@ -20,16 +20,86 @@ struct Uniforms {
     simd::float4x4 mvpMatrix;
     simd::float4x4 modelMatrix;
     simd::float4 lightDirection;
+    simd::float4 cameraPosition;
 };
 
-Uniforms perspectiveProjectionRightHanded(float time, int width, int height) {
+struct Camera {
+    simd::float3 position = simd_make_float3(0.0f, 0.0f, 2.5f);
+    float yaw = 0.0f;   // radians, 0 = looking down -Z
+    float pitch = 0.0f; // radians, clamped to avoid gimbal flip
+    float moveSpeed = 2.5f;
+    float mouseSensitivity = 0.0025f;
+    bool firstMouse = true;
+    double lastMouseX = 0.0;
+    double lastMouseY = 0.0;
+};
+
+// Forward direction derived from yaw/pitch; 0,0 points down -Z to match the rest of the renderer
+simd::float3 cameraFront(const Camera& cam) {
+    return simd_normalize(simd_make_float3(
+        sinf(cam.yaw) * cosf(cam.pitch),
+        sinf(cam.pitch),
+        -cosf(cam.yaw) * cosf(cam.pitch)
+    ));
+}
+
+void mouseCallback(GLFWwindow* window, double xpos, double ypos) {
+    Camera* cam = static_cast<Camera*>(glfwGetWindowUserPointer(window));
+    if (cam->firstMouse) {
+        cam->lastMouseX = xpos;
+        cam->lastMouseY = ypos;
+        cam->firstMouse = false;
+    }
+
+    double dx = xpos - cam->lastMouseX;
+    double dy = cam->lastMouseY - ypos; // reversed: screen Y grows downward
+    cam->lastMouseX = xpos;
+    cam->lastMouseY = ypos;
+
+    cam->yaw += (float)dx * cam->mouseSensitivity;
+    cam->pitch += (float)dy * cam->mouseSensitivity;
+
+    const float maxPitch = 1.5533f; // ~89 degrees
+    cam->pitch = fmaxf(-maxPitch, fminf(maxPitch, cam->pitch));
+}
+
+void processCameraInput(GLFWwindow* window, Camera& cam, float deltaTime) {
+    simd::float3 front = cameraFront(cam);
+    simd::float3 worldUp = simd_make_float3(0.0f, 1.0f, 0.0f);
+    simd::float3 right = simd_normalize(simd_cross(front, worldUp));
+
+    float velocity = cam.moveSpeed * deltaTime;
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) cam.position += front * velocity;
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) cam.position -= front * velocity;
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) cam.position -= right * velocity;
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) cam.position += right * velocity;
+    if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS) cam.position += worldUp * velocity;
+    if (glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS) cam.position -= worldUp * velocity;
+}
+
+// Standard lookAt view matrix built from the camera's own right/up/front basis
+simd::float4x4 viewMatrix(const Camera& cam) {
+    simd::float3 front = cameraFront(cam);
+    simd::float3 worldUp = simd_make_float3(0.0f, 1.0f, 0.0f);
+    simd::float3 right = simd_normalize(simd_cross(front, worldUp));
+    simd::float3 up = simd_cross(right, front);
+
+    return simd_matrix(
+        simd_make_float4(right.x, up.x, -front.x, 0.0f),
+        simd_make_float4(right.y, up.y, -front.y, 0.0f),
+        simd_make_float4(right.z, up.z, -front.z, 0.0f),
+        simd_make_float4(-simd_dot(right, cam.position), -simd_dot(up, cam.position), simd_dot(front, cam.position), 1.0f)
+    );
+}
+
+Uniforms computeUniforms(const Camera& cam, float cubeTime, int width, int height) {
     Uniforms u;
 
     float fov = 60.0f * (M_PI / 180.0f);
     float aspect = (float)width / (float)height;
     float nearPlane = 0.1f;
     float farPlane = 100.0f;
-    
+
     float f = 1.0f / tanf(fov / 2.0f);
     float zRange = farPlane - nearPlane;
 
@@ -50,7 +120,7 @@ Uniforms perspectiveProjectionRightHanded(float time, int width, int height) {
         simd_make_float4(0.0f, 0.0f,  0.0f,  1.0f)  // Col 3
     );
 
-    float cosY = cosf(time * 0.8f), sinY = sinf(time * 0.8f);
+    float cosY = cosf(cubeTime * 0.8f), sinY = sinf(cubeTime * 0.8f);
     simd::float4x4 rotY = simd_matrix(
         simd_make_float4(cosY,  0.0f, -sinY, 0.0f), // Col 0
         simd_make_float4(0.0f,  1.0f, 0.0f,  0.0f), // Col 1
@@ -58,21 +128,14 @@ Uniforms perspectiveProjectionRightHanded(float time, int width, int height) {
         simd_make_float4(0.0f,  0.0f, 0.0f,  1.0f)  // Col 3
     );
 
-    // Camera looking down -Z means pushing the object forward requires a NEGATIVE Z translation
-    simd::float4x4 trans = simd_matrix(
-        simd_make_float4(1.0f, 0.0f, 0.0f,   0.0f), // Col 0
-        simd_make_float4(0.0f, 1.0f, 0.0f,   0.0f), // Col 1
-        simd_make_float4(0.0f, 0.0f, 1.0f,   0.0f), // Col 2
-        simd_make_float4(0.0f, 0.0f, -2.5f,  1.0f)  // Col 3 (Move cube into the scene)
-    );
-
-    simd::float4x4 model = trans * rotY * rotX;
+    // Cube stays at the origin and only spins in place; the camera now handles scene distance/movement
+    simd::float4x4 model = rotY * rotX;
+    simd::float4x4 view = viewMatrix(cam);
     u.modelMatrix = model;
-    u.mvpMatrix = proj * model;
+    u.mvpMatrix = proj * view * model;
+    u.cameraPosition = simd_make_float4(cam.position.x, cam.position.y, cam.position.z, 1.0f);
 
-    // Light orbits around the Y axis, independent of the cube's own rotation
-    float lightAngle = time * 0.5f;
-    u.lightDirection = simd_make_float4(cosf(lightAngle) * 0.8f, 0.6f, sinf(lightAngle) * 0.8f, 0.0f);
+    u.lightDirection = simd_make_float4(0.4f, 0.8f, 0.5f, 0.0f);
 
     return u;
 }
@@ -83,10 +146,16 @@ int main() {
     int width = 800;
     int height = 600;
     GLFWwindow* window = glfwCreateWindow(width, height, "Renderer", nullptr, nullptr);
-    if (!window) { 
-        glfwTerminate(); 
-        return -1; 
+    if (!window) {
+        glfwTerminate();
+        return -1;
     }
+
+    // Mouse-look camera: capture and hide the cursor, route movement through mouseCallback
+    Camera camera;
+    glfwSetWindowUserPointer(window, &camera);
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    glfwSetCursorPosCallback(window, mouseCallback);
 
     NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
     MTL::Device* device = MTL::CreateSystemDefaultDevice();
@@ -244,8 +313,15 @@ int main() {
     samplerDesc->setTAddressMode(MTL::SamplerAddressModeRepeat);
     MTL::SamplerState* samplerState = device->newSamplerState(samplerDesc);
 
+    float lastFrameTime = (float)glfwGetTime();
+
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+
+        float currentTime = (float)glfwGetTime();
+        float deltaTime = currentTime - lastFrameTime;
+        lastFrameTime = currentTime;
+        processCameraInput(window, camera, deltaTime);
 
         // Create the frame memory pool
         NS::AutoreleasePool* framePool = NS::AutoreleasePool::alloc()->init();
@@ -286,10 +362,8 @@ int main() {
             rpd->depthAttachment()->setClearDepth(1.0);
             rpd->depthAttachment()->setStoreAction(MTL::StoreActionDontCare);
 
-            // Perspective Projection Matrix
-            float currentTime = (float)glfwGetTime();
-            Uniforms ppm = perspectiveProjectionRightHanded(currentTime, liveWidth, liveHeight);
-            memcpy(uniformBuffer->contents(), &ppm, sizeof(Uniforms));
+            Uniforms uniforms = computeUniforms(camera, currentTime, liveWidth, liveHeight);
+            memcpy(uniformBuffer->contents(), &uniforms, sizeof(Uniforms));
 
             // Request a command buffer from the queue
             MTL::CommandBuffer* cmdBuffer = cmdQueue->commandBuffer();
