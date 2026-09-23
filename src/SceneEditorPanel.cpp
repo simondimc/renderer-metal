@@ -3,7 +3,6 @@
 #include <string>
 
 namespace {
-constexpr const char* kSceneFilePath = "../scene/scene.txt";
 
 int countOfType(const Scene& scene, SceneObjectType type) {
     int count = 0;

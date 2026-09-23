@@ -16,6 +16,7 @@
 #include "LightMarker.hpp"
 #include "Scene.hpp"
 #include "SceneEditorPanel.hpp"
+#include "Shadow.hpp"
 #include "Texture.hpp"
 #include "UI.hpp"
 #include "Uniforms.hpp"
@@ -38,16 +39,20 @@ int main() {
     glfwSetCursorPosCallback(window, mouseCallback);
     // camera.uiMode (Tab toggles it) switches between fly-camera and scene-editor mouse focus
 
-    // Scene editor state: one starter cube + one starter light so the viewport isn't empty/unlit
+    // Scene editor state: load the last-saved scene (see SceneEditorPanel's Save/Load buttons);
+    // fall back to one starter cube + one starter light so the viewport isn't empty/unlit if
+    // scene.txt doesn't exist yet (e.g. a fresh checkout).
     Scene scene;
-    scene.objects.push_back(SceneObject{});
-    SceneObject defaultLight;
-    defaultLight.type = SceneObjectType::Light;
-    defaultLight.name = "Light 1";
-    defaultLight.position[0] = 2.0f;
-    defaultLight.position[1] = 4.0f;
-    defaultLight.position[2] = 2.0f;
-    scene.objects.push_back(defaultLight);
+    if (!loadScene(scene, kSceneFilePath)) {
+        scene.objects.push_back(SceneObject{});
+        SceneObject defaultLight;
+        defaultLight.type = SceneObjectType::Light;
+        defaultLight.name = "Light 1";
+        defaultLight.position[0] = 2.0f;
+        defaultLight.position[1] = 4.0f;
+        defaultLight.position[2] = 2.0f;
+        scene.objects.push_back(defaultLight);
+    }
     int selectedObjectIndex = 0;
 
     NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
@@ -76,6 +81,30 @@ int main() {
     desc->setStorageMode(MTL::StorageModePrivate);
     desc->setUsage(MTL::TextureUsageRenderTarget);
     MTL::Texture* depthTexture = device->newTexture(desc);
+
+    // Shadow cube maps: one 6-face cube texture per light slot, storing that light's distance to
+    // the nearest occluder in every direction (see Shader.metal's cubeShadowFragmentMain). All
+    // kMaxLights are allocated up front since the shader's fixed-size texture array (see
+    // fragmentMain) needs every slot bound, even the unused ones. R32Float (not a depth format)
+    // because each face stores a plain world-space distance, sampled by direction later.
+    MTL::TextureDescriptor* shadowDesc = MTL::TextureDescriptor::textureCubeDescriptor(
+        MTL::PixelFormatR32Float, (NS::UInteger)kShadowMapSize, false
+    );
+    shadowDesc->setStorageMode(MTL::StorageModePrivate);
+    shadowDesc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
+    MTL::Texture* shadowCubeMaps[kMaxLights];
+    for (size_t i = 0; i < kMaxLights; i++) {
+        shadowCubeMaps[i] = device->newTexture(shadowDesc);
+    }
+
+    // Scratch depth buffer for the cube shadow pass's own hidden-surface removal - never sampled
+    // afterward, so one shared 2D texture is reused across every face of every light each frame.
+    MTL::TextureDescriptor* shadowDepthDesc = MTL::TextureDescriptor::texture2DDescriptor(
+        MTL::PixelFormatDepth32Float, (NS::UInteger)kShadowMapSize, (NS::UInteger)kShadowMapSize, false
+    );
+    shadowDepthDesc->setStorageMode(MTL::StorageModePrivate);
+    shadowDepthDesc->setUsage(MTL::TextureUsageRenderTarget);
+    MTL::Texture* shadowScratchDepth = device->newTexture(shadowDepthDesc);
 
     // Create GPU buffers
     MTL::Buffer* vertexBuffer = device->newBuffer(CubeMesh::vertices, sizeof(CubeMesh::vertices), MTL::ResourceStorageModeShared);
@@ -129,6 +158,19 @@ int main() {
 
     MTL::RenderPipelineState* pipelineState = device->newRenderPipelineState(pipeDesc, &error);
 
+    // Cube shadow pass PSO: outputs world-space distance-to-light as a color value (see
+    // Shader.metal's cubeShadowFragmentMain) plus a scratch depth attachment for hidden-surface
+    // removal within the pass.
+    MTL::Function* cubeShadowVertFunc = library->newFunction(NS::String::string("cubeShadowVertexMain", NS::UTF8StringEncoding));
+    MTL::Function* cubeShadowFragFunc = library->newFunction(NS::String::string("cubeShadowFragmentMain", NS::UTF8StringEncoding));
+    MTL::RenderPipelineDescriptor* shadowPipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
+    shadowPipeDesc->setVertexFunction(cubeShadowVertFunc);
+    shadowPipeDesc->setFragmentFunction(cubeShadowFragFunc);
+    shadowPipeDesc->setVertexDescriptor(vertexDesc);
+    shadowPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatR32Float);
+    shadowPipeDesc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
+    MTL::RenderPipelineState* shadowPipelineState = device->newRenderPipelineState(shadowPipeDesc, &error);
+
     AxisGizmo axisGizmo = createAxisGizmo(device, library);
     LightMarker lightMarker = createLightMarker(device, library);
 
@@ -150,6 +192,15 @@ int main() {
     samplerDesc->setSAddressMode(MTL::SamplerAddressModeRepeat);
     samplerDesc->setTAddressMode(MTL::SamplerAddressModeRepeat);
     MTL::SamplerState* samplerState = device->newSamplerState(samplerDesc);
+
+    // Shadow cube sampler: nearest + clamp, since linearly filtering raw (uncompared) distance
+    // values would blend distances instead of blending shadow/lit results, giving wrong edges.
+    MTL::SamplerDescriptor* shadowSamplerDesc = MTL::SamplerDescriptor::alloc()->init();
+    shadowSamplerDesc->setMinFilter(MTL::SamplerMinMagFilterNearest);
+    shadowSamplerDesc->setMagFilter(MTL::SamplerMinMagFilterNearest);
+    shadowSamplerDesc->setSAddressMode(MTL::SamplerAddressModeClampToEdge);
+    shadowSamplerDesc->setTAddressMode(MTL::SamplerAddressModeClampToEdge);
+    MTL::SamplerState* shadowSamplerState = device->newSamplerState(shadowSamplerDesc);
 
     float lastFrameTime = (float)glfwGetTime();
     bool toggleKeyWasPressed = false;
@@ -246,6 +297,12 @@ int main() {
                 lightCount = 1;
             }
 
+            // Every active light gets its own 6-face cube shadow map (see Shadow.hpp).
+            simd::float4x4 cubeFaceMatrices[kMaxLights][kCubeFaceCount];
+            for (int i = 0; i < lightCount; i++) {
+                computeCubeShadowMatrices(lights[i].position, kShadowNearPlane, kShadowFarPlane, cubeFaceMatrices[i]);
+            }
+
             // Write every drawn cube's Uniforms into its own aligned slot before any draw call
             // touches the buffer - drawIndexedPrimitives only records GPU work, it doesn't execute
             // it yet, so overwriting the same slot before commit would corrupt earlier draws' data.
@@ -253,14 +310,14 @@ int main() {
             for (const auto& obj : scene.objects) {
                 if (obj.type != SceneObjectType::Cube) continue;
                 if (cubeCount >= kMaxSceneObjects) break;
-                Uniforms uniforms = computeUniforms(camera, objectModelMatrix(obj),
-                                                     lights, lightCount, liveWidth, liveHeight);
+                Uniforms uniforms = computeUniforms(camera, objectModelMatrix(obj), lights, lightCount,
+                                                     liveWidth, liveHeight);
                 memcpy((uint8_t*)uniformBuffer->contents() + cubeCount * kUniformStride, &uniforms, sizeof(Uniforms));
                 cubeCount++;
             }
             if (camera.uiMode) {
-                Uniforms gizmoUniforms = computeUniforms(camera, matrix_identity_float4x4,
-                                                          lights, lightCount, liveWidth, liveHeight);
+                Uniforms gizmoUniforms = computeUniforms(camera, matrix_identity_float4x4, lights, lightCount,
+                                                          liveWidth, liveHeight);
                 memcpy((uint8_t*)uniformBuffer->contents() + kGizmoUniformOffset, &gizmoUniforms, sizeof(Uniforms));
 
                 // Light markers: a small translate-only model matrix places the marker at each light
@@ -271,7 +328,8 @@ int main() {
                         simd_make_float4(0.0f, 0.0f, 1.0f, 0.0f),
                         simd_make_float4(lights[i].position.x, lights[i].position.y, lights[i].position.z, 1.0f)
                     );
-                    Uniforms markerUniforms = computeUniforms(camera, markerModel, lights, lightCount, liveWidth, liveHeight);
+                    Uniforms markerUniforms = computeUniforms(camera, markerModel, lights, lightCount,
+                                                               liveWidth, liveHeight);
                     memcpy((uint8_t*)uniformBuffer->contents() + kLightMarkerUniformOffset + i * kUniformStride,
                            &markerUniforms, sizeof(Uniforms));
                 }
@@ -279,6 +337,41 @@ int main() {
 
             // Request a command buffer from the queue
             MTL::CommandBuffer* cmdBuffer = cmdQueue->commandBuffer();
+
+            // Shadow pass: render every cube's distance-from-light into each face of each active
+            // light's cube shadow map, before the main color pass that will sample them all. One
+            // encoder per light per face (6x lightCount total) - see the earlier conversation on
+            // instanced/layered rendering for how a production renderer collapses this to one
+            // encoder per light; this stays the simple, unoptimized version for now.
+            for (int lightIndex = 0; lightIndex < lightCount; lightIndex++) {
+                for (int face = 0; face < kCubeFaceCount; face++) {
+                    MTL::RenderPassDescriptor* shadowRPD = MTL::RenderPassDescriptor::renderPassDescriptor();
+                    auto shadowColor = shadowRPD->colorAttachments()->object(0);
+                    shadowColor->setTexture(shadowCubeMaps[lightIndex]);
+                    shadowColor->setSlice(face);
+                    shadowColor->setLoadAction(MTL::LoadActionClear);
+                    shadowColor->setClearColor({(double)kShadowFarPlane, (double)kShadowFarPlane, (double)kShadowFarPlane, 1.0});
+                    shadowColor->setStoreAction(MTL::StoreActionStore);
+                    shadowRPD->depthAttachment()->setTexture(shadowScratchDepth);
+                    shadowRPD->depthAttachment()->setLoadAction(MTL::LoadActionClear);
+                    shadowRPD->depthAttachment()->setClearDepth(1.0);
+                    shadowRPD->depthAttachment()->setStoreAction(MTL::StoreActionDontCare);
+
+                    MTL::RenderCommandEncoder* shadowEncoder = cmdBuffer->renderCommandEncoder(shadowRPD);
+                    shadowEncoder->setDepthStencilState(depthState);
+                    shadowEncoder->setRenderPipelineState(shadowPipelineState);
+                    shadowEncoder->setVertexBuffer(vertexBuffer, 0, 0);
+                    shadowEncoder->setVertexBytes(&cubeFaceMatrices[lightIndex][face], sizeof(simd::float4x4), 2);
+                    shadowEncoder->setFragmentBytes(&lights[lightIndex].position, sizeof(simd::float3), 3);
+                    for (NS::UInteger i = 0; i < cubeCount; i++) {
+                        shadowEncoder->setVertexBuffer(uniformBuffer, i * kUniformStride, 1);
+                        shadowEncoder->drawIndexedPrimitives(
+                            MTL::PrimitiveTypeTriangle, indexCount, MTL::IndexTypeUInt16, indexBuffer, 0
+                        );
+                    }
+                    shadowEncoder->endEncoding();
+                }
+            }
 
             // Create the encoder
             MTL::RenderCommandEncoder* encoder = cmdBuffer->renderCommandEncoder(rpd);
@@ -297,7 +390,11 @@ int main() {
             encoder->setVertexBuffer(vertexBuffer, 0, 0);
             encoder->setFragmentTexture(colorTexture, 0);
             encoder->setFragmentTexture(normalTexture, 1);
+            for (size_t i = 0; i < kMaxLights; i++) {
+                encoder->setFragmentTexture(shadowCubeMaps[i], 2 + i);
+            }
             encoder->setFragmentSamplerState(samplerState, 0);
+            encoder->setFragmentSamplerState(shadowSamplerState, 1);
 
             for (NS::UInteger i = 0; i < cubeCount; i++) {
                 NS::UInteger offset = i * kUniformStride;
@@ -329,13 +426,23 @@ int main() {
     // Explicit GPU Cleanups
     releaseAxisGizmo(axisGizmo);
     releaseLightMarker(lightMarker);
+    shadowSamplerState->release();
+    shadowSamplerDesc->release();
     samplerState->release();
     samplerDesc->release();
     colorTexture->release();
     normalTexture->release();
+    for (size_t i = 0; i < kMaxLights; i++) {
+        shadowCubeMaps[i]->release();
+    }
+    shadowScratchDepth->release();
     depthTexture->release();
     depthState->release();
     depthDesc->release();
+    shadowPipelineState->release();
+    shadowPipeDesc->release();
+    cubeShadowVertFunc->release();
+    cubeShadowFragFunc->release();
     pipelineState->release();
     pipeDesc->release();
     vertFunc->release();

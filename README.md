@@ -55,7 +55,7 @@
 - GPU-Driven Rendering / Indirect Draw Calls
 
 ### Advanced
-- Shadow Mapping
+- [x] Shadow Mapping
 - Volumetric Atmosphere & Sky
 - Water
 - Physics Engine

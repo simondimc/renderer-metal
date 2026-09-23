@@ -39,12 +39,54 @@ vertex RasterData vertexMain(VertexInput in [[stage_in]],
     return out;
 }
 
+// Cube shadow pass: rendered 6 times per light (once per cube face, see Shadow.hpp's
+// computeCubeShadowMatrices and Main.cpp's per-light/per-face shadow pass loop). Rather than
+// hardware depth-compare (which would need to know, at sampling time, which of the 6 faces and
+// which face-local UV a world position falls into), this stores plain world-space distance from
+// the light as a color value - so shading can later sample the cube by direction alone and get a
+// distance to compare against, with Metal's hardware cube-map fetch (and its automatic
+// cross-face filtering) handling face selection for free.
+struct CubeShadowRasterData {
+    float4 position [[position]];
+    float3 worldPosition;
+};
+
+vertex CubeShadowRasterData cubeShadowVertexMain(VertexInput in [[stage_in]],
+                                                 constant Uniforms& uniforms [[buffer(1)]],
+                                                 constant float4x4& lightViewProj [[buffer(2)]]) {
+    CubeShadowRasterData out;
+    float4 worldPos = uniforms.modelMatrix * float4(in.position, 1.0);
+    out.position = lightViewProj * worldPos;
+    out.worldPosition = worldPos.xyz;
+    return out;
+}
+
+fragment float cubeShadowFragmentMain(CubeShadowRasterData in [[stage_in]],
+                                      constant float3& lightPosition [[buffer(3)]]) {
+    return length(in.worldPosition - lightPosition);
+}
+
+// 1.0 = fully lit, 0.0 = fully in shadow. Sampling by direction (rather than a light-space
+// projected UV) means every direction around the light is valid - no "outside the frustum" case
+// to special-case, unlike a single-frustum shadow map.
+static float sampleCubeShadow(float3 worldPosition, float3 lightPosition,
+                              texturecube<float> shadowCube, sampler shadowSampler) {
+    float3 fragToLight = worldPosition - lightPosition;
+    float currentDistance = length(fragToLight);
+    float closestDistance = shadowCube.sample(shadowSampler, fragToLight).r;
+
+    constexpr float bias = 0.05; // world-space units; mitigates shadow acne from limited face resolution
+    return (currentDistance - bias > closestDistance) ? 0.0 : 1.0;
+}
+
 // Fragment Shader
 fragment float4 fragmentMain(RasterData in [[stage_in]],
                              constant Uniforms& uniforms [[buffer(1)]],
                              texture2d<float> tex [[texture(0)]],
                              texture2d<float> normalMap [[texture(1)]],
-                             sampler smp [[sampler(0)]]) {
+                             array<texturecube<float>, MAX_LIGHTS> shadowCubes [[texture(2)]],
+                             sampler smp [[sampler(0)]],
+                             sampler shadowSampler [[sampler(1)]]) {
     constexpr float ambientStrength = 0.15;
     constexpr float specularStrength = 0.5;
     constexpr float shininess = 32.0;
@@ -76,7 +118,9 @@ fragment float4 fragmentMain(RasterData in [[stage_in]],
         float diffuse = max(dot(normal, lightDir), 0.0);
         float specular = powr(max(dot(normal, halfVector), 0.0), shininess) * specularStrength;
 
-        litColor += (texColor.rgb * diffuse + specular) * radiance;
+        float shadow = sampleCubeShadow(in.worldPosition, uniforms.lightPositions[i].xyz, shadowCubes[i], shadowSampler);
+
+        litColor += shadow * (texColor.rgb * diffuse + specular) * radiance;
     }
 
     return float4(litColor, texColor.a);

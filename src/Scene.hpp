@@ -26,6 +26,9 @@ struct Scene {
 // Caps the per-frame GPU uniform buffer sizing in Main.cpp (each object gets its own aligned slot)
 constexpr size_t kMaxSceneObjects = 256;
 
+// Relative to the build/ directory, where run.sh/clean_run.sh launch the binary from
+constexpr const char* kSceneFilePath = "../scene/scene.txt";
+
 // Builds a local-to-world model matrix (scale -> rotate -> translate) for one Cube object
 simd::float4x4 objectModelMatrix(const SceneObject& obj);
 
