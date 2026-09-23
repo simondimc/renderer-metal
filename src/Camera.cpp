@@ -39,6 +39,8 @@ void processCameraInput(GLFWwindow* window, Camera& cam, float deltaTime) {
 
 void mouseCallback(GLFWwindow* window, double xpos, double ypos) {
     Camera* cam = static_cast<Camera*>(glfwGetWindowUserPointer(window));
+    if (cam->uiMode) return; // cursor is free for the UI - don't steer the camera
+
     if (cam->firstMouse) {
         cam->lastMouseX = xpos;
         cam->lastMouseY = ypos;

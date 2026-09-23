@@ -12,6 +12,7 @@
 ### Engine
 - Frame-Resource Synchronization
 - Loading Assets
+- [x] Scene Editor
 - Offscreen Rendering & Post-Processing
 - Entity Component System (ECS)
 - Job System / Task-Based Parallelism

@@ -1,0 +1,25 @@
+# renderer-metal scene file v1
+object Cube
+position 0 0 0
+rotation 0 0 0
+scale 1 1 1
+light Light 1
+position 2.25 0.1 -1.55
+color 0.882353 0.0865052 0.0865052
+intensity 2.6
+object Cube 2
+position 0 -1 0
+rotation 0 0 0
+scale 100 1 100
+light Light 2
+position 2.75 0.4 1.7
+color 0.00889084 0.0881237 0.906863
+intensity 2.1
+light Light 3
+position -2.6 0.7 -2.45
+color 0.115917 0.985294 0
+intensity 0.7
+object Cube 3
+position 4.15 -0.2 2.8
+rotation 0 0 0
+scale 1 1 1

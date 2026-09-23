@@ -1,6 +1,8 @@
 #include <metal_stdlib>
 using namespace metal;
 
+#define MAX_LIGHTS 4 // must match kMaxLights in Uniforms.hpp
+
 struct VertexInput {
     float3 position [[attribute(0)]];
     float2 uv       [[attribute(1)]];
@@ -19,7 +21,9 @@ struct RasterData {
 struct Uniforms {
     float4x4 mvpMatrix;
     float4x4 modelMatrix;
-    float4 lightDirection;
+    float4 lightPositions[MAX_LIGHTS]; // world space, xyz used
+    float4 lightColors[MAX_LIGHTS];    // rgb = color, a = intensity
+    int4 lightMeta;                    // x = active light count
     float4 cameraPosition;
 };
 
@@ -54,14 +58,50 @@ fragment float4 fragmentMain(RasterData in [[stage_in]],
     float3 tangentNormal = normalMap.sample(smp, in.uv).rgb * 2.0 - 1.0;
     float3 normal = normalize(TBN * tangentNormal);
 
-    float3 lightDir = normalize(uniforms.lightDirection.xyz);
     float3 viewDir = normalize(uniforms.cameraPosition.xyz - in.worldPosition);
-    float3 halfVector = normalize(lightDir + viewDir);
-
-    float diffuse = max(dot(normal, lightDir), 0.0);
-    float specular = powr(max(dot(normal, halfVector), 0.0), shininess) * specularStrength;
-
     float4 texColor = tex.sample(smp, in.uv);
-    float3 litColor = texColor.rgb * (ambientStrength + (1.0 - ambientStrength) * diffuse) + specular;
+    float3 litColor = texColor.rgb * ambientStrength;
+
+    int lightCount = uniforms.lightMeta.x;
+    for (int i = 0; i < lightCount; i++) {
+        float3 toLight = uniforms.lightPositions[i].xyz - in.worldPosition;
+        float lightDist = length(toLight);
+        float3 lightDir = toLight / max(lightDist, 1e-4);
+        float3 halfVector = normalize(lightDir + viewDir);
+
+        // Standard point-light attenuation (constant/linear/quadratic falloff)
+        float attenuation = 1.0 / (1.0 + 0.09 * lightDist + 0.032 * lightDist * lightDist);
+        float3 radiance = uniforms.lightColors[i].rgb * uniforms.lightColors[i].a * attenuation;
+
+        float diffuse = max(dot(normal, lightDir), 0.0);
+        float specular = powr(max(dot(normal, halfVector), 0.0), shininess) * specularStrength;
+
+        litColor += (texColor.rgb * diffuse + specular) * radiance;
+    }
+
     return float4(litColor, texColor.a);
+}
+
+// --- Axis gizmo: flat-colored lines, no lighting/texturing ---
+
+struct AxisVertexInput {
+    float3 position [[attribute(0)]];
+    float3 color    [[attribute(1)]];
+};
+
+struct AxisRasterData {
+    float4 position [[position]];
+    float3 color;
+};
+
+vertex AxisRasterData axisVertexMain(AxisVertexInput in [[stage_in]],
+                                     constant Uniforms& uniforms [[buffer(1)]]) {
+    AxisRasterData out;
+    out.position = uniforms.mvpMatrix * float4(in.position, 1.0);
+    out.color = in.color;
+    return out;
+}
+
+fragment float4 axisFragmentMain(AxisRasterData in [[stage_in]]) {
+    return float4(in.color, 1.0);
 }

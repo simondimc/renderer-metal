@@ -11,6 +11,7 @@ struct Camera {
     bool firstMouse = true;
     double lastMouseX = 0.0;
     double lastMouseY = 0.0;
+    bool uiMode = false; // true while the cursor is free for UI interaction - suppresses mouse-look
 };
 
 // Forward direction derived from yaw/pitch; 0,0 points down -Z to match the rest of the renderer

@@ -1,7 +1,10 @@
 #include "Uniforms.hpp"
+#include <algorithm>
 #include <cmath>
 
-Uniforms computeUniforms(const Camera& cam, float cubeTime, int width, int height) {
+Uniforms computeUniforms(const Camera& cam, const simd::float4x4& objectModel,
+                          const PointLight* lights, int lightCount,
+                          int width, int height) {
     Uniforms u;
 
     float fov = 60.0f * (M_PI / 180.0f);
@@ -20,31 +23,17 @@ Uniforms computeUniforms(const Camera& cam, float cubeTime, int width, int heigh
         simd_make_float4(0.0f,       0.0f,  -(farPlane * nearPlane) / zRange, 0.0f)   // Col 3
     );
 
-    // Standard Right-Handed Rotations (Original math works perfectly here!)
-    float cosX = cosf(0), sinX = sinf(0);
-    simd::float4x4 rotX = simd_matrix(
-        simd_make_float4(1.0f, 0.0f,  0.0f,  0.0f), // Col 0
-        simd_make_float4(0.0f, cosX,  sinX,  0.0f), // Col 1
-        simd_make_float4(0.0f, -sinX, cosX,  0.0f), // Col 2
-        simd_make_float4(0.0f, 0.0f,  0.0f,  1.0f)  // Col 3
-    );
-
-    float cosY = cosf(cubeTime * 0.8f), sinY = sinf(cubeTime * 0.8f);
-    simd::float4x4 rotY = simd_matrix(
-        simd_make_float4(cosY,  0.0f, -sinY, 0.0f), // Col 0
-        simd_make_float4(0.0f,  1.0f, 0.0f,  0.0f), // Col 1
-        simd_make_float4(sinY,  0.0f, cosY,  0.0f), // Col 2
-        simd_make_float4(0.0f,  0.0f, 0.0f,  1.0f)  // Col 3
-    );
-
-    // Cube stays at the origin and only spins in place; the camera now handles scene distance/movement
-    simd::float4x4 model = rotY * rotX;
     simd::float4x4 view = viewMatrix(cam);
-    u.modelMatrix = model;
-    u.mvpMatrix = proj * view * model;
+    u.modelMatrix = objectModel;
+    u.mvpMatrix = proj * view * objectModel;
     u.cameraPosition = simd_make_float4(cam.position.x, cam.position.y, cam.position.z, 1.0f);
 
-    u.lightDirection = simd_make_float4(0.4f, 0.8f, 0.5f, 0.0f);
+    int count = std::min(lightCount, (int)kMaxLights);
+    for (int i = 0; i < count; i++) {
+        u.lightPositions[i] = simd_make_float4(lights[i].position.x, lights[i].position.y, lights[i].position.z, 1.0f);
+        u.lightColors[i] = simd_make_float4(lights[i].color.x, lights[i].color.y, lights[i].color.z, lights[i].intensity);
+    }
+    u.lightMeta = simd_make_int4(count, 0, 0, 0);
 
     return u;
 }

@@ -16,12 +16,24 @@ set(GLFW_BUILD_DOCS OFF CACHE INTERNAL "")
 set(GLFW_INSTALL OFF CACHE INTERNAL "")
 
 # Add your C++ executable
-file(GLOB_RECURSE SOURCES 
+file(GLOB_RECURSE SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.mm"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.hpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h"
 )
+
+# Dear ImGui (UI for the scene editor) - not under src/, so added explicitly
+set(IMGUI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/library/imgui")
+list(APPEND SOURCES
+    "${IMGUI_DIR}/imgui.cpp"
+    "${IMGUI_DIR}/imgui_draw.cpp"
+    "${IMGUI_DIR}/imgui_tables.cpp"
+    "${IMGUI_DIR}/imgui_widgets.cpp"
+    "${IMGUI_DIR}/backends/imgui_impl_glfw.cpp"
+    "${IMGUI_DIR}/backends/imgui_impl_metal.mm"
+)
+
 add_executable(Renderer ${SOURCES})
 
 # Point this to your metal-cpp directory path
@@ -38,7 +50,7 @@ find_library(FOUNDATION_FRAMEWORK Foundation REQUIRED)
 find_library(QUARTZCORE_FRAMEWORK QuartzCore REQUIRED)
 
 # Include the headers
-target_include_directories(Renderer PRIVATE ${METAL_CPP_DIR} ${STB_DIR})
+target_include_directories(Renderer PRIVATE ${METAL_CPP_DIR} ${STB_DIR} ${IMGUI_DIR} "${IMGUI_DIR}/backends")
 
 # Define path for the compiled output library
 set(METAL_OUTPUT_DIR ${CMAKE_BINARY_DIR})
