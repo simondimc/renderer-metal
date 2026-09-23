@@ -116,37 +116,38 @@ int main() {
 
     // Standard Right-Handed Cube: +Z is Front (toward viewer), -Z is Back (away)
     // Each face gets its own 4 vertices (24 total) so every face can have its own 0..1 UV range.
+    // Tangent = world-space direction of increasing U (needed to build the TBN basis for normal mapping)
     float cubeVertices[] = {
-        // Front (Z = 0.5)               normal
-        -0.5f,  0.5f,  0.5f,   0.0f, 1.0f,   0.0f, 0.0f, 1.0f,
-        0.5f,  0.5f,  0.5f,   1.0f, 1.0f,   0.0f, 0.0f, 1.0f,
-        -0.5f, -0.5f,  0.5f,   0.0f, 0.0f,   0.0f, 0.0f, 1.0f,
-        0.5f, -0.5f,  0.5f,   1.0f, 0.0f,   0.0f, 0.0f, 1.0f,
+        // Front (Z = 0.5)               normal              tangent
+        -0.5f,  0.5f,  0.5f,   0.0f, 1.0f,   0.0f, 0.0f, 1.0f,   1.0f, 0.0f, 0.0f,
+        0.5f,  0.5f,  0.5f,   1.0f, 1.0f,   0.0f, 0.0f, 1.0f,   1.0f, 0.0f, 0.0f,
+        -0.5f, -0.5f,  0.5f,   0.0f, 0.0f,   0.0f, 0.0f, 1.0f,   1.0f, 0.0f, 0.0f,
+        0.5f, -0.5f,  0.5f,   1.0f, 0.0f,   0.0f, 0.0f, 1.0f,   1.0f, 0.0f, 0.0f,
         // Back (Z = -0.5)
-        0.5f,  0.5f, -0.5f,   0.0f, 1.0f,   0.0f, 0.0f, -1.0f,
-        -0.5f,  0.5f, -0.5f,   1.0f, 1.0f,   0.0f, 0.0f, -1.0f,
-        0.5f, -0.5f, -0.5f,   0.0f, 0.0f,   0.0f, 0.0f, -1.0f,
-        -0.5f, -0.5f, -0.5f,   1.0f, 0.0f,   0.0f, 0.0f, -1.0f,
+        0.5f,  0.5f, -0.5f,   0.0f, 1.0f,   0.0f, 0.0f, -1.0f,  -1.0f, 0.0f, 0.0f,
+        -0.5f,  0.5f, -0.5f,   1.0f, 1.0f,   0.0f, 0.0f, -1.0f,  -1.0f, 0.0f, 0.0f,
+        0.5f, -0.5f, -0.5f,   0.0f, 0.0f,   0.0f, 0.0f, -1.0f,  -1.0f, 0.0f, 0.0f,
+        -0.5f, -0.5f, -0.5f,   1.0f, 0.0f,   0.0f, 0.0f, -1.0f,  -1.0f, 0.0f, 0.0f,
         // Top (Y = 0.5)
-        -0.5f,  0.5f, -0.5f,   0.0f, 1.0f,   0.0f, 1.0f, 0.0f,
-        0.5f,  0.5f, -0.5f,   1.0f, 1.0f,   0.0f, 1.0f, 0.0f,
-        -0.5f,  0.5f,  0.5f,   0.0f, 0.0f,   0.0f, 1.0f, 0.0f,
-        0.5f,  0.5f,  0.5f,   1.0f, 0.0f,   0.0f, 1.0f, 0.0f,
+        -0.5f,  0.5f, -0.5f,   0.0f, 1.0f,   0.0f, 1.0f, 0.0f,   1.0f, 0.0f, 0.0f,
+        0.5f,  0.5f, -0.5f,   1.0f, 1.0f,   0.0f, 1.0f, 0.0f,   1.0f, 0.0f, 0.0f,
+        -0.5f,  0.5f,  0.5f,   0.0f, 0.0f,   0.0f, 1.0f, 0.0f,   1.0f, 0.0f, 0.0f,
+        0.5f,  0.5f,  0.5f,   1.0f, 0.0f,   0.0f, 1.0f, 0.0f,   1.0f, 0.0f, 0.0f,
         // Bottom (Y = -0.5)
-        -0.5f, -0.5f,  0.5f,   0.0f, 1.0f,   0.0f, -1.0f, 0.0f,
-        0.5f, -0.5f,  0.5f,   1.0f, 1.0f,   0.0f, -1.0f, 0.0f,
-        -0.5f, -0.5f, -0.5f,   0.0f, 0.0f,   0.0f, -1.0f, 0.0f,
-        0.5f, -0.5f, -0.5f,   1.0f, 0.0f,   0.0f, -1.0f, 0.0f,
+        -0.5f, -0.5f,  0.5f,   0.0f, 1.0f,   0.0f, -1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
+        0.5f, -0.5f,  0.5f,   1.0f, 1.0f,   0.0f, -1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
+        -0.5f, -0.5f, -0.5f,   0.0f, 0.0f,   0.0f, -1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
+        0.5f, -0.5f, -0.5f,   1.0f, 0.0f,   0.0f, -1.0f, 0.0f,  1.0f, 0.0f, 0.0f,
         // Left (X = -0.5)
-        -0.5f,  0.5f, -0.5f,   0.0f, 1.0f,   -1.0f, 0.0f, 0.0f,
-        -0.5f,  0.5f,  0.5f,   1.0f, 1.0f,   -1.0f, 0.0f, 0.0f,
-        -0.5f, -0.5f, -0.5f,   0.0f, 0.0f,   -1.0f, 0.0f, 0.0f,
-        -0.5f, -0.5f,  0.5f,   1.0f, 0.0f,   -1.0f, 0.0f, 0.0f,
+        -0.5f,  0.5f, -0.5f,   0.0f, 1.0f,   -1.0f, 0.0f, 0.0f,  0.0f, 0.0f, 1.0f,
+        -0.5f,  0.5f,  0.5f,   1.0f, 1.0f,   -1.0f, 0.0f, 0.0f,  0.0f, 0.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f,   0.0f, 0.0f,   -1.0f, 0.0f, 0.0f,  0.0f, 0.0f, 1.0f,
+        -0.5f, -0.5f,  0.5f,   1.0f, 0.0f,   -1.0f, 0.0f, 0.0f,  0.0f, 0.0f, 1.0f,
         // Right (X = 0.5)
-        0.5f,  0.5f,  0.5f,   0.0f, 1.0f,   1.0f, 0.0f, 0.0f,
-        0.5f,  0.5f, -0.5f,   1.0f, 1.0f,   1.0f, 0.0f, 0.0f,
-        0.5f, -0.5f,  0.5f,   0.0f, 0.0f,   1.0f, 0.0f, 0.0f,
-        0.5f, -0.5f, -0.5f,   1.0f, 0.0f,   1.0f, 0.0f, 0.0f,
+        0.5f,  0.5f,  0.5f,   0.0f, 1.0f,   1.0f, 0.0f, 0.0f,   0.0f, 0.0f, -1.0f,
+        0.5f,  0.5f, -0.5f,   1.0f, 1.0f,   1.0f, 0.0f, 0.0f,   0.0f, 0.0f, -1.0f,
+        0.5f, -0.5f,  0.5f,   0.0f, 0.0f,   1.0f, 0.0f, 0.0f,   0.0f, 0.0f, -1.0f,
+        0.5f, -0.5f, -0.5f,   1.0f, 0.0f,   1.0f, 0.0f, 0.0f,   0.0f, 0.0f, -1.0f,
     };
 
     // 12 triangles mapped Counter-Clockwise (CCW). Each face block is 4 verts: a,b,c,d -> (a,c,d) + (a,d,b)
@@ -187,8 +188,12 @@ int main() {
     vertexDesc->attributes()->object(2)->setFormat(MTL::VertexFormatFloat3);
     vertexDesc->attributes()->object(2)->setOffset(5 * sizeof(float));
     vertexDesc->attributes()->object(2)->setBufferIndex(0);
-    // Layout stride (8 floats: 3 Position + 2 UV + 3 Normal)
-    vertexDesc->layouts()->object(0)->setStride(8 * sizeof(float));
+    // Tangent attribute (Offset matches 3 Position + 2 UV + 3 Normal floats)
+    vertexDesc->attributes()->object(3)->setFormat(MTL::VertexFormatFloat3);
+    vertexDesc->attributes()->object(3)->setOffset(8 * sizeof(float));
+    vertexDesc->attributes()->object(3)->setBufferIndex(0);
+    // Layout stride (11 floats: 3 Position + 2 UV + 3 Normal + 3 Tangent)
+    vertexDesc->layouts()->object(0)->setStride(11 * sizeof(float));
 
     // Build the Pipeline State Object (PSO)
     MTL::RenderPipelineDescriptor* pipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
@@ -205,29 +210,31 @@ int main() {
     depthDesc->setDepthWriteEnabled(true);
     MTL::DepthStencilState* depthState = device->newDepthStencilState(depthDesc);
 
-    // Load the diffuse texture from disk and upload it into a MTL::Texture
-    int texWidth, texHeight, texChannels;
+    // Loads an image from disk (via stb_image) and uploads it into a MTL::Texture
     stbi_set_flip_vertically_on_load(true);
-    unsigned char* texPixels = stbi_load(
-        "../texture/metal_plate_4k/textures/metal_plate_diff_4k.jpg",
-        &texWidth, &texHeight, &texChannels, STBI_rgb_alpha
-    );
-    if (!texPixels) {
-        fprintf(stderr, "Failed to load texture: %s\n", stbi_failure_reason());
-        return -1;
-    }
+    auto loadTexture = [device](const char* path) -> MTL::Texture* {
+        int w, h, channels;
+        unsigned char* pixels = stbi_load(path, &w, &h, &channels, STBI_rgb_alpha);
+        if (!pixels) {
+            fprintf(stderr, "Failed to load texture %s: %s\n", path, stbi_failure_reason());
+            return nullptr;
+        }
+        MTL::TextureDescriptor* desc = MTL::TextureDescriptor::texture2DDescriptor(
+            MTL::PixelFormatRGBA8Unorm, (NS::UInteger)w, (NS::UInteger)h, false
+        );
+        desc->setStorageMode(MTL::StorageModeShared);
+        desc->setUsage(MTL::TextureUsageShaderRead);
+        MTL::Texture* texture = device->newTexture(desc);
+        texture->replaceRegion(MTL::Region(0, 0, (NS::UInteger)w, (NS::UInteger)h), 0, pixels, (NS::UInteger)w * 4);
+        stbi_image_free(pixels);
+        return texture;
+    };
 
-    MTL::TextureDescriptor* texDesc = MTL::TextureDescriptor::texture2DDescriptor(
-        MTL::PixelFormatRGBA8Unorm, (NS::UInteger)texWidth, (NS::UInteger)texHeight, false
-    );
-    texDesc->setStorageMode(MTL::StorageModeShared);
-    texDesc->setUsage(MTL::TextureUsageShaderRead);
-    MTL::Texture* colorTexture = device->newTexture(texDesc);
-    colorTexture->replaceRegion(
-        MTL::Region(0, 0, (NS::UInteger)texWidth, (NS::UInteger)texHeight),
-        0, texPixels, (NS::UInteger)texWidth * 4
-    );
-    stbi_image_free(texPixels);
+    // run.sh/clean_run.sh launch the binary with the build/ directory as cwd
+    MTL::Texture* colorTexture = loadTexture("../texture/metal_plate_4k/textures/metal_plate_diff_4k.jpg");
+    // Converted offline from the source EXR (DWAA compression, unsupported by stb_image) via ffmpeg
+    MTL::Texture* normalTexture = loadTexture("../texture/metal_plate_4k/textures/metal_plate_nor_gl_4k.png");
+    if (!colorTexture || !normalTexture) return -1;
 
     MTL::SamplerDescriptor* samplerDesc = MTL::SamplerDescriptor::alloc()->init();
     samplerDesc->setMinFilter(MTL::SamplerMinMagFilterLinear);
@@ -297,6 +304,7 @@ int main() {
             encoder->setVertexBuffer(uniformBuffer, 0, 1);
             encoder->setFragmentBuffer(uniformBuffer, 0, 1);
             encoder->setFragmentTexture(colorTexture, 0);
+            encoder->setFragmentTexture(normalTexture, 1);
             encoder->setFragmentSamplerState(samplerState, 0);
 
             // 36 indices total (12 triangles * 3 vertices)
@@ -322,6 +330,7 @@ int main() {
     samplerState->release();
     samplerDesc->release();
     colorTexture->release();
+    normalTexture->release();
     depthTexture->release();
     depthState->release();
     depthDesc->release();

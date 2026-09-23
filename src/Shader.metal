@@ -5,6 +5,7 @@ struct VertexInput {
     float3 position [[attribute(0)]];
     float2 uv       [[attribute(1)]];
     float3 normal   [[attribute(2)]];
+    float3 tangent  [[attribute(3)]];
 };
 
 struct RasterData {
@@ -12,6 +13,7 @@ struct RasterData {
     float2 uv;
     float3 worldPosition;
     float3 worldNormal;
+    float3 worldTangent;
 };
 
 struct Uniforms {
@@ -28,6 +30,7 @@ vertex RasterData vertexMain(VertexInput in [[stage_in]],
     out.uv = in.uv;
     out.worldPosition = (uniforms.modelMatrix * float4(in.position, 1.0)).xyz;
     out.worldNormal = (uniforms.modelMatrix * float4(in.normal, 0.0)).xyz;
+    out.worldTangent = (uniforms.modelMatrix * float4(in.tangent, 0.0)).xyz;
     return out;
 }
 
@@ -35,6 +38,7 @@ vertex RasterData vertexMain(VertexInput in [[stage_in]],
 fragment float4 fragmentMain(RasterData in [[stage_in]],
                              constant Uniforms& uniforms [[buffer(1)]],
                              texture2d<float> tex [[texture(0)]],
+                             texture2d<float> normalMap [[texture(1)]],
                              sampler smp [[sampler(0)]]) {
     constexpr float ambientStrength = 0.15;
     constexpr float specularStrength = 0.5;
@@ -44,7 +48,15 @@ fragment float4 fragmentMain(RasterData in [[stage_in]],
     // objects relative to a camera fixed at the world origin (see perspectiveProjectionRightHanded).
     constexpr float3 cameraPosition = float3(0.0, 0.0, 0.0);
 
-    float3 normal = normalize(in.worldNormal);
+    // Build the TBN basis and use it to rotate the tangent-space normal map sample into world space
+    float3 N = normalize(in.worldNormal);
+    float3 T = normalize(in.worldTangent);
+    float3 B = cross(N, T);
+    float3x3 TBN = float3x3(T, B, N);
+
+    float3 tangentNormal = normalMap.sample(smp, in.uv).rgb * 2.0 - 1.0;
+    float3 normal = normalize(TBN * tangentNormal);
+
     float3 lightDir = normalize(uniforms.lightDirection.xyz);
     float3 viewDir = normalize(cameraPosition - in.worldPosition);
     float3 halfVector = normalize(lightDir + viewDir);
