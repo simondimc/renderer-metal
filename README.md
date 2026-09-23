@@ -6,7 +6,7 @@
 - [x] Triangle
 - [x] Cube
 - [x] Textures
-- Lighting
+- [x] Lighting
 - Interactive Camera
 
 ### Engine

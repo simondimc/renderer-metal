@@ -16,8 +16,10 @@
 
 #include "Bridge.hpp"
 
-struct Uniforms { 
-    simd::float4x4 matrix; 
+struct Uniforms {
+    simd::float4x4 mvpMatrix;
+    simd::float4x4 modelMatrix;
+    simd::float4 lightDirection;
 };
 
 Uniforms perspectiveProjectionRightHanded(float time, int width, int height) {
@@ -64,7 +66,14 @@ Uniforms perspectiveProjectionRightHanded(float time, int width, int height) {
         simd_make_float4(0.0f, 0.0f, -2.5f,  1.0f)  // Col 3 (Move cube into the scene)
     );
 
-    u.matrix = proj * (trans * rotY * rotX);
+    simd::float4x4 model = trans * rotY * rotX;
+    u.modelMatrix = model;
+    u.mvpMatrix = proj * model;
+
+    // Light orbits around the Y axis, independent of the cube's own rotation
+    float lightAngle = time * 0.5f;
+    u.lightDirection = simd_make_float4(cosf(lightAngle) * 0.8f, 0.6f, sinf(lightAngle) * 0.8f, 0.0f);
+
     return u;
 }
 
@@ -108,36 +117,36 @@ int main() {
     // Standard Right-Handed Cube: +Z is Front (toward viewer), -Z is Back (away)
     // Each face gets its own 4 vertices (24 total) so every face can have its own 0..1 UV range.
     float cubeVertices[] = {
-        // Front (Z = 0.5)
-        -0.5f,  0.5f,  0.5f,   0.0f, 1.0f,
-        0.5f,  0.5f,  0.5f,   1.0f, 1.0f,
-        -0.5f, -0.5f,  0.5f,   0.0f, 0.0f,
-        0.5f, -0.5f,  0.5f,   1.0f, 0.0f,
+        // Front (Z = 0.5)               normal
+        -0.5f,  0.5f,  0.5f,   0.0f, 1.0f,   0.0f, 0.0f, 1.0f,
+        0.5f,  0.5f,  0.5f,   1.0f, 1.0f,   0.0f, 0.0f, 1.0f,
+        -0.5f, -0.5f,  0.5f,   0.0f, 0.0f,   0.0f, 0.0f, 1.0f,
+        0.5f, -0.5f,  0.5f,   1.0f, 0.0f,   0.0f, 0.0f, 1.0f,
         // Back (Z = -0.5)
-        0.5f,  0.5f, -0.5f,   0.0f, 1.0f,
-        -0.5f,  0.5f, -0.5f,   1.0f, 1.0f,
-        0.5f, -0.5f, -0.5f,   0.0f, 0.0f,
-        -0.5f, -0.5f, -0.5f,   1.0f, 0.0f,
+        0.5f,  0.5f, -0.5f,   0.0f, 1.0f,   0.0f, 0.0f, -1.0f,
+        -0.5f,  0.5f, -0.5f,   1.0f, 1.0f,   0.0f, 0.0f, -1.0f,
+        0.5f, -0.5f, -0.5f,   0.0f, 0.0f,   0.0f, 0.0f, -1.0f,
+        -0.5f, -0.5f, -0.5f,   1.0f, 0.0f,   0.0f, 0.0f, -1.0f,
         // Top (Y = 0.5)
-        -0.5f,  0.5f, -0.5f,   0.0f, 1.0f,
-        0.5f,  0.5f, -0.5f,   1.0f, 1.0f,
-        -0.5f,  0.5f,  0.5f,   0.0f, 0.0f,
-        0.5f,  0.5f,  0.5f,   1.0f, 0.0f,
+        -0.5f,  0.5f, -0.5f,   0.0f, 1.0f,   0.0f, 1.0f, 0.0f,
+        0.5f,  0.5f, -0.5f,   1.0f, 1.0f,   0.0f, 1.0f, 0.0f,
+        -0.5f,  0.5f,  0.5f,   0.0f, 0.0f,   0.0f, 1.0f, 0.0f,
+        0.5f,  0.5f,  0.5f,   1.0f, 0.0f,   0.0f, 1.0f, 0.0f,
         // Bottom (Y = -0.5)
-        -0.5f, -0.5f,  0.5f,   0.0f, 1.0f,
-        0.5f, -0.5f,  0.5f,   1.0f, 1.0f,
-        -0.5f, -0.5f, -0.5f,   0.0f, 0.0f,
-        0.5f, -0.5f, -0.5f,   1.0f, 0.0f,
+        -0.5f, -0.5f,  0.5f,   0.0f, 1.0f,   0.0f, -1.0f, 0.0f,
+        0.5f, -0.5f,  0.5f,   1.0f, 1.0f,   0.0f, -1.0f, 0.0f,
+        -0.5f, -0.5f, -0.5f,   0.0f, 0.0f,   0.0f, -1.0f, 0.0f,
+        0.5f, -0.5f, -0.5f,   1.0f, 0.0f,   0.0f, -1.0f, 0.0f,
         // Left (X = -0.5)
-        -0.5f,  0.5f, -0.5f,   0.0f, 1.0f,
-        -0.5f,  0.5f,  0.5f,   1.0f, 1.0f,
-        -0.5f, -0.5f, -0.5f,   0.0f, 0.0f,
-        -0.5f, -0.5f,  0.5f,   1.0f, 0.0f,
+        -0.5f,  0.5f, -0.5f,   0.0f, 1.0f,   -1.0f, 0.0f, 0.0f,
+        -0.5f,  0.5f,  0.5f,   1.0f, 1.0f,   -1.0f, 0.0f, 0.0f,
+        -0.5f, -0.5f, -0.5f,   0.0f, 0.0f,   -1.0f, 0.0f, 0.0f,
+        -0.5f, -0.5f,  0.5f,   1.0f, 0.0f,   -1.0f, 0.0f, 0.0f,
         // Right (X = 0.5)
-        0.5f,  0.5f,  0.5f,   0.0f, 1.0f,
-        0.5f,  0.5f, -0.5f,   1.0f, 1.0f,
-        0.5f, -0.5f,  0.5f,   0.0f, 0.0f,
-        0.5f, -0.5f, -0.5f,   1.0f, 0.0f,
+        0.5f,  0.5f,  0.5f,   0.0f, 1.0f,   1.0f, 0.0f, 0.0f,
+        0.5f,  0.5f, -0.5f,   1.0f, 1.0f,   1.0f, 0.0f, 0.0f,
+        0.5f, -0.5f,  0.5f,   0.0f, 0.0f,   1.0f, 0.0f, 0.0f,
+        0.5f, -0.5f, -0.5f,   1.0f, 0.0f,   1.0f, 0.0f, 0.0f,
     };
 
     // 12 triangles mapped Counter-Clockwise (CCW). Each face block is 4 verts: a,b,c,d -> (a,c,d) + (a,d,b)
@@ -174,8 +183,12 @@ int main() {
     vertexDesc->attributes()->object(1)->setFormat(MTL::VertexFormatFloat2);
     vertexDesc->attributes()->object(1)->setOffset(3 * sizeof(float));
     vertexDesc->attributes()->object(1)->setBufferIndex(0);
-    // Layout stride (5 floats: 3 for Position + 2 for UV)
-    vertexDesc->layouts()->object(0)->setStride(5 * sizeof(float));
+    // Normal attribute (Offset matches 3 floats of position + 2 floats of UV)
+    vertexDesc->attributes()->object(2)->setFormat(MTL::VertexFormatFloat3);
+    vertexDesc->attributes()->object(2)->setOffset(5 * sizeof(float));
+    vertexDesc->attributes()->object(2)->setBufferIndex(0);
+    // Layout stride (8 floats: 3 Position + 2 UV + 3 Normal)
+    vertexDesc->layouts()->object(0)->setStride(8 * sizeof(float));
 
     // Build the Pipeline State Object (PSO)
     MTL::RenderPipelineDescriptor* pipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
@@ -282,6 +295,7 @@ int main() {
             encoder->setDepthStencilState(depthState);
             encoder->setVertexBuffer(vertexBuffer, 0, 0);
             encoder->setVertexBuffer(uniformBuffer, 0, 1);
+            encoder->setFragmentBuffer(uniformBuffer, 0, 1);
             encoder->setFragmentTexture(colorTexture, 0);
             encoder->setFragmentSamplerState(samplerState, 0);
 
