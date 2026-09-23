@@ -5,7 +5,7 @@
 ### Basics
 - [x] Triangle
 - [x] Cube
-- Textures
+- [x] Textures
 - Lighting
 - Interactive Camera
 

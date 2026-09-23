@@ -11,6 +11,9 @@
 
 #include <simd/simd.h>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 #include "Bridge.hpp"
 
 struct Uniforms { 
@@ -103,25 +106,48 @@ int main() {
     MTL::Texture* depthTexture = device->newTexture(desc);
 
     // Standard Right-Handed Cube: +Z is Front (toward viewer), -Z is Back (away)
+    // Each face gets its own 4 vertices (24 total) so every face can have its own 0..1 UV range.
     float cubeVertices[] = {
-        -0.5f,  0.5f,  0.5f,   1.0f, 0.0f, 0.0f, // 0: Top-Front-Left (Red)
-        0.5f,  0.5f,  0.5f,   0.0f, 1.0f, 0.0f, // 1: Top-Front-Right (Green)
-        -0.5f, -0.5f,  0.5f,   0.0f, 0.0f, 1.0f, // 2: Bottom-Front-Left (Blue)
-        0.5f, -0.5f,  0.5f,   1.0f, 1.0f, 0.0f, // 3: Bottom-Front-Right (Yellow)
-        -0.5f,  0.5f, -0.5f,   1.0f, 0.0f, 1.0f, // 4: Top-Back-Left (Magenta)
-        0.5f,  0.5f, -0.5f,   0.0f, 1.0f, 1.0f, // 5: Top-Back-Right (Cyan)
-        -0.5f, -0.5f, -0.5f,   0.5f, 0.5f, 0.5f, // 6: Bottom-Back-Left (Grey)
-        0.5f, -0.5f, -0.5f,   0.0f, 0.0f, 0.0f  // 7: Bottom-Back-Right (Black)
+        // Front (Z = 0.5)
+        -0.5f,  0.5f,  0.5f,   0.0f, 1.0f,
+        0.5f,  0.5f,  0.5f,   1.0f, 1.0f,
+        -0.5f, -0.5f,  0.5f,   0.0f, 0.0f,
+        0.5f, -0.5f,  0.5f,   1.0f, 0.0f,
+        // Back (Z = -0.5)
+        0.5f,  0.5f, -0.5f,   0.0f, 1.0f,
+        -0.5f,  0.5f, -0.5f,   1.0f, 1.0f,
+        0.5f, -0.5f, -0.5f,   0.0f, 0.0f,
+        -0.5f, -0.5f, -0.5f,   1.0f, 0.0f,
+        // Top (Y = 0.5)
+        -0.5f,  0.5f, -0.5f,   0.0f, 1.0f,
+        0.5f,  0.5f, -0.5f,   1.0f, 1.0f,
+        -0.5f,  0.5f,  0.5f,   0.0f, 0.0f,
+        0.5f,  0.5f,  0.5f,   1.0f, 0.0f,
+        // Bottom (Y = -0.5)
+        -0.5f, -0.5f,  0.5f,   0.0f, 1.0f,
+        0.5f, -0.5f,  0.5f,   1.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f,   0.0f, 0.0f,
+        0.5f, -0.5f, -0.5f,   1.0f, 0.0f,
+        // Left (X = -0.5)
+        -0.5f,  0.5f, -0.5f,   0.0f, 1.0f,
+        -0.5f,  0.5f,  0.5f,   1.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f,   0.0f, 0.0f,
+        -0.5f, -0.5f,  0.5f,   1.0f, 0.0f,
+        // Right (X = 0.5)
+        0.5f,  0.5f,  0.5f,   0.0f, 1.0f,
+        0.5f,  0.5f, -0.5f,   1.0f, 1.0f,
+        0.5f, -0.5f,  0.5f,   0.0f, 0.0f,
+        0.5f, -0.5f, -0.5f,   1.0f, 0.0f,
     };
 
-    // 12 triangles mapped Counter-Clockwise (CCW)
+    // 12 triangles mapped Counter-Clockwise (CCW). Each face block is 4 verts: a,b,c,d -> (a,c,d) + (a,d,b)
     uint16_t cubeIndices[] = {
-        0, 2, 3,  0, 3, 1, // Front Face (Z = 0.5)
-        5, 7, 6,  5, 6, 4, // Back Face  (Z = -0.5)
-        4, 0, 1,  4, 1, 5, // Top Face    (Y = 0.5)
-        2, 6, 7,  2, 7, 3, // Bottom Face (Y = -0.5)
-        4, 6, 2,  4, 2, 0, // Left Face   (X = -0.5)
-        1, 3, 7,  1, 7, 5  // Right Face  (X = 0.5)
+        0, 2, 3,   0, 3, 1,     // Front
+        4, 6, 7,   4, 7, 5,     // Back
+        8, 10, 11, 8, 11, 9,    // Top
+        12, 14, 15, 12, 15, 13, // Bottom
+        16, 18, 19, 16, 19, 17, // Left
+        20, 22, 23, 20, 23, 21  // Right
     };
 
     // Create GPU buffers
@@ -140,16 +166,16 @@ int main() {
 
     // Create the Vertex Descriptor layout
     MTL::VertexDescriptor* vertexDesc = MTL::VertexDescriptor::vertexDescriptor();
-    // Position attribute (Updated to Float3 for X, Y, Z layout)
+    // Position attribute (Float3 for X, Y, Z layout)
     vertexDesc->attributes()->object(0)->setFormat(MTL::VertexFormatFloat3);
     vertexDesc->attributes()->object(0)->setOffset(0);
     vertexDesc->attributes()->object(0)->setBufferIndex(0);
-    // Color attribute (Offset matches 3 floats of structural position spatial layout data)
-    vertexDesc->attributes()->object(1)->setFormat(MTL::VertexFormatFloat3);
+    // UV attribute (Offset matches 3 floats of position data)
+    vertexDesc->attributes()->object(1)->setFormat(MTL::VertexFormatFloat2);
     vertexDesc->attributes()->object(1)->setOffset(3 * sizeof(float));
     vertexDesc->attributes()->object(1)->setBufferIndex(0);
-    // Layout stride (Updated to 6 floats: 3 for Position + 3 for Color)
-    vertexDesc->layouts()->object(0)->setStride(6 * sizeof(float));
+    // Layout stride (5 floats: 3 for Position + 2 for UV)
+    vertexDesc->layouts()->object(0)->setStride(5 * sizeof(float));
 
     // Build the Pipeline State Object (PSO)
     MTL::RenderPipelineDescriptor* pipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
@@ -165,6 +191,38 @@ int main() {
     depthDesc->setDepthCompareFunction(MTL::CompareFunctionLess);
     depthDesc->setDepthWriteEnabled(true);
     MTL::DepthStencilState* depthState = device->newDepthStencilState(depthDesc);
+
+    // Load the diffuse texture from disk and upload it into a MTL::Texture
+    int texWidth, texHeight, texChannels;
+    stbi_set_flip_vertically_on_load(true);
+    unsigned char* texPixels = stbi_load(
+        "../texture/metal_plate_4k/textures/metal_plate_diff_4k.jpg",
+        &texWidth, &texHeight, &texChannels, STBI_rgb_alpha
+    );
+    if (!texPixels) {
+        fprintf(stderr, "Failed to load texture: %s\n", stbi_failure_reason());
+        return -1;
+    }
+
+    MTL::TextureDescriptor* texDesc = MTL::TextureDescriptor::texture2DDescriptor(
+        MTL::PixelFormatRGBA8Unorm, (NS::UInteger)texWidth, (NS::UInteger)texHeight, false
+    );
+    texDesc->setStorageMode(MTL::StorageModeShared);
+    texDesc->setUsage(MTL::TextureUsageShaderRead);
+    MTL::Texture* colorTexture = device->newTexture(texDesc);
+    colorTexture->replaceRegion(
+        MTL::Region(0, 0, (NS::UInteger)texWidth, (NS::UInteger)texHeight),
+        0, texPixels, (NS::UInteger)texWidth * 4
+    );
+    stbi_image_free(texPixels);
+
+    MTL::SamplerDescriptor* samplerDesc = MTL::SamplerDescriptor::alloc()->init();
+    samplerDesc->setMinFilter(MTL::SamplerMinMagFilterLinear);
+    samplerDesc->setMagFilter(MTL::SamplerMinMagFilterLinear);
+    samplerDesc->setMipFilter(MTL::SamplerMipFilterLinear);
+    samplerDesc->setSAddressMode(MTL::SamplerAddressModeRepeat);
+    samplerDesc->setTAddressMode(MTL::SamplerAddressModeRepeat);
+    MTL::SamplerState* samplerState = device->newSamplerState(samplerDesc);
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -224,7 +282,9 @@ int main() {
             encoder->setDepthStencilState(depthState);
             encoder->setVertexBuffer(vertexBuffer, 0, 0);
             encoder->setVertexBuffer(uniformBuffer, 0, 1);
-            
+            encoder->setFragmentTexture(colorTexture, 0);
+            encoder->setFragmentSamplerState(samplerState, 0);
+
             // 36 indices total (12 triangles * 3 vertices)
             encoder->drawIndexedPrimitives(
                 MTL::PrimitiveTypeTriangle, 
@@ -245,6 +305,9 @@ int main() {
     }
 
     // Explicit GPU Cleanups
+    samplerState->release();
+    samplerDesc->release();
+    colorTexture->release();
     depthTexture->release();
     depthState->release();
     depthDesc->release();

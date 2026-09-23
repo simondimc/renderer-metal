@@ -6,6 +6,9 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Export compile_commands.json so IntelliSense (cpptools/clangd) knows the real include paths
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # Compile GLFW directly from the library folder
 set(GLFW_BUILD_EXAMPLES OFF CACHE INTERNAL "")
 set(GLFW_BUILD_TESTS OFF CACHE INTERNAL "")
@@ -23,6 +26,7 @@ add_executable(Renderer ${SOURCES})
 
 # Point this to your metal-cpp directory path
 set(METAL_CPP_DIR "./library/metal-cpp")
+set(STB_DIR "./library/stb")
 
 # Point to your custom local GLFW path [3]
 add_subdirectory("./library/glfw")
@@ -34,7 +38,7 @@ find_library(FOUNDATION_FRAMEWORK Foundation REQUIRED)
 find_library(QUARTZCORE_FRAMEWORK QuartzCore REQUIRED)
 
 # Include the headers
-target_include_directories(Renderer PRIVATE ${METAL_CPP_DIR})
+target_include_directories(Renderer PRIVATE ${METAL_CPP_DIR} ${STB_DIR})
 
 # Define path for the compiled output library
 set(METAL_OUTPUT_DIR ${CMAKE_BINARY_DIR})
