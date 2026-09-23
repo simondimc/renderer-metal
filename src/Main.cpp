@@ -101,7 +101,6 @@ int main() {
     desc->setStorageMode(MTL::StorageModePrivate);
     desc->setUsage(MTL::TextureUsageRenderTarget);
     MTL::Texture* depthTexture = device->newTexture(desc);
-    desc->release();
 
     // Standard Right-Handed Cube: +Z is Front (toward viewer), -Z is Back (away)
     float cubeVertices[] = {
@@ -192,7 +191,6 @@ int main() {
                 newDesc->setStorageMode(MTL::StorageModePrivate);
                 newDesc->setUsage(MTL::TextureUsageRenderTarget);
                 depthTexture = device->newTexture(newDesc);
-                newDesc->release();
             }
 
             // Configure the render pass
@@ -252,7 +250,6 @@ int main() {
     depthDesc->release();
     pipelineState->release();
     pipeDesc->release();
-    vertexDesc->release();
     vertFunc->release();
     fragFunc->release();
     library->release();
