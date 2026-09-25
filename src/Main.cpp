@@ -14,12 +14,16 @@
 #include "Camera.hpp"
 #include "CubeMesh.hpp"
 #include "LightMarker.hpp"
+#include "MeshLoader.hpp"
 #include "Scene.hpp"
 #include "SceneEditorPanel.hpp"
 #include "Shadow.hpp"
 #include "Texture.hpp"
 #include "UI.hpp"
 #include "Uniforms.hpp"
+
+#include <unordered_map>
+#include <vector>
 
 int main() {
     if (!glfwInit()) return -1;
@@ -149,6 +153,10 @@ int main() {
     MTL::Buffer* vertexBuffer = device->newBuffer(CubeMesh::vertices, sizeof(CubeMesh::vertices), MTL::ResourceStorageModeShared);
     MTL::Buffer* indexBuffer = device->newBuffer(CubeMesh::indices, sizeof(CubeMesh::indices), MTL::ResourceStorageModeShared);
     constexpr NS::UInteger indexCount = sizeof(CubeMesh::indices) / sizeof(CubeMesh::indices[0]);
+
+    // Loaded Mesh-type objects' GPU buffers, keyed by scene file path - populated lazily each
+    // frame below as new paths show up in the scene (see the scene editor's "Add Mesh" button).
+    std::unordered_map<std::string, MeshData> meshCache;
 
     // One Uniforms slot per scene object per frame, plus one for the axis gizmo, one per possible
     // light marker, and one per possible light direction ray. 1024-byte stride is Metal's safe
@@ -327,6 +335,16 @@ int main() {
                 drawSceneEditorPanel(scene, selectedObjectIndex);
             }
 
+            // Lazily load any newly-referenced Mesh asset - editing the path field or adding a
+            // Mesh object in the scene editor just works next frame, no explicit reload plumbing
+            // needed between the UI and the renderer.
+            for (const auto& obj : scene.objects) {
+                if (obj.type != SceneObjectType::Mesh || obj.meshPath.empty()) continue;
+                if (meshCache.find(obj.meshPath) == meshCache.end()) {
+                    meshCache[obj.meshPath] = loadMesh(device, obj.meshPath);
+                }
+            }
+
             // Gather up to kMaxLights lights (of any type) from the scene. lightObjects[i] keeps
             // the originating SceneObject alongside lights[i] (same index) so the marker/ray pass
             // below can read its rotation - only a nullptr for the synthetic fallback light.
@@ -376,17 +394,38 @@ int main() {
                 computeCubeShadowMatrices(lights[i].position, kShadowNearPlane, kShadowFarPlane, cubeFaceMatrices[i]);
             }
 
-            // Write every drawn cube's Uniforms into its own aligned slot before any draw call
+            // One entry per drawable (non-Light) scene object this frame - Cube always, Mesh only
+            // once its file has successfully loaded into meshCache. Built once and reused by the
+            // uniform-fill loop below and by every draw pass further down so their indexing (and
+            // thus each object's uniform-buffer slot) always lines up.
+            struct RenderableObject {
+                const SceneObject* obj;
+                MTL::Buffer* vertexBuffer;
+                MTL::Buffer* indexBuffer;
+                NS::UInteger indexCount;
+                MTL::IndexType indexType;
+            };
+            std::vector<RenderableObject> renderables;
+            for (const auto& obj : scene.objects) {
+                if (renderables.size() >= kMaxSceneObjects) break;
+                if (obj.type == SceneObjectType::Cube) {
+                    renderables.push_back({&obj, vertexBuffer, indexBuffer, indexCount, MTL::IndexTypeUInt16});
+                } else if (obj.type == SceneObjectType::Mesh && !obj.meshPath.empty()) {
+                    auto it = meshCache.find(obj.meshPath);
+                    if (it != meshCache.end() && it->second.indexCount > 0) {
+                        const MeshData& m = it->second;
+                        renderables.push_back({&obj, m.vertexBuffer, m.indexBuffer, m.indexCount, m.indexType});
+                    }
+                }
+            }
+
+            // Write every drawn object's Uniforms into its own aligned slot before any draw call
             // touches the buffer - drawIndexedPrimitives only records GPU work, it doesn't execute
             // it yet, so overwriting the same slot before commit would corrupt earlier draws' data.
-            NS::UInteger cubeCount = 0;
-            for (const auto& obj : scene.objects) {
-                if (obj.type != SceneObjectType::Cube) continue;
-                if (cubeCount >= kMaxSceneObjects) break;
-                Uniforms uniforms = computeUniforms(camera, objectModelMatrix(obj), lights, lightCount,
+            for (NS::UInteger i = 0; i < renderables.size(); i++) {
+                Uniforms uniforms = computeUniforms(camera, objectModelMatrix(*renderables[i].obj), lights, lightCount,
                                                      liveWidth, liveHeight);
-                memcpy((uint8_t*)uniformBuffer->contents() + cubeCount * kUniformStride, &uniforms, sizeof(Uniforms));
-                cubeCount++;
+                memcpy((uint8_t*)uniformBuffer->contents() + i * kUniformStride, &uniforms, sizeof(Uniforms));
             }
             if (camera.uiMode) {
                 Uniforms gizmoUniforms = computeUniforms(camera, matrix_identity_float4x4, lights, lightCount,
@@ -445,13 +484,14 @@ int main() {
                         MTL::RenderCommandEncoder* shadowEncoder = cmdBuffer->renderCommandEncoder(shadowRPD);
                         shadowEncoder->setDepthStencilState(depthState);
                         shadowEncoder->setRenderPipelineState(shadowPipelineState);
-                        shadowEncoder->setVertexBuffer(vertexBuffer, 0, 0);
                         shadowEncoder->setVertexBytes(&cubeFaceMatrices[lightIndex][face], sizeof(simd::float4x4), 2);
                         shadowEncoder->setFragmentBytes(&lights[lightIndex].position, sizeof(simd::float3), 3);
-                        for (NS::UInteger i = 0; i < cubeCount; i++) {
+                        for (NS::UInteger i = 0; i < renderables.size(); i++) {
+                            const auto& r = renderables[i];
+                            shadowEncoder->setVertexBuffer(r.vertexBuffer, 0, 0);
                             shadowEncoder->setVertexBuffer(uniformBuffer, i * kUniformStride, 1);
                             shadowEncoder->drawIndexedPrimitives(
-                                MTL::PrimitiveTypeTriangle, indexCount, MTL::IndexTypeUInt16, indexBuffer, 0
+                                MTL::PrimitiveTypeTriangle, r.indexCount, r.indexType, r.indexBuffer, 0
                             );
                         }
                         shadowEncoder->endEncoding();
@@ -478,13 +518,14 @@ int main() {
                     MTL::RenderCommandEncoder* shadow2DEncoder = cmdBuffer->renderCommandEncoder(shadow2DRPD);
                     shadow2DEncoder->setDepthStencilState(depthState);
                     shadow2DEncoder->setRenderPipelineState(shadowPipelineState);
-                    shadow2DEncoder->setVertexBuffer(vertexBuffer, 0, 0);
                     shadow2DEncoder->setVertexBytes(&lights[lightIndex].shadowViewProj, sizeof(simd::float4x4), 2);
                     shadow2DEncoder->setFragmentBytes(&shadowEye, sizeof(simd::float3), 3);
-                    for (NS::UInteger i = 0; i < cubeCount; i++) {
+                    for (NS::UInteger i = 0; i < renderables.size(); i++) {
+                        const auto& r = renderables[i];
+                        shadow2DEncoder->setVertexBuffer(r.vertexBuffer, 0, 0);
                         shadow2DEncoder->setVertexBuffer(uniformBuffer, i * kUniformStride, 1);
                         shadow2DEncoder->drawIndexedPrimitives(
-                            MTL::PrimitiveTypeTriangle, indexCount, MTL::IndexTypeUInt16, indexBuffer, 0
+                            MTL::PrimitiveTypeTriangle, r.indexCount, r.indexType, r.indexBuffer, 0
                         );
                     }
                     shadow2DEncoder->endEncoding();
@@ -508,7 +549,6 @@ int main() {
             }
 
             encoder->setRenderPipelineState(pipelineState);
-            encoder->setVertexBuffer(vertexBuffer, 0, 0);
             encoder->setFragmentTexture(colorTexture, 0);
             encoder->setFragmentTexture(normalTexture, 1);
             for (size_t i = 0; i < kMaxLights; i++) {
@@ -520,15 +560,17 @@ int main() {
             encoder->setFragmentSamplerState(samplerState, 0);
             encoder->setFragmentSamplerState(shadowSamplerState, 1);
 
-            for (NS::UInteger i = 0; i < cubeCount; i++) {
+            for (NS::UInteger i = 0; i < renderables.size(); i++) {
+                const auto& r = renderables[i];
                 NS::UInteger offset = i * kUniformStride;
+                encoder->setVertexBuffer(r.vertexBuffer, 0, 0);
                 encoder->setVertexBuffer(uniformBuffer, offset, 1);
                 encoder->setFragmentBuffer(uniformBuffer, offset, 1);
                 encoder->drawIndexedPrimitives(
                     MTL::PrimitiveTypeTriangle,
-                    indexCount,
-                    MTL::IndexTypeUInt16,
-                    indexBuffer,
+                    r.indexCount,
+                    r.indexType,
+                    r.indexBuffer,
                     0
                 );
             }
@@ -578,6 +620,10 @@ int main() {
     library->release();
     vertexBuffer->release();
     indexBuffer->release();
+    for (auto& entry : meshCache) {
+        if (entry.second.vertexBuffer) entry.second.vertexBuffer->release();
+        if (entry.second.indexBuffer) entry.second.indexBuffer->release();
+    }
     uniformBuffer->release();
     cmdQueue->release();
     device->release();

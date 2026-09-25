@@ -11,7 +11,7 @@
 
 ### Engine
 - Frame-Resource Synchronization
-- Loading Assets
+- [x] Loading Assets
 - [x] Scene Editor
 - Offscreen Rendering & Post-Processing
 - Entity Component System (ECS)

@@ -39,6 +39,8 @@ add_executable(Renderer ${SOURCES})
 # Point this to your metal-cpp directory path
 set(METAL_CPP_DIR "./library/metal-cpp")
 set(STB_DIR "./library/stb")
+set(TINYOBJLOADER_DIR "./library/tinyobjloader")
+set(CGLTF_DIR "./library/cgltf")
 
 # Point to your custom local GLFW path [3]
 add_subdirectory("./library/glfw")
@@ -50,7 +52,7 @@ find_library(FOUNDATION_FRAMEWORK Foundation REQUIRED)
 find_library(QUARTZCORE_FRAMEWORK QuartzCore REQUIRED)
 
 # Include the headers
-target_include_directories(Renderer PRIVATE ${METAL_CPP_DIR} ${STB_DIR} ${IMGUI_DIR} "${IMGUI_DIR}/backends")
+target_include_directories(Renderer PRIVATE ${METAL_CPP_DIR} ${STB_DIR} ${TINYOBJLOADER_DIR} ${CGLTF_DIR} ${IMGUI_DIR} "${IMGUI_DIR}/backends")
 
 # Define path for the compiled output library
 set(METAL_OUTPUT_DIR ${CMAKE_BINARY_DIR})

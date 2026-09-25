@@ -1,5 +1,6 @@
 #include "SceneEditorPanel.hpp"
 #include "imgui.h"
+#include <cstring>
 #include <string>
 
 namespace {
@@ -35,6 +36,14 @@ void drawSceneEditorPanel(Scene& scene, int& selectedIndex) {
         scene.objects.push_back(obj);
         selectedIndex = (int)scene.objects.size() - 1;
     }
+    ImGui::SameLine();
+    if (ImGui::Button("Add Mesh")) {
+        SceneObject obj;
+        obj.type = SceneObjectType::Mesh;
+        obj.name = "Mesh " + std::to_string(countOfType(scene, SceneObjectType::Mesh) + 1);
+        scene.objects.push_back(obj);
+        selectedIndex = (int)scene.objects.size() - 1;
+    }
     ImGui::EndDisabled();
 
     bool hasSelection = selectedIndex >= 0 && selectedIndex < (int)scene.objects.size();
@@ -65,7 +74,8 @@ void drawSceneEditorPanel(Scene& scene, int& selectedIndex) {
     ImGui::BeginChild("ObjectList", ImVec2(0, 120), true);
     for (int i = 0; i < (int)scene.objects.size(); i++) {
         ImGui::PushID(i);
-        const char* tag = (scene.objects[i].type == SceneObjectType::Light) ? "[L] " : "[C] ";
+        const char* tag = (scene.objects[i].type == SceneObjectType::Light) ? "[L] "
+                        : (scene.objects[i].type == SceneObjectType::Mesh) ? "[M] " : "[C] ";
         std::string label = tag + scene.objects[i].name;
         if (ImGui::Selectable(label.c_str(), i == selectedIndex)) {
             selectedIndex = i;
@@ -100,6 +110,15 @@ void drawSceneEditorPanel(Scene& scene, int& selectedIndex) {
         } else {
             ImGui::DragFloat3("Rotation", obj.rotationDegrees, 1.0f);
             ImGui::DragFloat3("Scale", obj.scale, 0.05f, 0.01f, 10.0f);
+            if (obj.type == SceneObjectType::Mesh) {
+                char pathBuf[256];
+                strncpy(pathBuf, obj.meshPath.c_str(), sizeof(pathBuf) - 1);
+                pathBuf[sizeof(pathBuf) - 1] = '\0';
+                if (ImGui::InputText("Mesh Path", pathBuf, sizeof(pathBuf))) {
+                    obj.meshPath = pathBuf;
+                }
+                ImGui::TextDisabled("(.obj/.gltf/.glb, relative to build/)");
+            }
         }
     } else {
         ImGui::TextDisabled("No object selected");

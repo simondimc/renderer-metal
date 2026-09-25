@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-enum class SceneObjectType { Cube, Light };
+enum class SceneObjectType { Cube, Light, Mesh };
 
 // Point: position + color/intensity only, radiates equally in all directions.
 // Directional: no position (infinitely far away); direction only, no distance falloff - a sun.
@@ -30,6 +30,7 @@ struct SceneObject {
     float spotOuterDegrees = 25.0f;                 // Spot only: half-angle where light reaches zero
     float areaSize[2] = {1.0f, 1.0f};               // Area only: width/height of the rectangle
     std::string name = "Cube";
+    std::string meshPath;                           // Mesh only: .obj/.gltf/.glb path, relative to build/
 };
 
 struct Scene {

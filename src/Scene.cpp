@@ -104,10 +104,13 @@ simd::float3 objectUp(const SceneObject& obj) {
 }
 
 // File grammar - one block per object, in order:
-//   object <name>          (a Cube) or  light <name>          (a Light)
+//   object <name>          (a Cube or Mesh) or  light <name>          (a Light)
 //   position <x> <y> <z>
-//   rotation <x> <y> <z>    (degrees; Cube always, Light only for Directional/Spot/Area)
-//   scale <x> <y> <z>       (Cube only)
+//   rotation <x> <y> <z>    (degrees; Cube/Mesh always, Light only for Directional/Spot/Area)
+//   scale <x> <y> <z>       (Cube/Mesh only)
+//   meshpath <path>         (Mesh only - presence of this line is what makes an "object" block a
+//                            Mesh rather than a Cube, so old scene files without it still load as
+//                            Cube unchanged)
 //   lighttype point|directional|spot|area   (Light only)
 //   color <r> <g> <b>       (Light only)
 //   intensity <v>           (Light only)
@@ -141,6 +144,9 @@ bool saveScene(const Scene& scene, const std::string& path) {
         } else {
             out << "rotation " << obj.rotationDegrees[0] << " " << obj.rotationDegrees[1] << " " << obj.rotationDegrees[2] << "\n";
             out << "scale " << obj.scale[0] << " " << obj.scale[1] << " " << obj.scale[2] << "\n";
+            if (obj.type == SceneObjectType::Mesh) {
+                out << "meshpath " << obj.meshPath << "\n";
+            }
         }
     }
     return true;
@@ -194,6 +200,12 @@ bool loadScene(Scene& scene, const std::string& path) {
         } else if (haveCurrent && keyword == "areasize") {
             float* a = loaded.objects.back().areaSize;
             ss >> a[0] >> a[1];
+        } else if (haveCurrent && keyword == "meshpath") {
+            SceneObject& obj = loaded.objects.back();
+            obj.type = SceneObjectType::Mesh;
+            std::getline(ss, obj.meshPath);
+            size_t start = obj.meshPath.find_first_not_of(' ');
+            obj.meshPath = (start == std::string::npos) ? "" : obj.meshPath.substr(start);
         }
     }
 
