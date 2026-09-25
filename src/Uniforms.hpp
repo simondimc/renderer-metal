@@ -31,16 +31,25 @@ struct SceneLight {
     simd::float4x4 shadowViewProj = matrix_identity_float4x4;
 };
 
-// Must stay layout-compatible with the Uniforms struct in Shader.metal, field for field.
+// Everything the instanced geometry passes (scene, shadow maps, AO prepass, selection mask) share for the
+// whole frame. Must stay layout-compatible with FrameUniforms in Shader.metal, field for field.
+struct FrameUniforms {
+    simd::float4x4 viewProj;                   // camera view-projection, jittered like the scene geometry
+    simd::float4x4 lightViewProj[kMaxLights];  // Directional/Spot shadow-map view-projection
+    simd::float4 cameraPosition;
+};
+
+// What differs per scene object, one entry each in a buffer indexed by the draws' instance ids. Must stay
+// layout-compatible with InstanceData in Shader.metal.
+struct InstanceData {
+    simd::float4x4 model;
+    simd::float4 materialAlbedo;  // rgb = albedo tint
+    simd::float4 materialParams;  // x = metallic, y = roughness, z = ao, w = useTextures (0/1)
+};
+
+// Overlay draws (axis gizmo, light markers and rays) only need a transform. Must match Uniforms in Shader.metal.
 struct Uniforms {
     simd::float4x4 mvpMatrix;
-    simd::float4x4 modelMatrix;
-    simd::float4x4 lightViewProj[kMaxLights];  // Directional/Spot shadow-map view-projection (the other light data lives in
-                                               // the shared GPULight buffer, see LightCulling.hpp)
-    simd::float4 cameraPosition;
-    simd::float4 materialAlbedo;              // rgb = albedo tint
-    simd::float4 materialParams;              // x = metallic, y = roughness, z = ao, w = useTextures (0/1)
-    simd::float4x4 viewProjMatrix;            // camera only, no model - transmission projects refracted points to the screen
 };
 
 // glTF's alphaMode. Opaque ignores alpha entirely; Mask keeps or discards each pixel against a
@@ -72,13 +81,15 @@ simd::float4x4 computeProjection(int width, int height, simd::float2 jitterNDC =
 // Main.cpp uses this directly for motion blur's frame-to-frame reprojection.
 simd::float4x4 computeViewProj(const Camera& cam, int width, int height, simd::float2 jitterNDC = {0.0f, 0.0f});
 
-// Builds the per-object Uniforms: projects/views objectModel through the camera and copies in the
-// Directional/Spot shadow-map matrices of the first kMaxLights lights, which the fragment shader needs
-// to look shadows up. The lights themselves (position, color, ...) are not per object - they go to the
-// GPU once per frame, see LightCulling.hpp. Call once per object per frame
-// (objectModel = objectModelMatrix(obj)).
-// material may be null (gizmo/markers, which don't use it) - a neutral default is written then.
-Uniforms computeUniforms(const Camera& cam, const simd::float4x4& objectModel,
-                          const SceneLight* lights, int lightCount,
-                          int width, int height, const Material* material = nullptr,
-                          simd::float2 jitterNDC = {0.0f, 0.0f});
+// The frame's shared constants: the camera's view-projection (shifted by jitterNDC, see computeProjection), its
+// position, and the Directional/Spot shadow-map matrices of the first kMaxLights lights, which the fragment
+// shader needs to look shadows up. The lights themselves (position, color, ...) go to the GPU once per frame,
+// see LightCulling.hpp.
+FrameUniforms computeFrameUniforms(const Camera& cam, const SceneLight* lights, int lightCount,
+                                    int width, int height, simd::float2 jitterNDC = {0.0f, 0.0f});
+
+// One object's instance data. material may be null - a neutral default is written then.
+InstanceData computeInstanceData(const simd::float4x4& objectModel, const Material* material);
+
+// The transform of an overlay draw: objectModel projected through the camera.
+Uniforms computeUniforms(const Camera& cam, const simd::float4x4& objectModel, int width, int height);

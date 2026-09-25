@@ -20,7 +20,7 @@ using namespace metal;
 #define TONE_MAP_ACES 2
 #define TONE_MAP_UNCHARTED2 3
 
-// Must match nearPlane/farPlane in computeUniforms (Uniforms.cpp) - used by postProcessFragmentMain
+// Must match nearPlane/farPlane in computeProjection (Uniforms.cpp) - used by postProcessFragmentMain
 // to linearize the raw depth buffer for Depth of Field (see its comment).
 #define CAMERA_NEAR_PLANE 0.1
 #define CAMERA_FAR_PLANE 100.0
@@ -38,16 +38,28 @@ struct RasterData {
     float3 worldPosition;
     float3 worldNormal;
     float4 worldTangent; // xyz = world-space tangent, w = handedness
+    uint instanceIndex [[flat]]; // this vertex's object: where its InstanceData sits
 };
 
+// Overlay draws (axis gizmo, light markers and rays): just a transform.
 struct Uniforms {
     float4x4 mvpMatrix;
-    float4x4 modelMatrix;
+};
+
+// Instanced geometry passes (scene, shadow maps, AO prepass, selection mask). Constants of the whole frame:
+struct FrameUniforms {
+    float4x4 viewProj;                  // camera view-projection, jittered like the scene geometry
     float4x4 lightViewProj[MAX_LIGHTS]; // Directional/Spot shadow-map view-projection (other light data: GPULight buffer)
     float4 cameraPosition;
-    float4 materialAlbedo;              // rgb = albedo tint
-    float4 materialParams;              // x = metallic, y = roughness, z = ao, w = useTextures (0/1)
-    float4x4 viewProjMatrix;            // camera only, no model - projects refracted points for transmission
+};
+
+// ... and what differs per object, one entry per scene object. A draw covers a run of instances of one mesh;
+// each vertex finds its entry through `visibleInstances` (the draw's own list of which objects survived
+// culling), indexed by [[instance_id]] - which, in Metal, already includes the draw's base instance.
+struct InstanceData {
+    float4x4 model;
+    float4 materialAlbedo; // rgb = albedo tint
+    float4 materialParams; // x = metallic, y = roughness, z = ao, w = useTextures (0/1)
 };
 
 // Per-draw glTF material factors, bound at fragment buffer 2 - must match MaterialParams in
@@ -143,13 +155,20 @@ kernel void lightCullKernel(constant ClusterParams& cluster [[buffer(0)]],
 
 // Vertex Shader
 vertex RasterData vertexMain(VertexInput in [[stage_in]],
-                             constant Uniforms& uniforms [[buffer(1)]]) {
+                             uint instanceID [[instance_id]],
+                             constant FrameUniforms& frame [[buffer(1)]],
+                             constant InstanceData* instances [[buffer(3)]],
+                             constant uint* visibleInstances [[buffer(4)]]) {
+    uint index = visibleInstances[instanceID];
+    float4x4 model = instances[index].model;
+    float4 worldPosition = model * float4(in.position, 1.0);
     RasterData out;
-    out.position = uniforms.mvpMatrix * float4(in.position, 1.0);
+    out.position = frame.viewProj * worldPosition;
     out.uv = in.uv;
-    out.worldPosition = (uniforms.modelMatrix * float4(in.position, 1.0)).xyz;
-    out.worldNormal = (uniforms.modelMatrix * float4(in.normal, 0.0)).xyz;
-    out.worldTangent = float4((uniforms.modelMatrix * float4(in.tangent.xyz, 0.0)).xyz, in.tangent.w);
+    out.worldPosition = worldPosition.xyz;
+    out.worldNormal = (model * float4(in.normal, 0.0)).xyz;
+    out.worldTangent = float4((model * float4(in.tangent.xyz, 0.0)).xyz, in.tangent.w);
+    out.instanceIndex = index;
     return out;
 }
 
@@ -167,10 +186,12 @@ struct CubeShadowRasterData {
 };
 
 vertex CubeShadowRasterData cubeShadowVertexMain(VertexInput in [[stage_in]],
-                                                 constant Uniforms& uniforms [[buffer(1)]],
-                                                 constant float4x4& lightViewProj [[buffer(2)]]) {
+                                                 uint instanceID [[instance_id]],
+                                                 constant float4x4& lightViewProj [[buffer(2)]],
+                                                 constant InstanceData* instances [[buffer(3)]],
+                                                 constant uint* visibleInstances [[buffer(4)]]) {
     CubeShadowRasterData out;
-    float4 worldPos = uniforms.modelMatrix * float4(in.position, 1.0);
+    float4 worldPos = instances[visibleInstances[instanceID]].model * float4(in.position, 1.0);
     out.position = lightViewProj * worldPos;
     out.worldPosition = worldPos.xyz;
     out.uv = in.uv;
@@ -409,7 +430,8 @@ struct SceneFragmentOut {
 
 // Fragment Shader
 fragment SceneFragmentOut fragmentMain(RasterData in [[stage_in]],
-                             constant Uniforms& uniforms [[buffer(1)]],
+                             constant FrameUniforms& frame [[buffer(1)]],
+                             constant InstanceData* instances [[buffer(8)]],
                              texture2d<float> tex [[texture(0)]],
                              texture2d<float> normalMap [[texture(1)]],
                              array<texturecube<float>, MAX_LIGHTS> shadowCubes [[texture(2)]],
@@ -434,7 +456,8 @@ fragment SceneFragmentOut fragmentMain(RasterData in [[stage_in]],
                              sampler shadowSampler [[sampler(1)]],
                              sampler envSampler [[sampler(2)]],
                              sampler screenSampler [[sampler(3)]]) {
-    bool useTextures = uniforms.materialParams.w > 0.5;
+    InstanceData instance = instances[in.instanceIndex];
+    bool useTextures = instance.materialParams.w > 0.5;
 
     float3 N = normalize(in.worldNormal);
     float3 normal = N;
@@ -449,14 +472,14 @@ fragment SceneFragmentOut fragmentMain(RasterData in [[stage_in]],
         normal = normalize(TBN * tangentNormal);
     }
 
-    float3 viewDir = normalize(uniforms.cameraPosition.xyz - in.worldPosition);
-    // Scene Editor material (uniforms.material*) x the draw's glTF factors and textures (see
+    float3 viewDir = normalize(frame.cameraPosition.xyz - in.worldPosition);
+    // Scene Editor material (instance.material*) x the draw's glTF factors and textures (see
     // Material in Scene.hpp). ORM = glTF packing: G = roughness, B = metallic; occlusion (R of its
     // own map - the same image as ORM in the usual packed layout, but glTF allows a separate one).
-    float3 albedo = uniforms.materialAlbedo.rgb;
-    float metallic = uniforms.materialParams.x;
-    float roughness = uniforms.materialParams.y;
-    float ao = uniforms.materialParams.z;
+    float3 albedo = instance.materialAlbedo.rgb;
+    float metallic = instance.materialParams.x;
+    float roughness = instance.materialParams.y;
+    float ao = instance.materialParams.z;
     float alpha = material.baseColorFactor.a;
     if (useTextures) {
         float4 baseColor = tex.sample(smp, in.uv);
@@ -514,9 +537,9 @@ fragment SceneFragmentOut fragmentMain(RasterData in [[stage_in]],
             thickness *= thicknessMap.sample(smp, in.uv).g;
         }
         // Thickness is in mesh units; the model matrix's scale (assumed uniform) converts to world.
-        float thicknessWorld = thickness * length(uniforms.modelMatrix[0].xyz);
+        float thicknessWorld = thickness * length(instance.model[0].xyz);
         float3 refracted = refract(-viewDir, normal, 1.0 / ior);
-        float4 exitClip = uniforms.viewProjMatrix * float4(in.worldPosition + refracted * thicknessWorld, 1.0);
+        float4 exitClip = frame.viewProj * float4(in.worldPosition + refracted * thicknessWorld, 1.0);
         float2 exitUV = (exitClip.xy / exitClip.w) * float2(0.5, -0.5) + 0.5;
         float lod = log2(float(transmissionSource.get_width())) * saturate(roughness * saturate(ior * 2.0 - 2.0));
         float3 background = transmissionSource.sample(screenSampler, exitUV, level(lod)).rgb;
@@ -645,10 +668,10 @@ fragment SceneFragmentOut fragmentMain(RasterData in [[stage_in]],
             if (lightType == LIGHT_TYPE_POINT) {
                 shadow = sampleCubeShadow(in.worldPosition, lightPos, shadowCubes[shadowSlot], shadowSampler, shadowBias, pcfRot);
             } else if (lightType == LIGHT_TYPE_SPOT) {
-                shadow = sampleProjectedShadow(in.worldPosition, lightPos, uniforms.lightViewProj[shadowSlot], shadow2DMaps[shadowSlot], shadowSampler, shadowBias, pcfRot);
+                shadow = sampleProjectedShadow(in.worldPosition, lightPos, frame.lightViewProj[shadowSlot], shadow2DMaps[shadowSlot], shadowSampler, shadowBias, pcfRot);
             } else if (lightType == LIGHT_TYPE_DIRECTIONAL) {
                 float3 shadowEye = lightPos - emitDir * DIRECTIONAL_SHADOW_DISTANCE;
-                shadow = sampleProjectedShadow(in.worldPosition, shadowEye, uniforms.lightViewProj[shadowSlot], shadow2DMaps[shadowSlot], shadowSampler, shadowBias, pcfRot);
+                shadow = sampleProjectedShadow(in.worldPosition, shadowEye, frame.lightViewProj[shadowSlot], shadow2DMaps[shadowSlot], shadowSampler, shadowBias, pcfRot);
             }
         }
 
@@ -753,7 +776,7 @@ fragment float4 blurFragmentMain(PostProcessVertexOut in [[stage_in]],
 // Depth prepass: the opaque geometry's depth (hardware depth attachment) and world-space normal
 // (color). Mask materials discard exactly like the shadow pass does, so a cut-out leaf casts no
 // occlusion where it is transparent. Draws through the same lambda as the shadow casters, so it
-// binds the same slots: uniforms at vertex buffer 1, albedo at texture 0, material at buffer 4.
+// binds the same slots: frame uniforms at vertex buffer 1, albedo at texture 0, material at fragment buffer 4.
 struct AOPrepassRasterData {
     float4 position [[position]];
     float2 uv;
@@ -761,11 +784,15 @@ struct AOPrepassRasterData {
 };
 
 vertex AOPrepassRasterData aoPrepassVertexMain(VertexInput in [[stage_in]],
-                                               constant Uniforms& uniforms [[buffer(1)]]) {
+                                               uint instanceID [[instance_id]],
+                                               constant FrameUniforms& frame [[buffer(1)]],
+                                               constant InstanceData* instances [[buffer(3)]],
+                                               constant uint* visibleInstances [[buffer(4)]]) {
     AOPrepassRasterData out;
-    out.position = uniforms.mvpMatrix * float4(in.position, 1.0);
+    float4x4 model = instances[visibleInstances[instanceID]].model;
+    out.position = frame.viewProj * (model * float4(in.position, 1.0));
     out.uv = in.uv;
-    out.worldNormal = (uniforms.modelMatrix * float4(in.normal, 0.0)).xyz;
+    out.worldNormal = (model * float4(in.normal, 0.0)).xyz;
     return out;
 }
 
@@ -1491,7 +1518,7 @@ fragment float4 postProcessFragmentMain(PostProcessVertexOut in [[stage_in]],
     }
 
     // Depth of Field: linearize the raw hardware depth (see the CAMERA_NEAR_PLANE/FAR_PLANE
-    // comment - this reverses computeUniforms' projection matrix) into a view-space distance, then
+    // comment - this reverses computeProjection's matrix) into a view-space distance, then
     // blend toward a small blurred average as that distance moves away from dofFocusDistance.
     // depthSampler is nearest + clamp (see Main.cpp) - linearly filtering raw depth would blend
     // foreground/background distances at silhouette edges into a meaningless value, same reasoning

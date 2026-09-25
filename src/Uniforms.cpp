@@ -30,26 +30,30 @@ simd::float4x4 computeViewProj(const Camera& cam, int width, int height, simd::f
     return computeProjection(width, height, jitterNDC) * viewMatrix(cam);
 }
 
-Uniforms computeUniforms(const Camera& cam, const simd::float4x4& objectModel,
-                          const SceneLight* lights, int lightCount,
-                          int width, int height, const Material* material, simd::float2 jitterNDC) {
-    Uniforms u;
-
-    simd::float4x4 viewProj = computeViewProj(cam, width, height, jitterNDC);
-    u.modelMatrix = objectModel;
-    u.mvpMatrix = viewProj * objectModel;
-    u.viewProjMatrix = viewProj;
+FrameUniforms computeFrameUniforms(const Camera& cam, const SceneLight* lights, int lightCount,
+                                    int width, int height, simd::float2 jitterNDC) {
+    FrameUniforms u = {};
+    u.viewProj = computeViewProj(cam, width, height, jitterNDC);
     u.cameraPosition = simd_make_float4(cam.position.x, cam.position.y, cam.position.z, 1.0f);
-
     int count = std::min(lightCount, (int)kMaxLights);
     for (int i = 0; i < count; i++) {
         u.lightViewProj[i] = lights[i].shadowViewProj;
     }
+    return u;
+}
 
+InstanceData computeInstanceData(const simd::float4x4& objectModel, const Material* material) {
     Material fallback;
     const Material& m = material ? *material : fallback;
-    u.materialAlbedo = simd_make_float4(m.albedo[0], m.albedo[1], m.albedo[2], 1.0f);
-    u.materialParams = simd_make_float4(m.metallic, m.roughness, m.ao, m.useTextures ? 1.0f : 0.0f);
+    InstanceData data;
+    data.model = objectModel;
+    data.materialAlbedo = simd_make_float4(m.albedo[0], m.albedo[1], m.albedo[2], 1.0f);
+    data.materialParams = simd_make_float4(m.metallic, m.roughness, m.ao, m.useTextures ? 1.0f : 0.0f);
+    return data;
+}
 
+Uniforms computeUniforms(const Camera& cam, const simd::float4x4& objectModel, int width, int height) {
+    Uniforms u;
+    u.mvpMatrix = computeViewProj(cam, width, height) * objectModel;
     return u;
 }

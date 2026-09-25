@@ -65,7 +65,7 @@
 
 ### Optimization
 - [x] Frustum Culling
-- Instanced Rendering
+- [x] Instanced Rendering
 - GPU-Driven Rendering / Indirect Draw Calls
 - Occlusion Culling (Hi-Z)
 - Level of Detail (LOD)

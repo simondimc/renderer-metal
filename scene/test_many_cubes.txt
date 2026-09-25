@@ -1,0 +1,6416 @@
+# renderer-metal scene file v1
+# Instancing stress test: 1600 cubes sharing one mesh and texture set (drawn in one instanced call per pass).
+camera 0 18 32 0 -0.5
+exposure 1
+tonemap aces
+environment 0.6 1
+object Floor
+position 0 -1 0
+rotation 0 0 0
+scale 80 0.2 80
+object C0
+position -32.00 0.3 -32.00
+rotation 0 0 0
+scale 0.8 0.8 0.8
+object C1
+position -32.00 0.3 -30.40
+rotation 0 3 0
+scale 0.8 0.8 0.8
+object C2
+position -32.00 0.3 -28.80
+rotation 0 6 0
+scale 0.8 0.8 0.8
+object C3
+position -32.00 0.3 -27.20
+rotation 0 9 0
+scale 0.8 0.8 0.8
+object C4
+position -32.00 0.3 -25.60
+rotation 0 12 0
+scale 0.8 0.8 0.8
+object C5
+position -32.00 0.3 -24.00
+rotation 0 15 0
+scale 0.8 0.8 0.8
+object C6
+position -32.00 0.3 -22.40
+rotation 0 18 0
+scale 0.8 0.8 0.8
+object C7
+position -32.00 0.3 -20.80
+rotation 0 21 0
+scale 0.8 0.8 0.8
+object C8
+position -32.00 0.3 -19.20
+rotation 0 24 0
+scale 0.8 0.8 0.8
+object C9
+position -32.00 0.3 -17.60
+rotation 0 27 0
+scale 0.8 0.8 0.8
+object C10
+position -32.00 0.3 -16.00
+rotation 0 30 0
+scale 0.8 0.8 0.8
+object C11
+position -32.00 0.3 -14.40
+rotation 0 33 0
+scale 0.8 0.8 0.8
+object C12
+position -32.00 0.3 -12.80
+rotation 0 36 0
+scale 0.8 0.8 0.8
+object C13
+position -32.00 0.3 -11.20
+rotation 0 39 0
+scale 0.8 0.8 0.8
+object C14
+position -32.00 0.3 -9.60
+rotation 0 42 0
+scale 0.8 0.8 0.8
+object C15
+position -32.00 0.3 -8.00
+rotation 0 45 0
+scale 0.8 0.8 0.8
+object C16
+position -32.00 0.3 -6.40
+rotation 0 48 0
+scale 0.8 0.8 0.8
+object C17
+position -32.00 0.3 -4.80
+rotation 0 51 0
+scale 0.8 0.8 0.8
+object C18
+position -32.00 0.3 -3.20
+rotation 0 54 0
+scale 0.8 0.8 0.8
+object C19
+position -32.00 0.3 -1.60
+rotation 0 57 0
+scale 0.8 0.8 0.8
+object C20
+position -32.00 0.3 0.00
+rotation 0 60 0
+scale 0.8 0.8 0.8
+object C21
+position -32.00 0.3 1.60
+rotation 0 63 0
+scale 0.8 0.8 0.8
+object C22
+position -32.00 0.3 3.20
+rotation 0 66 0
+scale 0.8 0.8 0.8
+object C23
+position -32.00 0.3 4.80
+rotation 0 69 0
+scale 0.8 0.8 0.8
+object C24
+position -32.00 0.3 6.40
+rotation 0 72 0
+scale 0.8 0.8 0.8
+object C25
+position -32.00 0.3 8.00
+rotation 0 75 0
+scale 0.8 0.8 0.8
+object C26
+position -32.00 0.3 9.60
+rotation 0 78 0
+scale 0.8 0.8 0.8
+object C27
+position -32.00 0.3 11.20
+rotation 0 81 0
+scale 0.8 0.8 0.8
+object C28
+position -32.00 0.3 12.80
+rotation 0 84 0
+scale 0.8 0.8 0.8
+object C29
+position -32.00 0.3 14.40
+rotation 0 87 0
+scale 0.8 0.8 0.8
+object C30
+position -32.00 0.3 16.00
+rotation 0 0 0
+scale 0.8 0.8 0.8
+object C31
+position -32.00 0.3 17.60
+rotation 0 3 0
+scale 0.8 0.8 0.8
+object C32
+position -32.00 0.3 19.20
+rotation 0 6 0
+scale 0.8 0.8 0.8
+object C33
+position -32.00 0.3 20.80
+rotation 0 9 0
+scale 0.8 0.8 0.8
+object C34
+position -32.00 0.3 22.40
+rotation 0 12 0
+scale 0.8 0.8 0.8
+object C35
+position -32.00 0.3 24.00
+rotation 0 15 0
+scale 0.8 0.8 0.8
+object C36
+position -32.00 0.3 25.60
+rotation 0 18 0
+scale 0.8 0.8 0.8
+object C37
+position -32.00 0.3 27.20
+rotation 0 21 0
+scale 0.8 0.8 0.8
+object C38
+position -32.00 0.3 28.80
+rotation 0 24 0
+scale 0.8 0.8 0.8
+object C39
+position -32.00 0.3 30.40
+rotation 0 27 0
+scale 0.8 0.8 0.8
+object C40
+position -30.40 0.3 -32.00
+rotation 0 7 0
+scale 0.8 0.8 0.8
+object C41
+position -30.40 0.3 -30.40
+rotation 0 10 0
+scale 0.8 0.8 0.8
+object C42
+position -30.40 0.3 -28.80
+rotation 0 13 0
+scale 0.8 0.8 0.8
+object C43
+position -30.40 0.3 -27.20
+rotation 0 16 0
+scale 0.8 0.8 0.8
+object C44
+position -30.40 0.3 -25.60
+rotation 0 19 0
+scale 0.8 0.8 0.8
+object C45
+position -30.40 0.3 -24.00
+rotation 0 22 0
+scale 0.8 0.8 0.8
+object C46
+position -30.40 0.3 -22.40
+rotation 0 25 0
+scale 0.8 0.8 0.8
+object C47
+position -30.40 0.3 -20.80
+rotation 0 28 0
+scale 0.8 0.8 0.8
+object C48
+position -30.40 0.3 -19.20
+rotation 0 31 0
+scale 0.8 0.8 0.8
+object C49
+position -30.40 0.3 -17.60
+rotation 0 34 0
+scale 0.8 0.8 0.8
+object C50
+position -30.40 0.3 -16.00
+rotation 0 37 0
+scale 0.8 0.8 0.8
+object C51
+position -30.40 0.3 -14.40
+rotation 0 40 0
+scale 0.8 0.8 0.8
+object C52
+position -30.40 0.3 -12.80
+rotation 0 43 0
+scale 0.8 0.8 0.8
+object C53
+position -30.40 0.3 -11.20
+rotation 0 46 0
+scale 0.8 0.8 0.8
+object C54
+position -30.40 0.3 -9.60
+rotation 0 49 0
+scale 0.8 0.8 0.8
+object C55
+position -30.40 0.3 -8.00
+rotation 0 52 0
+scale 0.8 0.8 0.8
+object C56
+position -30.40 0.3 -6.40
+rotation 0 55 0
+scale 0.8 0.8 0.8
+object C57
+position -30.40 0.3 -4.80
+rotation 0 58 0
+scale 0.8 0.8 0.8
+object C58
+position -30.40 0.3 -3.20
+rotation 0 61 0
+scale 0.8 0.8 0.8
+object C59
+position -30.40 0.3 -1.60
+rotation 0 64 0
+scale 0.8 0.8 0.8
+object C60
+position -30.40 0.3 0.00
+rotation 0 67 0
+scale 0.8 0.8 0.8
+object C61
+position -30.40 0.3 1.60
+rotation 0 70 0
+scale 0.8 0.8 0.8
+object C62
+position -30.40 0.3 3.20
+rotation 0 73 0
+scale 0.8 0.8 0.8
+object C63
+position -30.40 0.3 4.80
+rotation 0 76 0
+scale 0.8 0.8 0.8
+object C64
+position -30.40 0.3 6.40
+rotation 0 79 0
+scale 0.8 0.8 0.8
+object C65
+position -30.40 0.3 8.00
+rotation 0 82 0
+scale 0.8 0.8 0.8
+object C66
+position -30.40 0.3 9.60
+rotation 0 85 0
+scale 0.8 0.8 0.8
+object C67
+position -30.40 0.3 11.20
+rotation 0 88 0
+scale 0.8 0.8 0.8
+object C68
+position -30.40 0.3 12.80
+rotation 0 1 0
+scale 0.8 0.8 0.8
+object C69
+position -30.40 0.3 14.40
+rotation 0 4 0
+scale 0.8 0.8 0.8
+object C70
+position -30.40 0.3 16.00
+rotation 0 7 0
+scale 0.8 0.8 0.8
+object C71
+position -30.40 0.3 17.60
+rotation 0 10 0
+scale 0.8 0.8 0.8
+object C72
+position -30.40 0.3 19.20
+rotation 0 13 0
+scale 0.8 0.8 0.8
+object C73
+position -30.40 0.3 20.80
+rotation 0 16 0
+scale 0.8 0.8 0.8
+object C74
+position -30.40 0.3 22.40
+rotation 0 19 0
+scale 0.8 0.8 0.8
+object C75
+position -30.40 0.3 24.00
+rotation 0 22 0
+scale 0.8 0.8 0.8
+object C76
+position -30.40 0.3 25.60
+rotation 0 25 0
+scale 0.8 0.8 0.8
+object C77
+position -30.40 0.3 27.20
+rotation 0 28 0
+scale 0.8 0.8 0.8
+object C78
+position -30.40 0.3 28.80
+rotation 0 31 0
+scale 0.8 0.8 0.8
+object C79
+position -30.40 0.3 30.40
+rotation 0 34 0
+scale 0.8 0.8 0.8
+object C80
+position -28.80 0.3 -32.00
+rotation 0 14 0
+scale 0.8 0.8 0.8
+object C81
+position -28.80 0.3 -30.40
+rotation 0 17 0
+scale 0.8 0.8 0.8
+object C82
+position -28.80 0.3 -28.80
+rotation 0 20 0
+scale 0.8 0.8 0.8
+object C83
+position -28.80 0.3 -27.20
+rotation 0 23 0
+scale 0.8 0.8 0.8
+object C84
+position -28.80 0.3 -25.60
+rotation 0 26 0
+scale 0.8 0.8 0.8
+object C85
+position -28.80 0.3 -24.00
+rotation 0 29 0
+scale 0.8 0.8 0.8
+object C86
+position -28.80 0.3 -22.40
+rotation 0 32 0
+scale 0.8 0.8 0.8
+object C87
+position -28.80 0.3 -20.80
+rotation 0 35 0
+scale 0.8 0.8 0.8
+object C88
+position -28.80 0.3 -19.20
+rotation 0 38 0
+scale 0.8 0.8 0.8
+object C89
+position -28.80 0.3 -17.60
+rotation 0 41 0
+scale 0.8 0.8 0.8
+object C90
+position -28.80 0.3 -16.00
+rotation 0 44 0
+scale 0.8 0.8 0.8
+object C91
+position -28.80 0.3 -14.40
+rotation 0 47 0
+scale 0.8 0.8 0.8
+object C92
+position -28.80 0.3 -12.80
+rotation 0 50 0
+scale 0.8 0.8 0.8
+object C93
+position -28.80 0.3 -11.20
+rotation 0 53 0
+scale 0.8 0.8 0.8
+object C94
+position -28.80 0.3 -9.60
+rotation 0 56 0
+scale 0.8 0.8 0.8
+object C95
+position -28.80 0.3 -8.00
+rotation 0 59 0
+scale 0.8 0.8 0.8
+object C96
+position -28.80 0.3 -6.40
+rotation 0 62 0
+scale 0.8 0.8 0.8
+object C97
+position -28.80 0.3 -4.80
+rotation 0 65 0
+scale 0.8 0.8 0.8
+object C98
+position -28.80 0.3 -3.20
+rotation 0 68 0
+scale 0.8 0.8 0.8
+object C99
+position -28.80 0.3 -1.60
+rotation 0 71 0
+scale 0.8 0.8 0.8
+object C100
+position -28.80 0.3 0.00
+rotation 0 74 0
+scale 0.8 0.8 0.8
+object C101
+position -28.80 0.3 1.60
+rotation 0 77 0
+scale 0.8 0.8 0.8
+object C102
+position -28.80 0.3 3.20
+rotation 0 80 0
+scale 0.8 0.8 0.8
+object C103
+position -28.80 0.3 4.80
+rotation 0 83 0
+scale 0.8 0.8 0.8
+object C104
+position -28.80 0.3 6.40
+rotation 0 86 0
+scale 0.8 0.8 0.8
+object C105
+position -28.80 0.3 8.00
+rotation 0 89 0
+scale 0.8 0.8 0.8
+object C106
+position -28.80 0.3 9.60
+rotation 0 2 0
+scale 0.8 0.8 0.8
+object C107
+position -28.80 0.3 11.20
+rotation 0 5 0
+scale 0.8 0.8 0.8
+object C108
+position -28.80 0.3 12.80
+rotation 0 8 0
+scale 0.8 0.8 0.8
+object C109
+position -28.80 0.3 14.40
+rotation 0 11 0
+scale 0.8 0.8 0.8
+object C110
+position -28.80 0.3 16.00
+rotation 0 14 0
+scale 0.8 0.8 0.8
+object C111
+position -28.80 0.3 17.60
+rotation 0 17 0
+scale 0.8 0.8 0.8
+object C112
+position -28.80 0.3 19.20
+rotation 0 20 0
+scale 0.8 0.8 0.8
+object C113
+position -28.80 0.3 20.80
+rotation 0 23 0
+scale 0.8 0.8 0.8
+object C114
+position -28.80 0.3 22.40
+rotation 0 26 0
+scale 0.8 0.8 0.8
+object C115
+position -28.80 0.3 24.00
+rotation 0 29 0
+scale 0.8 0.8 0.8
+object C116
+position -28.80 0.3 25.60
+rotation 0 32 0
+scale 0.8 0.8 0.8
+object C117
+position -28.80 0.3 27.20
+rotation 0 35 0
+scale 0.8 0.8 0.8
+object C118
+position -28.80 0.3 28.80
+rotation 0 38 0
+scale 0.8 0.8 0.8
+object C119
+position -28.80 0.3 30.40
+rotation 0 41 0
+scale 0.8 0.8 0.8
+object C120
+position -27.20 0.3 -32.00
+rotation 0 21 0
+scale 0.8 0.8 0.8
+object C121
+position -27.20 0.3 -30.40
+rotation 0 24 0
+scale 0.8 0.8 0.8
+object C122
+position -27.20 0.3 -28.80
+rotation 0 27 0
+scale 0.8 0.8 0.8
+object C123
+position -27.20 0.3 -27.20
+rotation 0 30 0
+scale 0.8 0.8 0.8
+object C124
+position -27.20 0.3 -25.60
+rotation 0 33 0
+scale 0.8 0.8 0.8
+object C125
+position -27.20 0.3 -24.00
+rotation 0 36 0
+scale 0.8 0.8 0.8
+object C126
+position -27.20 0.3 -22.40
+rotation 0 39 0
+scale 0.8 0.8 0.8
+object C127
+position -27.20 0.3 -20.80
+rotation 0 42 0
+scale 0.8 0.8 0.8
+object C128
+position -27.20 0.3 -19.20
+rotation 0 45 0
+scale 0.8 0.8 0.8
+object C129
+position -27.20 0.3 -17.60
+rotation 0 48 0
+scale 0.8 0.8 0.8
+object C130
+position -27.20 0.3 -16.00
+rotation 0 51 0
+scale 0.8 0.8 0.8
+object C131
+position -27.20 0.3 -14.40
+rotation 0 54 0
+scale 0.8 0.8 0.8
+object C132
+position -27.20 0.3 -12.80
+rotation 0 57 0
+scale 0.8 0.8 0.8
+object C133
+position -27.20 0.3 -11.20
+rotation 0 60 0
+scale 0.8 0.8 0.8
+object C134
+position -27.20 0.3 -9.60
+rotation 0 63 0
+scale 0.8 0.8 0.8
+object C135
+position -27.20 0.3 -8.00
+rotation 0 66 0
+scale 0.8 0.8 0.8
+object C136
+position -27.20 0.3 -6.40
+rotation 0 69 0
+scale 0.8 0.8 0.8
+object C137
+position -27.20 0.3 -4.80
+rotation 0 72 0
+scale 0.8 0.8 0.8
+object C138
+position -27.20 0.3 -3.20
+rotation 0 75 0
+scale 0.8 0.8 0.8
+object C139
+position -27.20 0.3 -1.60
+rotation 0 78 0
+scale 0.8 0.8 0.8
+object C140
+position -27.20 0.3 0.00
+rotation 0 81 0
+scale 0.8 0.8 0.8
+object C141
+position -27.20 0.3 1.60
+rotation 0 84 0
+scale 0.8 0.8 0.8
+object C142
+position -27.20 0.3 3.20
+rotation 0 87 0
+scale 0.8 0.8 0.8
+object C143
+position -27.20 0.3 4.80
+rotation 0 0 0
+scale 0.8 0.8 0.8
+object C144
+position -27.20 0.3 6.40
+rotation 0 3 0
+scale 0.8 0.8 0.8
+object C145
+position -27.20 0.3 8.00
+rotation 0 6 0
+scale 0.8 0.8 0.8
+object C146
+position -27.20 0.3 9.60
+rotation 0 9 0
+scale 0.8 0.8 0.8
+object C147
+position -27.20 0.3 11.20
+rotation 0 12 0
+scale 0.8 0.8 0.8
+object C148
+position -27.20 0.3 12.80
+rotation 0 15 0
+scale 0.8 0.8 0.8
+object C149
+position -27.20 0.3 14.40
+rotation 0 18 0
+scale 0.8 0.8 0.8
+object C150
+position -27.20 0.3 16.00
+rotation 0 21 0
+scale 0.8 0.8 0.8
+object C151
+position -27.20 0.3 17.60
+rotation 0 24 0
+scale 0.8 0.8 0.8
+object C152
+position -27.20 0.3 19.20
+rotation 0 27 0
+scale 0.8 0.8 0.8
+object C153
+position -27.20 0.3 20.80
+rotation 0 30 0
+scale 0.8 0.8 0.8
+object C154
+position -27.20 0.3 22.40
+rotation 0 33 0
+scale 0.8 0.8 0.8
+object C155
+position -27.20 0.3 24.00
+rotation 0 36 0
+scale 0.8 0.8 0.8
+object C156
+position -27.20 0.3 25.60
+rotation 0 39 0
+scale 0.8 0.8 0.8
+object C157
+position -27.20 0.3 27.20
+rotation 0 42 0
+scale 0.8 0.8 0.8
+object C158
+position -27.20 0.3 28.80
+rotation 0 45 0
+scale 0.8 0.8 0.8
+object C159
+position -27.20 0.3 30.40
+rotation 0 48 0
+scale 0.8 0.8 0.8
+object C160
+position -25.60 0.3 -32.00
+rotation 0 28 0
+scale 0.8 0.8 0.8
+object C161
+position -25.60 0.3 -30.40
+rotation 0 31 0
+scale 0.8 0.8 0.8
+object C162
+position -25.60 0.3 -28.80
+rotation 0 34 0
+scale 0.8 0.8 0.8
+object C163
+position -25.60 0.3 -27.20
+rotation 0 37 0
+scale 0.8 0.8 0.8
+object C164
+position -25.60 0.3 -25.60
+rotation 0 40 0
+scale 0.8 0.8 0.8
+object C165
+position -25.60 0.3 -24.00
+rotation 0 43 0
+scale 0.8 0.8 0.8
+object C166
+position -25.60 0.3 -22.40
+rotation 0 46 0
+scale 0.8 0.8 0.8
+object C167
+position -25.60 0.3 -20.80
+rotation 0 49 0
+scale 0.8 0.8 0.8
+object C168
+position -25.60 0.3 -19.20
+rotation 0 52 0
+scale 0.8 0.8 0.8
+object C169
+position -25.60 0.3 -17.60
+rotation 0 55 0
+scale 0.8 0.8 0.8
+object C170
+position -25.60 0.3 -16.00
+rotation 0 58 0
+scale 0.8 0.8 0.8
+object C171
+position -25.60 0.3 -14.40
+rotation 0 61 0
+scale 0.8 0.8 0.8
+object C172
+position -25.60 0.3 -12.80
+rotation 0 64 0
+scale 0.8 0.8 0.8
+object C173
+position -25.60 0.3 -11.20
+rotation 0 67 0
+scale 0.8 0.8 0.8
+object C174
+position -25.60 0.3 -9.60
+rotation 0 70 0
+scale 0.8 0.8 0.8
+object C175
+position -25.60 0.3 -8.00
+rotation 0 73 0
+scale 0.8 0.8 0.8
+object C176
+position -25.60 0.3 -6.40
+rotation 0 76 0
+scale 0.8 0.8 0.8
+object C177
+position -25.60 0.3 -4.80
+rotation 0 79 0
+scale 0.8 0.8 0.8
+object C178
+position -25.60 0.3 -3.20
+rotation 0 82 0
+scale 0.8 0.8 0.8
+object C179
+position -25.60 0.3 -1.60
+rotation 0 85 0
+scale 0.8 0.8 0.8
+object C180
+position -25.60 0.3 0.00
+rotation 0 88 0
+scale 0.8 0.8 0.8
+object C181
+position -25.60 0.3 1.60
+rotation 0 1 0
+scale 0.8 0.8 0.8
+object C182
+position -25.60 0.3 3.20
+rotation 0 4 0
+scale 0.8 0.8 0.8
+object C183
+position -25.60 0.3 4.80
+rotation 0 7 0
+scale 0.8 0.8 0.8
+object C184
+position -25.60 0.3 6.40
+rotation 0 10 0
+scale 0.8 0.8 0.8
+object C185
+position -25.60 0.3 8.00
+rotation 0 13 0
+scale 0.8 0.8 0.8
+object C186
+position -25.60 0.3 9.60
+rotation 0 16 0
+scale 0.8 0.8 0.8
+object C187
+position -25.60 0.3 11.20
+rotation 0 19 0
+scale 0.8 0.8 0.8
+object C188
+position -25.60 0.3 12.80
+rotation 0 22 0
+scale 0.8 0.8 0.8
+object C189
+position -25.60 0.3 14.40
+rotation 0 25 0
+scale 0.8 0.8 0.8
+object C190
+position -25.60 0.3 16.00
+rotation 0 28 0
+scale 0.8 0.8 0.8
+object C191
+position -25.60 0.3 17.60
+rotation 0 31 0
+scale 0.8 0.8 0.8
+object C192
+position -25.60 0.3 19.20
+rotation 0 34 0
+scale 0.8 0.8 0.8
+object C193
+position -25.60 0.3 20.80
+rotation 0 37 0
+scale 0.8 0.8 0.8
+object C194
+position -25.60 0.3 22.40
+rotation 0 40 0
+scale 0.8 0.8 0.8
+object C195
+position -25.60 0.3 24.00
+rotation 0 43 0
+scale 0.8 0.8 0.8
+object C196
+position -25.60 0.3 25.60
+rotation 0 46 0
+scale 0.8 0.8 0.8
+object C197
+position -25.60 0.3 27.20
+rotation 0 49 0
+scale 0.8 0.8 0.8
+object C198
+position -25.60 0.3 28.80
+rotation 0 52 0
+scale 0.8 0.8 0.8
+object C199
+position -25.60 0.3 30.40
+rotation 0 55 0
+scale 0.8 0.8 0.8
+object C200
+position -24.00 0.3 -32.00
+rotation 0 35 0
+scale 0.8 0.8 0.8
+object C201
+position -24.00 0.3 -30.40
+rotation 0 38 0
+scale 0.8 0.8 0.8
+object C202
+position -24.00 0.3 -28.80
+rotation 0 41 0
+scale 0.8 0.8 0.8
+object C203
+position -24.00 0.3 -27.20
+rotation 0 44 0
+scale 0.8 0.8 0.8
+object C204
+position -24.00 0.3 -25.60
+rotation 0 47 0
+scale 0.8 0.8 0.8
+object C205
+position -24.00 0.3 -24.00
+rotation 0 50 0
+scale 0.8 0.8 0.8
+object C206
+position -24.00 0.3 -22.40
+rotation 0 53 0
+scale 0.8 0.8 0.8
+object C207
+position -24.00 0.3 -20.80
+rotation 0 56 0
+scale 0.8 0.8 0.8
+object C208
+position -24.00 0.3 -19.20
+rotation 0 59 0
+scale 0.8 0.8 0.8
+object C209
+position -24.00 0.3 -17.60
+rotation 0 62 0
+scale 0.8 0.8 0.8
+object C210
+position -24.00 0.3 -16.00
+rotation 0 65 0
+scale 0.8 0.8 0.8
+object C211
+position -24.00 0.3 -14.40
+rotation 0 68 0
+scale 0.8 0.8 0.8
+object C212
+position -24.00 0.3 -12.80
+rotation 0 71 0
+scale 0.8 0.8 0.8
+object C213
+position -24.00 0.3 -11.20
+rotation 0 74 0
+scale 0.8 0.8 0.8
+object C214
+position -24.00 0.3 -9.60
+rotation 0 77 0
+scale 0.8 0.8 0.8
+object C215
+position -24.00 0.3 -8.00
+rotation 0 80 0
+scale 0.8 0.8 0.8
+object C216
+position -24.00 0.3 -6.40
+rotation 0 83 0
+scale 0.8 0.8 0.8
+object C217
+position -24.00 0.3 -4.80
+rotation 0 86 0
+scale 0.8 0.8 0.8
+object C218
+position -24.00 0.3 -3.20
+rotation 0 89 0
+scale 0.8 0.8 0.8
+object C219
+position -24.00 0.3 -1.60
+rotation 0 2 0
+scale 0.8 0.8 0.8
+object C220
+position -24.00 0.3 0.00
+rotation 0 5 0
+scale 0.8 0.8 0.8
+object C221
+position -24.00 0.3 1.60
+rotation 0 8 0
+scale 0.8 0.8 0.8
+object C222
+position -24.00 0.3 3.20
+rotation 0 11 0
+scale 0.8 0.8 0.8
+object C223
+position -24.00 0.3 4.80
+rotation 0 14 0
+scale 0.8 0.8 0.8
+object C224
+position -24.00 0.3 6.40
+rotation 0 17 0
+scale 0.8 0.8 0.8
+object C225
+position -24.00 0.3 8.00
+rotation 0 20 0
+scale 0.8 0.8 0.8
+object C226
+position -24.00 0.3 9.60
+rotation 0 23 0
+scale 0.8 0.8 0.8
+object C227
+position -24.00 0.3 11.20
+rotation 0 26 0
+scale 0.8 0.8 0.8
+object C228
+position -24.00 0.3 12.80
+rotation 0 29 0
+scale 0.8 0.8 0.8
+object C229
+position -24.00 0.3 14.40
+rotation 0 32 0
+scale 0.8 0.8 0.8
+object C230
+position -24.00 0.3 16.00
+rotation 0 35 0
+scale 0.8 0.8 0.8
+object C231
+position -24.00 0.3 17.60
+rotation 0 38 0
+scale 0.8 0.8 0.8
+object C232
+position -24.00 0.3 19.20
+rotation 0 41 0
+scale 0.8 0.8 0.8
+object C233
+position -24.00 0.3 20.80
+rotation 0 44 0
+scale 0.8 0.8 0.8
+object C234
+position -24.00 0.3 22.40
+rotation 0 47 0
+scale 0.8 0.8 0.8
+object C235
+position -24.00 0.3 24.00
+rotation 0 50 0
+scale 0.8 0.8 0.8
+object C236
+position -24.00 0.3 25.60
+rotation 0 53 0
+scale 0.8 0.8 0.8
+object C237
+position -24.00 0.3 27.20
+rotation 0 56 0
+scale 0.8 0.8 0.8
+object C238
+position -24.00 0.3 28.80
+rotation 0 59 0
+scale 0.8 0.8 0.8
+object C239
+position -24.00 0.3 30.40
+rotation 0 62 0
+scale 0.8 0.8 0.8
+object C240
+position -22.40 0.3 -32.00
+rotation 0 42 0
+scale 0.8 0.8 0.8
+object C241
+position -22.40 0.3 -30.40
+rotation 0 45 0
+scale 0.8 0.8 0.8
+object C242
+position -22.40 0.3 -28.80
+rotation 0 48 0
+scale 0.8 0.8 0.8
+object C243
+position -22.40 0.3 -27.20
+rotation 0 51 0
+scale 0.8 0.8 0.8
+object C244
+position -22.40 0.3 -25.60
+rotation 0 54 0
+scale 0.8 0.8 0.8
+object C245
+position -22.40 0.3 -24.00
+rotation 0 57 0
+scale 0.8 0.8 0.8
+object C246
+position -22.40 0.3 -22.40
+rotation 0 60 0
+scale 0.8 0.8 0.8
+object C247
+position -22.40 0.3 -20.80
+rotation 0 63 0
+scale 0.8 0.8 0.8
+object C248
+position -22.40 0.3 -19.20
+rotation 0 66 0
+scale 0.8 0.8 0.8
+object C249
+position -22.40 0.3 -17.60
+rotation 0 69 0
+scale 0.8 0.8 0.8
+object C250
+position -22.40 0.3 -16.00
+rotation 0 72 0
+scale 0.8 0.8 0.8
+object C251
+position -22.40 0.3 -14.40
+rotation 0 75 0
+scale 0.8 0.8 0.8
+object C252
+position -22.40 0.3 -12.80
+rotation 0 78 0
+scale 0.8 0.8 0.8
+object C253
+position -22.40 0.3 -11.20
+rotation 0 81 0
+scale 0.8 0.8 0.8
+object C254
+position -22.40 0.3 -9.60
+rotation 0 84 0
+scale 0.8 0.8 0.8
+object C255
+position -22.40 0.3 -8.00
+rotation 0 87 0
+scale 0.8 0.8 0.8
+object C256
+position -22.40 0.3 -6.40
+rotation 0 0 0
+scale 0.8 0.8 0.8
+object C257
+position -22.40 0.3 -4.80
+rotation 0 3 0
+scale 0.8 0.8 0.8
+object C258
+position -22.40 0.3 -3.20
+rotation 0 6 0
+scale 0.8 0.8 0.8
+object C259
+position -22.40 0.3 -1.60
+rotation 0 9 0
+scale 0.8 0.8 0.8
+object C260
+position -22.40 0.3 0.00
+rotation 0 12 0
+scale 0.8 0.8 0.8
+object C261
+position -22.40 0.3 1.60
+rotation 0 15 0
+scale 0.8 0.8 0.8
+object C262
+position -22.40 0.3 3.20
+rotation 0 18 0
+scale 0.8 0.8 0.8
+object C263
+position -22.40 0.3 4.80
+rotation 0 21 0
+scale 0.8 0.8 0.8
+object C264
+position -22.40 0.3 6.40
+rotation 0 24 0
+scale 0.8 0.8 0.8
+object C265
+position -22.40 0.3 8.00
+rotation 0 27 0
+scale 0.8 0.8 0.8
+object C266
+position -22.40 0.3 9.60
+rotation 0 30 0
+scale 0.8 0.8 0.8
+object C267
+position -22.40 0.3 11.20
+rotation 0 33 0
+scale 0.8 0.8 0.8
+object C268
+position -22.40 0.3 12.80
+rotation 0 36 0
+scale 0.8 0.8 0.8
+object C269
+position -22.40 0.3 14.40
+rotation 0 39 0
+scale 0.8 0.8 0.8
+object C270
+position -22.40 0.3 16.00
+rotation 0 42 0
+scale 0.8 0.8 0.8
+object C271
+position -22.40 0.3 17.60
+rotation 0 45 0
+scale 0.8 0.8 0.8
+object C272
+position -22.40 0.3 19.20
+rotation 0 48 0
+scale 0.8 0.8 0.8
+object C273
+position -22.40 0.3 20.80
+rotation 0 51 0
+scale 0.8 0.8 0.8
+object C274
+position -22.40 0.3 22.40
+rotation 0 54 0
+scale 0.8 0.8 0.8
+object C275
+position -22.40 0.3 24.00
+rotation 0 57 0
+scale 0.8 0.8 0.8
+object C276
+position -22.40 0.3 25.60
+rotation 0 60 0
+scale 0.8 0.8 0.8
+object C277
+position -22.40 0.3 27.20
+rotation 0 63 0
+scale 0.8 0.8 0.8
+object C278
+position -22.40 0.3 28.80
+rotation 0 66 0
+scale 0.8 0.8 0.8
+object C279
+position -22.40 0.3 30.40
+rotation 0 69 0
+scale 0.8 0.8 0.8
+object C280
+position -20.80 0.3 -32.00
+rotation 0 49 0
+scale 0.8 0.8 0.8
+object C281
+position -20.80 0.3 -30.40
+rotation 0 52 0
+scale 0.8 0.8 0.8
+object C282
+position -20.80 0.3 -28.80
+rotation 0 55 0
+scale 0.8 0.8 0.8
+object C283
+position -20.80 0.3 -27.20
+rotation 0 58 0
+scale 0.8 0.8 0.8
+object C284
+position -20.80 0.3 -25.60
+rotation 0 61 0
+scale 0.8 0.8 0.8
+object C285
+position -20.80 0.3 -24.00
+rotation 0 64 0
+scale 0.8 0.8 0.8
+object C286
+position -20.80 0.3 -22.40
+rotation 0 67 0
+scale 0.8 0.8 0.8
+object C287
+position -20.80 0.3 -20.80
+rotation 0 70 0
+scale 0.8 0.8 0.8
+object C288
+position -20.80 0.3 -19.20
+rotation 0 73 0
+scale 0.8 0.8 0.8
+object C289
+position -20.80 0.3 -17.60
+rotation 0 76 0
+scale 0.8 0.8 0.8
+object C290
+position -20.80 0.3 -16.00
+rotation 0 79 0
+scale 0.8 0.8 0.8
+object C291
+position -20.80 0.3 -14.40
+rotation 0 82 0
+scale 0.8 0.8 0.8
+object C292
+position -20.80 0.3 -12.80
+rotation 0 85 0
+scale 0.8 0.8 0.8
+object C293
+position -20.80 0.3 -11.20
+rotation 0 88 0
+scale 0.8 0.8 0.8
+object C294
+position -20.80 0.3 -9.60
+rotation 0 1 0
+scale 0.8 0.8 0.8
+object C295
+position -20.80 0.3 -8.00
+rotation 0 4 0
+scale 0.8 0.8 0.8
+object C296
+position -20.80 0.3 -6.40
+rotation 0 7 0
+scale 0.8 0.8 0.8
+object C297
+position -20.80 0.3 -4.80
+rotation 0 10 0
+scale 0.8 0.8 0.8
+object C298
+position -20.80 0.3 -3.20
+rotation 0 13 0
+scale 0.8 0.8 0.8
+object C299
+position -20.80 0.3 -1.60
+rotation 0 16 0
+scale 0.8 0.8 0.8
+object C300
+position -20.80 0.3 0.00
+rotation 0 19 0
+scale 0.8 0.8 0.8
+object C301
+position -20.80 0.3 1.60
+rotation 0 22 0
+scale 0.8 0.8 0.8
+object C302
+position -20.80 0.3 3.20
+rotation 0 25 0
+scale 0.8 0.8 0.8
+object C303
+position -20.80 0.3 4.80
+rotation 0 28 0
+scale 0.8 0.8 0.8
+object C304
+position -20.80 0.3 6.40
+rotation 0 31 0
+scale 0.8 0.8 0.8
+object C305
+position -20.80 0.3 8.00
+rotation 0 34 0
+scale 0.8 0.8 0.8
+object C306
+position -20.80 0.3 9.60
+rotation 0 37 0
+scale 0.8 0.8 0.8
+object C307
+position -20.80 0.3 11.20
+rotation 0 40 0
+scale 0.8 0.8 0.8
+object C308
+position -20.80 0.3 12.80
+rotation 0 43 0
+scale 0.8 0.8 0.8
+object C309
+position -20.80 0.3 14.40
+rotation 0 46 0
+scale 0.8 0.8 0.8
+object C310
+position -20.80 0.3 16.00
+rotation 0 49 0
+scale 0.8 0.8 0.8
+object C311
+position -20.80 0.3 17.60
+rotation 0 52 0
+scale 0.8 0.8 0.8
+object C312
+position -20.80 0.3 19.20
+rotation 0 55 0
+scale 0.8 0.8 0.8
+object C313
+position -20.80 0.3 20.80
+rotation 0 58 0
+scale 0.8 0.8 0.8
+object C314
+position -20.80 0.3 22.40
+rotation 0 61 0
+scale 0.8 0.8 0.8
+object C315
+position -20.80 0.3 24.00
+rotation 0 64 0
+scale 0.8 0.8 0.8
+object C316
+position -20.80 0.3 25.60
+rotation 0 67 0
+scale 0.8 0.8 0.8
+object C317
+position -20.80 0.3 27.20
+rotation 0 70 0
+scale 0.8 0.8 0.8
+object C318
+position -20.80 0.3 28.80
+rotation 0 73 0
+scale 0.8 0.8 0.8
+object C319
+position -20.80 0.3 30.40
+rotation 0 76 0
+scale 0.8 0.8 0.8
+object C320
+position -19.20 0.3 -32.00
+rotation 0 56 0
+scale 0.8 0.8 0.8
+object C321
+position -19.20 0.3 -30.40
+rotation 0 59 0
+scale 0.8 0.8 0.8
+object C322
+position -19.20 0.3 -28.80
+rotation 0 62 0
+scale 0.8 0.8 0.8
+object C323
+position -19.20 0.3 -27.20
+rotation 0 65 0
+scale 0.8 0.8 0.8
+object C324
+position -19.20 0.3 -25.60
+rotation 0 68 0
+scale 0.8 0.8 0.8
+object C325
+position -19.20 0.3 -24.00
+rotation 0 71 0
+scale 0.8 0.8 0.8
+object C326
+position -19.20 0.3 -22.40
+rotation 0 74 0
+scale 0.8 0.8 0.8
+object C327
+position -19.20 0.3 -20.80
+rotation 0 77 0
+scale 0.8 0.8 0.8
+object C328
+position -19.20 0.3 -19.20
+rotation 0 80 0
+scale 0.8 0.8 0.8
+object C329
+position -19.20 0.3 -17.60
+rotation 0 83 0
+scale 0.8 0.8 0.8
+object C330
+position -19.20 0.3 -16.00
+rotation 0 86 0
+scale 0.8 0.8 0.8
+object C331
+position -19.20 0.3 -14.40
+rotation 0 89 0
+scale 0.8 0.8 0.8
+object C332
+position -19.20 0.3 -12.80
+rotation 0 2 0
+scale 0.8 0.8 0.8
+object C333
+position -19.20 0.3 -11.20
+rotation 0 5 0
+scale 0.8 0.8 0.8
+object C334
+position -19.20 0.3 -9.60
+rotation 0 8 0
+scale 0.8 0.8 0.8
+object C335
+position -19.20 0.3 -8.00
+rotation 0 11 0
+scale 0.8 0.8 0.8
+object C336
+position -19.20 0.3 -6.40
+rotation 0 14 0
+scale 0.8 0.8 0.8
+object C337
+position -19.20 0.3 -4.80
+rotation 0 17 0
+scale 0.8 0.8 0.8
+object C338
+position -19.20 0.3 -3.20
+rotation 0 20 0
+scale 0.8 0.8 0.8
+object C339
+position -19.20 0.3 -1.60
+rotation 0 23 0
+scale 0.8 0.8 0.8
+object C340
+position -19.20 0.3 0.00
+rotation 0 26 0
+scale 0.8 0.8 0.8
+object C341
+position -19.20 0.3 1.60
+rotation 0 29 0
+scale 0.8 0.8 0.8
+object C342
+position -19.20 0.3 3.20
+rotation 0 32 0
+scale 0.8 0.8 0.8
+object C343
+position -19.20 0.3 4.80
+rotation 0 35 0
+scale 0.8 0.8 0.8
+object C344
+position -19.20 0.3 6.40
+rotation 0 38 0
+scale 0.8 0.8 0.8
+object C345
+position -19.20 0.3 8.00
+rotation 0 41 0
+scale 0.8 0.8 0.8
+object C346
+position -19.20 0.3 9.60
+rotation 0 44 0
+scale 0.8 0.8 0.8
+object C347
+position -19.20 0.3 11.20
+rotation 0 47 0
+scale 0.8 0.8 0.8
+object C348
+position -19.20 0.3 12.80
+rotation 0 50 0
+scale 0.8 0.8 0.8
+object C349
+position -19.20 0.3 14.40
+rotation 0 53 0
+scale 0.8 0.8 0.8
+object C350
+position -19.20 0.3 16.00
+rotation 0 56 0
+scale 0.8 0.8 0.8
+object C351
+position -19.20 0.3 17.60
+rotation 0 59 0
+scale 0.8 0.8 0.8
+object C352
+position -19.20 0.3 19.20
+rotation 0 62 0
+scale 0.8 0.8 0.8
+object C353
+position -19.20 0.3 20.80
+rotation 0 65 0
+scale 0.8 0.8 0.8
+object C354
+position -19.20 0.3 22.40
+rotation 0 68 0
+scale 0.8 0.8 0.8
+object C355
+position -19.20 0.3 24.00
+rotation 0 71 0
+scale 0.8 0.8 0.8
+object C356
+position -19.20 0.3 25.60
+rotation 0 74 0
+scale 0.8 0.8 0.8
+object C357
+position -19.20 0.3 27.20
+rotation 0 77 0
+scale 0.8 0.8 0.8
+object C358
+position -19.20 0.3 28.80
+rotation 0 80 0
+scale 0.8 0.8 0.8
+object C359
+position -19.20 0.3 30.40
+rotation 0 83 0
+scale 0.8 0.8 0.8
+object C360
+position -17.60 0.3 -32.00
+rotation 0 63 0
+scale 0.8 0.8 0.8
+object C361
+position -17.60 0.3 -30.40
+rotation 0 66 0
+scale 0.8 0.8 0.8
+object C362
+position -17.60 0.3 -28.80
+rotation 0 69 0
+scale 0.8 0.8 0.8
+object C363
+position -17.60 0.3 -27.20
+rotation 0 72 0
+scale 0.8 0.8 0.8
+object C364
+position -17.60 0.3 -25.60
+rotation 0 75 0
+scale 0.8 0.8 0.8
+object C365
+position -17.60 0.3 -24.00
+rotation 0 78 0
+scale 0.8 0.8 0.8
+object C366
+position -17.60 0.3 -22.40
+rotation 0 81 0
+scale 0.8 0.8 0.8
+object C367
+position -17.60 0.3 -20.80
+rotation 0 84 0
+scale 0.8 0.8 0.8
+object C368
+position -17.60 0.3 -19.20
+rotation 0 87 0
+scale 0.8 0.8 0.8
+object C369
+position -17.60 0.3 -17.60
+rotation 0 0 0
+scale 0.8 0.8 0.8
+object C370
+position -17.60 0.3 -16.00
+rotation 0 3 0
+scale 0.8 0.8 0.8
+object C371
+position -17.60 0.3 -14.40
+rotation 0 6 0
+scale 0.8 0.8 0.8
+object C372
+position -17.60 0.3 -12.80
+rotation 0 9 0
+scale 0.8 0.8 0.8
+object C373
+position -17.60 0.3 -11.20
+rotation 0 12 0
+scale 0.8 0.8 0.8
+object C374
+position -17.60 0.3 -9.60
+rotation 0 15 0
+scale 0.8 0.8 0.8
+object C375
+position -17.60 0.3 -8.00
+rotation 0 18 0
+scale 0.8 0.8 0.8
+object C376
+position -17.60 0.3 -6.40
+rotation 0 21 0
+scale 0.8 0.8 0.8
+object C377
+position -17.60 0.3 -4.80
+rotation 0 24 0
+scale 0.8 0.8 0.8
+object C378
+position -17.60 0.3 -3.20
+rotation 0 27 0
+scale 0.8 0.8 0.8
+object C379
+position -17.60 0.3 -1.60
+rotation 0 30 0
+scale 0.8 0.8 0.8
+object C380
+position -17.60 0.3 0.00
+rotation 0 33 0
+scale 0.8 0.8 0.8
+object C381
+position -17.60 0.3 1.60
+rotation 0 36 0
+scale 0.8 0.8 0.8
+object C382
+position -17.60 0.3 3.20
+rotation 0 39 0
+scale 0.8 0.8 0.8
+object C383
+position -17.60 0.3 4.80
+rotation 0 42 0
+scale 0.8 0.8 0.8
+object C384
+position -17.60 0.3 6.40
+rotation 0 45 0
+scale 0.8 0.8 0.8
+object C385
+position -17.60 0.3 8.00
+rotation 0 48 0
+scale 0.8 0.8 0.8
+object C386
+position -17.60 0.3 9.60
+rotation 0 51 0
+scale 0.8 0.8 0.8
+object C387
+position -17.60 0.3 11.20
+rotation 0 54 0
+scale 0.8 0.8 0.8
+object C388
+position -17.60 0.3 12.80
+rotation 0 57 0
+scale 0.8 0.8 0.8
+object C389
+position -17.60 0.3 14.40
+rotation 0 60 0
+scale 0.8 0.8 0.8
+object C390
+position -17.60 0.3 16.00
+rotation 0 63 0
+scale 0.8 0.8 0.8
+object C391
+position -17.60 0.3 17.60
+rotation 0 66 0
+scale 0.8 0.8 0.8
+object C392
+position -17.60 0.3 19.20
+rotation 0 69 0
+scale 0.8 0.8 0.8
+object C393
+position -17.60 0.3 20.80
+rotation 0 72 0
+scale 0.8 0.8 0.8
+object C394
+position -17.60 0.3 22.40
+rotation 0 75 0
+scale 0.8 0.8 0.8
+object C395
+position -17.60 0.3 24.00
+rotation 0 78 0
+scale 0.8 0.8 0.8
+object C396
+position -17.60 0.3 25.60
+rotation 0 81 0
+scale 0.8 0.8 0.8
+object C397
+position -17.60 0.3 27.20
+rotation 0 84 0
+scale 0.8 0.8 0.8
+object C398
+position -17.60 0.3 28.80
+rotation 0 87 0
+scale 0.8 0.8 0.8
+object C399
+position -17.60 0.3 30.40
+rotation 0 0 0
+scale 0.8 0.8 0.8
+object C400
+position -16.00 0.3 -32.00
+rotation 0 70 0
+scale 0.8 0.8 0.8
+object C401
+position -16.00 0.3 -30.40
+rotation 0 73 0
+scale 0.8 0.8 0.8
+object C402
+position -16.00 0.3 -28.80
+rotation 0 76 0
+scale 0.8 0.8 0.8
+object C403
+position -16.00 0.3 -27.20
+rotation 0 79 0
+scale 0.8 0.8 0.8
+object C404
+position -16.00 0.3 -25.60
+rotation 0 82 0
+scale 0.8 0.8 0.8
+object C405
+position -16.00 0.3 -24.00
+rotation 0 85 0
+scale 0.8 0.8 0.8
+object C406
+position -16.00 0.3 -22.40
+rotation 0 88 0
+scale 0.8 0.8 0.8
+object C407
+position -16.00 0.3 -20.80
+rotation 0 1 0
+scale 0.8 0.8 0.8
+object C408
+position -16.00 0.3 -19.20
+rotation 0 4 0
+scale 0.8 0.8 0.8
+object C409
+position -16.00 0.3 -17.60
+rotation 0 7 0
+scale 0.8 0.8 0.8
+object C410
+position -16.00 0.3 -16.00
+rotation 0 10 0
+scale 0.8 0.8 0.8
+object C411
+position -16.00 0.3 -14.40
+rotation 0 13 0
+scale 0.8 0.8 0.8
+object C412
+position -16.00 0.3 -12.80
+rotation 0 16 0
+scale 0.8 0.8 0.8
+object C413
+position -16.00 0.3 -11.20
+rotation 0 19 0
+scale 0.8 0.8 0.8
+object C414
+position -16.00 0.3 -9.60
+rotation 0 22 0
+scale 0.8 0.8 0.8
+object C415
+position -16.00 0.3 -8.00
+rotation 0 25 0
+scale 0.8 0.8 0.8
+object C416
+position -16.00 0.3 -6.40
+rotation 0 28 0
+scale 0.8 0.8 0.8
+object C417
+position -16.00 0.3 -4.80
+rotation 0 31 0
+scale 0.8 0.8 0.8
+object C418
+position -16.00 0.3 -3.20
+rotation 0 34 0
+scale 0.8 0.8 0.8
+object C419
+position -16.00 0.3 -1.60
+rotation 0 37 0
+scale 0.8 0.8 0.8
+object C420
+position -16.00 0.3 0.00
+rotation 0 40 0
+scale 0.8 0.8 0.8
+object C421
+position -16.00 0.3 1.60
+rotation 0 43 0
+scale 0.8 0.8 0.8
+object C422
+position -16.00 0.3 3.20
+rotation 0 46 0
+scale 0.8 0.8 0.8
+object C423
+position -16.00 0.3 4.80
+rotation 0 49 0
+scale 0.8 0.8 0.8
+object C424
+position -16.00 0.3 6.40
+rotation 0 52 0
+scale 0.8 0.8 0.8
+object C425
+position -16.00 0.3 8.00
+rotation 0 55 0
+scale 0.8 0.8 0.8
+object C426
+position -16.00 0.3 9.60
+rotation 0 58 0
+scale 0.8 0.8 0.8
+object C427
+position -16.00 0.3 11.20
+rotation 0 61 0
+scale 0.8 0.8 0.8
+object C428
+position -16.00 0.3 12.80
+rotation 0 64 0
+scale 0.8 0.8 0.8
+object C429
+position -16.00 0.3 14.40
+rotation 0 67 0
+scale 0.8 0.8 0.8
+object C430
+position -16.00 0.3 16.00
+rotation 0 70 0
+scale 0.8 0.8 0.8
+object C431
+position -16.00 0.3 17.60
+rotation 0 73 0
+scale 0.8 0.8 0.8
+object C432
+position -16.00 0.3 19.20
+rotation 0 76 0
+scale 0.8 0.8 0.8
+object C433
+position -16.00 0.3 20.80
+rotation 0 79 0
+scale 0.8 0.8 0.8
+object C434
+position -16.00 0.3 22.40
+rotation 0 82 0
+scale 0.8 0.8 0.8
+object C435
+position -16.00 0.3 24.00
+rotation 0 85 0
+scale 0.8 0.8 0.8
+object C436
+position -16.00 0.3 25.60
+rotation 0 88 0
+scale 0.8 0.8 0.8
+object C437
+position -16.00 0.3 27.20
+rotation 0 1 0
+scale 0.8 0.8 0.8
+object C438
+position -16.00 0.3 28.80
+rotation 0 4 0
+scale 0.8 0.8 0.8
+object C439
+position -16.00 0.3 30.40
+rotation 0 7 0
+scale 0.8 0.8 0.8
+object C440
+position -14.40 0.3 -32.00
+rotation 0 77 0
+scale 0.8 0.8 0.8
+object C441
+position -14.40 0.3 -30.40
+rotation 0 80 0
+scale 0.8 0.8 0.8
+object C442
+position -14.40 0.3 -28.80
+rotation 0 83 0
+scale 0.8 0.8 0.8
+object C443
+position -14.40 0.3 -27.20
+rotation 0 86 0
+scale 0.8 0.8 0.8
+object C444
+position -14.40 0.3 -25.60
+rotation 0 89 0
+scale 0.8 0.8 0.8
+object C445
+position -14.40 0.3 -24.00
+rotation 0 2 0
+scale 0.8 0.8 0.8
+object C446
+position -14.40 0.3 -22.40
+rotation 0 5 0
+scale 0.8 0.8 0.8
+object C447
+position -14.40 0.3 -20.80
+rotation 0 8 0
+scale 0.8 0.8 0.8
+object C448
+position -14.40 0.3 -19.20
+rotation 0 11 0
+scale 0.8 0.8 0.8
+object C449
+position -14.40 0.3 -17.60
+rotation 0 14 0
+scale 0.8 0.8 0.8
+object C450
+position -14.40 0.3 -16.00
+rotation 0 17 0
+scale 0.8 0.8 0.8
+object C451
+position -14.40 0.3 -14.40
+rotation 0 20 0
+scale 0.8 0.8 0.8
+object C452
+position -14.40 0.3 -12.80
+rotation 0 23 0
+scale 0.8 0.8 0.8
+object C453
+position -14.40 0.3 -11.20
+rotation 0 26 0
+scale 0.8 0.8 0.8
+object C454
+position -14.40 0.3 -9.60
+rotation 0 29 0
+scale 0.8 0.8 0.8
+object C455
+position -14.40 0.3 -8.00
+rotation 0 32 0
+scale 0.8 0.8 0.8
+object C456
+position -14.40 0.3 -6.40
+rotation 0 35 0
+scale 0.8 0.8 0.8
+object C457
+position -14.40 0.3 -4.80
+rotation 0 38 0
+scale 0.8 0.8 0.8
+object C458
+position -14.40 0.3 -3.20
+rotation 0 41 0
+scale 0.8 0.8 0.8
+object C459
+position -14.40 0.3 -1.60
+rotation 0 44 0
+scale 0.8 0.8 0.8
+object C460
+position -14.40 0.3 0.00
+rotation 0 47 0
+scale 0.8 0.8 0.8
+object C461
+position -14.40 0.3 1.60
+rotation 0 50 0
+scale 0.8 0.8 0.8
+object C462
+position -14.40 0.3 3.20
+rotation 0 53 0
+scale 0.8 0.8 0.8
+object C463
+position -14.40 0.3 4.80
+rotation 0 56 0
+scale 0.8 0.8 0.8
+object C464
+position -14.40 0.3 6.40
+rotation 0 59 0
+scale 0.8 0.8 0.8
+object C465
+position -14.40 0.3 8.00
+rotation 0 62 0
+scale 0.8 0.8 0.8
+object C466
+position -14.40 0.3 9.60
+rotation 0 65 0
+scale 0.8 0.8 0.8
+object C467
+position -14.40 0.3 11.20
+rotation 0 68 0
+scale 0.8 0.8 0.8
+object C468
+position -14.40 0.3 12.80
+rotation 0 71 0
+scale 0.8 0.8 0.8
+object C469
+position -14.40 0.3 14.40
+rotation 0 74 0
+scale 0.8 0.8 0.8
+object C470
+position -14.40 0.3 16.00
+rotation 0 77 0
+scale 0.8 0.8 0.8
+object C471
+position -14.40 0.3 17.60
+rotation 0 80 0
+scale 0.8 0.8 0.8
+object C472
+position -14.40 0.3 19.20
+rotation 0 83 0
+scale 0.8 0.8 0.8
+object C473
+position -14.40 0.3 20.80
+rotation 0 86 0
+scale 0.8 0.8 0.8
+object C474
+position -14.40 0.3 22.40
+rotation 0 89 0
+scale 0.8 0.8 0.8
+object C475
+position -14.40 0.3 24.00
+rotation 0 2 0
+scale 0.8 0.8 0.8
+object C476
+position -14.40 0.3 25.60
+rotation 0 5 0
+scale 0.8 0.8 0.8
+object C477
+position -14.40 0.3 27.20
+rotation 0 8 0
+scale 0.8 0.8 0.8
+object C478
+position -14.40 0.3 28.80
+rotation 0 11 0
+scale 0.8 0.8 0.8
+object C479
+position -14.40 0.3 30.40
+rotation 0 14 0
+scale 0.8 0.8 0.8
+object C480
+position -12.80 0.3 -32.00
+rotation 0 84 0
+scale 0.8 0.8 0.8
+object C481
+position -12.80 0.3 -30.40
+rotation 0 87 0
+scale 0.8 0.8 0.8
+object C482
+position -12.80 0.3 -28.80
+rotation 0 0 0
+scale 0.8 0.8 0.8
+object C483
+position -12.80 0.3 -27.20
+rotation 0 3 0
+scale 0.8 0.8 0.8
+object C484
+position -12.80 0.3 -25.60
+rotation 0 6 0
+scale 0.8 0.8 0.8
+object C485
+position -12.80 0.3 -24.00
+rotation 0 9 0
+scale 0.8 0.8 0.8
+object C486
+position -12.80 0.3 -22.40
+rotation 0 12 0
+scale 0.8 0.8 0.8
+object C487
+position -12.80 0.3 -20.80
+rotation 0 15 0
+scale 0.8 0.8 0.8
+object C488
+position -12.80 0.3 -19.20
+rotation 0 18 0
+scale 0.8 0.8 0.8
+object C489
+position -12.80 0.3 -17.60
+rotation 0 21 0
+scale 0.8 0.8 0.8
+object C490
+position -12.80 0.3 -16.00
+rotation 0 24 0
+scale 0.8 0.8 0.8
+object C491
+position -12.80 0.3 -14.40
+rotation 0 27 0
+scale 0.8 0.8 0.8
+object C492
+position -12.80 0.3 -12.80
+rotation 0 30 0
+scale 0.8 0.8 0.8
+object C493
+position -12.80 0.3 -11.20
+rotation 0 33 0
+scale 0.8 0.8 0.8
+object C494
+position -12.80 0.3 -9.60
+rotation 0 36 0
+scale 0.8 0.8 0.8
+object C495
+position -12.80 0.3 -8.00
+rotation 0 39 0
+scale 0.8 0.8 0.8
+object C496
+position -12.80 0.3 -6.40
+rotation 0 42 0
+scale 0.8 0.8 0.8
+object C497
+position -12.80 0.3 -4.80
+rotation 0 45 0
+scale 0.8 0.8 0.8
+object C498
+position -12.80 0.3 -3.20
+rotation 0 48 0
+scale 0.8 0.8 0.8
+object C499
+position -12.80 0.3 -1.60
+rotation 0 51 0
+scale 0.8 0.8 0.8
+object C500
+position -12.80 0.3 0.00
+rotation 0 54 0
+scale 0.8 0.8 0.8
+object C501
+position -12.80 0.3 1.60
+rotation 0 57 0
+scale 0.8 0.8 0.8
+object C502
+position -12.80 0.3 3.20
+rotation 0 60 0
+scale 0.8 0.8 0.8
+object C503
+position -12.80 0.3 4.80
+rotation 0 63 0
+scale 0.8 0.8 0.8
+object C504
+position -12.80 0.3 6.40
+rotation 0 66 0
+scale 0.8 0.8 0.8
+object C505
+position -12.80 0.3 8.00
+rotation 0 69 0
+scale 0.8 0.8 0.8
+object C506
+position -12.80 0.3 9.60
+rotation 0 72 0
+scale 0.8 0.8 0.8
+object C507
+position -12.80 0.3 11.20
+rotation 0 75 0
+scale 0.8 0.8 0.8
+object C508
+position -12.80 0.3 12.80
+rotation 0 78 0
+scale 0.8 0.8 0.8
+object C509
+position -12.80 0.3 14.40
+rotation 0 81 0
+scale 0.8 0.8 0.8
+object C510
+position -12.80 0.3 16.00
+rotation 0 84 0
+scale 0.8 0.8 0.8
+object C511
+position -12.80 0.3 17.60
+rotation 0 87 0
+scale 0.8 0.8 0.8
+object C512
+position -12.80 0.3 19.20
+rotation 0 0 0
+scale 0.8 0.8 0.8
+object C513
+position -12.80 0.3 20.80
+rotation 0 3 0
+scale 0.8 0.8 0.8
+object C514
+position -12.80 0.3 22.40
+rotation 0 6 0
+scale 0.8 0.8 0.8
+object C515
+position -12.80 0.3 24.00
+rotation 0 9 0
+scale 0.8 0.8 0.8
+object C516
+position -12.80 0.3 25.60
+rotation 0 12 0
+scale 0.8 0.8 0.8
+object C517
+position -12.80 0.3 27.20
+rotation 0 15 0
+scale 0.8 0.8 0.8
+object C518
+position -12.80 0.3 28.80
+rotation 0 18 0
+scale 0.8 0.8 0.8
+object C519
+position -12.80 0.3 30.40
+rotation 0 21 0
+scale 0.8 0.8 0.8
+object C520
+position -11.20 0.3 -32.00
+rotation 0 1 0
+scale 0.8 0.8 0.8
+object C521
+position -11.20 0.3 -30.40
+rotation 0 4 0
+scale 0.8 0.8 0.8
+object C522
+position -11.20 0.3 -28.80
+rotation 0 7 0
+scale 0.8 0.8 0.8
+object C523
+position -11.20 0.3 -27.20
+rotation 0 10 0
+scale 0.8 0.8 0.8
+object C524
+position -11.20 0.3 -25.60
+rotation 0 13 0
+scale 0.8 0.8 0.8
+object C525
+position -11.20 0.3 -24.00
+rotation 0 16 0
+scale 0.8 0.8 0.8
+object C526
+position -11.20 0.3 -22.40
+rotation 0 19 0
+scale 0.8 0.8 0.8
+object C527
+position -11.20 0.3 -20.80
+rotation 0 22 0
+scale 0.8 0.8 0.8
+object C528
+position -11.20 0.3 -19.20
+rotation 0 25 0
+scale 0.8 0.8 0.8
+object C529
+position -11.20 0.3 -17.60
+rotation 0 28 0
+scale 0.8 0.8 0.8
+object C530
+position -11.20 0.3 -16.00
+rotation 0 31 0
+scale 0.8 0.8 0.8
+object C531
+position -11.20 0.3 -14.40
+rotation 0 34 0
+scale 0.8 0.8 0.8
+object C532
+position -11.20 0.3 -12.80
+rotation 0 37 0
+scale 0.8 0.8 0.8
+object C533
+position -11.20 0.3 -11.20
+rotation 0 40 0
+scale 0.8 0.8 0.8
+object C534
+position -11.20 0.3 -9.60
+rotation 0 43 0
+scale 0.8 0.8 0.8
+object C535
+position -11.20 0.3 -8.00
+rotation 0 46 0
+scale 0.8 0.8 0.8
+object C536
+position -11.20 0.3 -6.40
+rotation 0 49 0
+scale 0.8 0.8 0.8
+object C537
+position -11.20 0.3 -4.80
+rotation 0 52 0
+scale 0.8 0.8 0.8
+object C538
+position -11.20 0.3 -3.20
+rotation 0 55 0
+scale 0.8 0.8 0.8
+object C539
+position -11.20 0.3 -1.60
+rotation 0 58 0
+scale 0.8 0.8 0.8
+object C540
+position -11.20 0.3 0.00
+rotation 0 61 0
+scale 0.8 0.8 0.8
+object C541
+position -11.20 0.3 1.60
+rotation 0 64 0
+scale 0.8 0.8 0.8
+object C542
+position -11.20 0.3 3.20
+rotation 0 67 0
+scale 0.8 0.8 0.8
+object C543
+position -11.20 0.3 4.80
+rotation 0 70 0
+scale 0.8 0.8 0.8
+object C544
+position -11.20 0.3 6.40
+rotation 0 73 0
+scale 0.8 0.8 0.8
+object C545
+position -11.20 0.3 8.00
+rotation 0 76 0
+scale 0.8 0.8 0.8
+object C546
+position -11.20 0.3 9.60
+rotation 0 79 0
+scale 0.8 0.8 0.8
+object C547
+position -11.20 0.3 11.20
+rotation 0 82 0
+scale 0.8 0.8 0.8
+object C548
+position -11.20 0.3 12.80
+rotation 0 85 0
+scale 0.8 0.8 0.8
+object C549
+position -11.20 0.3 14.40
+rotation 0 88 0
+scale 0.8 0.8 0.8
+object C550
+position -11.20 0.3 16.00
+rotation 0 1 0
+scale 0.8 0.8 0.8
+object C551
+position -11.20 0.3 17.60
+rotation 0 4 0
+scale 0.8 0.8 0.8
+object C552
+position -11.20 0.3 19.20
+rotation 0 7 0
+scale 0.8 0.8 0.8
+object C553
+position -11.20 0.3 20.80
+rotation 0 10 0
+scale 0.8 0.8 0.8
+object C554
+position -11.20 0.3 22.40
+rotation 0 13 0
+scale 0.8 0.8 0.8
+object C555
+position -11.20 0.3 24.00
+rotation 0 16 0
+scale 0.8 0.8 0.8
+object C556
+position -11.20 0.3 25.60
+rotation 0 19 0
+scale 0.8 0.8 0.8
+object C557
+position -11.20 0.3 27.20
+rotation 0 22 0
+scale 0.8 0.8 0.8
+object C558
+position -11.20 0.3 28.80
+rotation 0 25 0
+scale 0.8 0.8 0.8
+object C559
+position -11.20 0.3 30.40
+rotation 0 28 0
+scale 0.8 0.8 0.8
+object C560
+position -9.60 0.3 -32.00
+rotation 0 8 0
+scale 0.8 0.8 0.8
+object C561
+position -9.60 0.3 -30.40
+rotation 0 11 0
+scale 0.8 0.8 0.8
+object C562
+position -9.60 0.3 -28.80
+rotation 0 14 0
+scale 0.8 0.8 0.8
+object C563
+position -9.60 0.3 -27.20
+rotation 0 17 0
+scale 0.8 0.8 0.8
+object C564
+position -9.60 0.3 -25.60
+rotation 0 20 0
+scale 0.8 0.8 0.8
+object C565
+position -9.60 0.3 -24.00
+rotation 0 23 0
+scale 0.8 0.8 0.8
+object C566
+position -9.60 0.3 -22.40
+rotation 0 26 0
+scale 0.8 0.8 0.8
+object C567
+position -9.60 0.3 -20.80
+rotation 0 29 0
+scale 0.8 0.8 0.8
+object C568
+position -9.60 0.3 -19.20
+rotation 0 32 0
+scale 0.8 0.8 0.8
+object C569
+position -9.60 0.3 -17.60
+rotation 0 35 0
+scale 0.8 0.8 0.8
+object C570
+position -9.60 0.3 -16.00
+rotation 0 38 0
+scale 0.8 0.8 0.8
+object C571
+position -9.60 0.3 -14.40
+rotation 0 41 0
+scale 0.8 0.8 0.8
+object C572
+position -9.60 0.3 -12.80
+rotation 0 44 0
+scale 0.8 0.8 0.8
+object C573
+position -9.60 0.3 -11.20
+rotation 0 47 0
+scale 0.8 0.8 0.8
+object C574
+position -9.60 0.3 -9.60
+rotation 0 50 0
+scale 0.8 0.8 0.8
+object C575
+position -9.60 0.3 -8.00
+rotation 0 53 0
+scale 0.8 0.8 0.8
+object C576
+position -9.60 0.3 -6.40
+rotation 0 56 0
+scale 0.8 0.8 0.8
+object C577
+position -9.60 0.3 -4.80
+rotation 0 59 0
+scale 0.8 0.8 0.8
+object C578
+position -9.60 0.3 -3.20
+rotation 0 62 0
+scale 0.8 0.8 0.8
+object C579
+position -9.60 0.3 -1.60
+rotation 0 65 0
+scale 0.8 0.8 0.8
+object C580
+position -9.60 0.3 0.00
+rotation 0 68 0
+scale 0.8 0.8 0.8
+object C581
+position -9.60 0.3 1.60
+rotation 0 71 0
+scale 0.8 0.8 0.8
+object C582
+position -9.60 0.3 3.20
+rotation 0 74 0
+scale 0.8 0.8 0.8
+object C583
+position -9.60 0.3 4.80
+rotation 0 77 0
+scale 0.8 0.8 0.8
+object C584
+position -9.60 0.3 6.40
+rotation 0 80 0
+scale 0.8 0.8 0.8
+object C585
+position -9.60 0.3 8.00
+rotation 0 83 0
+scale 0.8 0.8 0.8
+object C586
+position -9.60 0.3 9.60
+rotation 0 86 0
+scale 0.8 0.8 0.8
+object C587
+position -9.60 0.3 11.20
+rotation 0 89 0
+scale 0.8 0.8 0.8
+object C588
+position -9.60 0.3 12.80
+rotation 0 2 0
+scale 0.8 0.8 0.8
+object C589
+position -9.60 0.3 14.40
+rotation 0 5 0
+scale 0.8 0.8 0.8
+object C590
+position -9.60 0.3 16.00
+rotation 0 8 0
+scale 0.8 0.8 0.8
+object C591
+position -9.60 0.3 17.60
+rotation 0 11 0
+scale 0.8 0.8 0.8
+object C592
+position -9.60 0.3 19.20
+rotation 0 14 0
+scale 0.8 0.8 0.8
+object C593
+position -9.60 0.3 20.80
+rotation 0 17 0
+scale 0.8 0.8 0.8
+object C594
+position -9.60 0.3 22.40
+rotation 0 20 0
+scale 0.8 0.8 0.8
+object C595
+position -9.60 0.3 24.00
+rotation 0 23 0
+scale 0.8 0.8 0.8
+object C596
+position -9.60 0.3 25.60
+rotation 0 26 0
+scale 0.8 0.8 0.8
+object C597
+position -9.60 0.3 27.20
+rotation 0 29 0
+scale 0.8 0.8 0.8
+object C598
+position -9.60 0.3 28.80
+rotation 0 32 0
+scale 0.8 0.8 0.8
+object C599
+position -9.60 0.3 30.40
+rotation 0 35 0
+scale 0.8 0.8 0.8
+object C600
+position -8.00 0.3 -32.00
+rotation 0 15 0
+scale 0.8 0.8 0.8
+object C601
+position -8.00 0.3 -30.40
+rotation 0 18 0
+scale 0.8 0.8 0.8
+object C602
+position -8.00 0.3 -28.80
+rotation 0 21 0
+scale 0.8 0.8 0.8
+object C603
+position -8.00 0.3 -27.20
+rotation 0 24 0
+scale 0.8 0.8 0.8
+object C604
+position -8.00 0.3 -25.60
+rotation 0 27 0
+scale 0.8 0.8 0.8
+object C605
+position -8.00 0.3 -24.00
+rotation 0 30 0
+scale 0.8 0.8 0.8
+object C606
+position -8.00 0.3 -22.40
+rotation 0 33 0
+scale 0.8 0.8 0.8
+object C607
+position -8.00 0.3 -20.80
+rotation 0 36 0
+scale 0.8 0.8 0.8
+object C608
+position -8.00 0.3 -19.20
+rotation 0 39 0
+scale 0.8 0.8 0.8
+object C609
+position -8.00 0.3 -17.60
+rotation 0 42 0
+scale 0.8 0.8 0.8
+object C610
+position -8.00 0.3 -16.00
+rotation 0 45 0
+scale 0.8 0.8 0.8
+object C611
+position -8.00 0.3 -14.40
+rotation 0 48 0
+scale 0.8 0.8 0.8
+object C612
+position -8.00 0.3 -12.80
+rotation 0 51 0
+scale 0.8 0.8 0.8
+object C613
+position -8.00 0.3 -11.20
+rotation 0 54 0
+scale 0.8 0.8 0.8
+object C614
+position -8.00 0.3 -9.60
+rotation 0 57 0
+scale 0.8 0.8 0.8
+object C615
+position -8.00 0.3 -8.00
+rotation 0 60 0
+scale 0.8 0.8 0.8
+object C616
+position -8.00 0.3 -6.40
+rotation 0 63 0
+scale 0.8 0.8 0.8
+object C617
+position -8.00 0.3 -4.80
+rotation 0 66 0
+scale 0.8 0.8 0.8
+object C618
+position -8.00 0.3 -3.20
+rotation 0 69 0
+scale 0.8 0.8 0.8
+object C619
+position -8.00 0.3 -1.60
+rotation 0 72 0
+scale 0.8 0.8 0.8
+object C620
+position -8.00 0.3 0.00
+rotation 0 75 0
+scale 0.8 0.8 0.8
+object C621
+position -8.00 0.3 1.60
+rotation 0 78 0
+scale 0.8 0.8 0.8
+object C622
+position -8.00 0.3 3.20
+rotation 0 81 0
+scale 0.8 0.8 0.8
+object C623
+position -8.00 0.3 4.80
+rotation 0 84 0
+scale 0.8 0.8 0.8
+object C624
+position -8.00 0.3 6.40
+rotation 0 87 0
+scale 0.8 0.8 0.8
+object C625
+position -8.00 0.3 8.00
+rotation 0 0 0
+scale 0.8 0.8 0.8
+object C626
+position -8.00 0.3 9.60
+rotation 0 3 0
+scale 0.8 0.8 0.8
+object C627
+position -8.00 0.3 11.20
+rotation 0 6 0
+scale 0.8 0.8 0.8
+object C628
+position -8.00 0.3 12.80
+rotation 0 9 0
+scale 0.8 0.8 0.8
+object C629
+position -8.00 0.3 14.40
+rotation 0 12 0
+scale 0.8 0.8 0.8
+object C630
+position -8.00 0.3 16.00
+rotation 0 15 0
+scale 0.8 0.8 0.8
+object C631
+position -8.00 0.3 17.60
+rotation 0 18 0
+scale 0.8 0.8 0.8
+object C632
+position -8.00 0.3 19.20
+rotation 0 21 0
+scale 0.8 0.8 0.8
+object C633
+position -8.00 0.3 20.80
+rotation 0 24 0
+scale 0.8 0.8 0.8
+object C634
+position -8.00 0.3 22.40
+rotation 0 27 0
+scale 0.8 0.8 0.8
+object C635
+position -8.00 0.3 24.00
+rotation 0 30 0
+scale 0.8 0.8 0.8
+object C636
+position -8.00 0.3 25.60
+rotation 0 33 0
+scale 0.8 0.8 0.8
+object C637
+position -8.00 0.3 27.20
+rotation 0 36 0
+scale 0.8 0.8 0.8
+object C638
+position -8.00 0.3 28.80
+rotation 0 39 0
+scale 0.8 0.8 0.8
+object C639
+position -8.00 0.3 30.40
+rotation 0 42 0
+scale 0.8 0.8 0.8
+object C640
+position -6.40 0.3 -32.00
+rotation 0 22 0
+scale 0.8 0.8 0.8
+object C641
+position -6.40 0.3 -30.40
+rotation 0 25 0
+scale 0.8 0.8 0.8
+object C642
+position -6.40 0.3 -28.80
+rotation 0 28 0
+scale 0.8 0.8 0.8
+object C643
+position -6.40 0.3 -27.20
+rotation 0 31 0
+scale 0.8 0.8 0.8
+object C644
+position -6.40 0.3 -25.60
+rotation 0 34 0
+scale 0.8 0.8 0.8
+object C645
+position -6.40 0.3 -24.00
+rotation 0 37 0
+scale 0.8 0.8 0.8
+object C646
+position -6.40 0.3 -22.40
+rotation 0 40 0
+scale 0.8 0.8 0.8
+object C647
+position -6.40 0.3 -20.80
+rotation 0 43 0
+scale 0.8 0.8 0.8
+object C648
+position -6.40 0.3 -19.20
+rotation 0 46 0
+scale 0.8 0.8 0.8
+object C649
+position -6.40 0.3 -17.60
+rotation 0 49 0
+scale 0.8 0.8 0.8
+object C650
+position -6.40 0.3 -16.00
+rotation 0 52 0
+scale 0.8 0.8 0.8
+object C651
+position -6.40 0.3 -14.40
+rotation 0 55 0
+scale 0.8 0.8 0.8
+object C652
+position -6.40 0.3 -12.80
+rotation 0 58 0
+scale 0.8 0.8 0.8
+object C653
+position -6.40 0.3 -11.20
+rotation 0 61 0
+scale 0.8 0.8 0.8
+object C654
+position -6.40 0.3 -9.60
+rotation 0 64 0
+scale 0.8 0.8 0.8
+object C655
+position -6.40 0.3 -8.00
+rotation 0 67 0
+scale 0.8 0.8 0.8
+object C656
+position -6.40 0.3 -6.40
+rotation 0 70 0
+scale 0.8 0.8 0.8
+object C657
+position -6.40 0.3 -4.80
+rotation 0 73 0
+scale 0.8 0.8 0.8
+object C658
+position -6.40 0.3 -3.20
+rotation 0 76 0
+scale 0.8 0.8 0.8
+object C659
+position -6.40 0.3 -1.60
+rotation 0 79 0
+scale 0.8 0.8 0.8
+object C660
+position -6.40 0.3 0.00
+rotation 0 82 0
+scale 0.8 0.8 0.8
+object C661
+position -6.40 0.3 1.60
+rotation 0 85 0
+scale 0.8 0.8 0.8
+object C662
+position -6.40 0.3 3.20
+rotation 0 88 0
+scale 0.8 0.8 0.8
+object C663
+position -6.40 0.3 4.80
+rotation 0 1 0
+scale 0.8 0.8 0.8
+object C664
+position -6.40 0.3 6.40
+rotation 0 4 0
+scale 0.8 0.8 0.8
+object C665
+position -6.40 0.3 8.00
+rotation 0 7 0
+scale 0.8 0.8 0.8
+object C666
+position -6.40 0.3 9.60
+rotation 0 10 0
+scale 0.8 0.8 0.8
+object C667
+position -6.40 0.3 11.20
+rotation 0 13 0
+scale 0.8 0.8 0.8
+object C668
+position -6.40 0.3 12.80
+rotation 0 16 0
+scale 0.8 0.8 0.8
+object C669
+position -6.40 0.3 14.40
+rotation 0 19 0
+scale 0.8 0.8 0.8
+object C670
+position -6.40 0.3 16.00
+rotation 0 22 0
+scale 0.8 0.8 0.8
+object C671
+position -6.40 0.3 17.60
+rotation 0 25 0
+scale 0.8 0.8 0.8
+object C672
+position -6.40 0.3 19.20
+rotation 0 28 0
+scale 0.8 0.8 0.8
+object C673
+position -6.40 0.3 20.80
+rotation 0 31 0
+scale 0.8 0.8 0.8
+object C674
+position -6.40 0.3 22.40
+rotation 0 34 0
+scale 0.8 0.8 0.8
+object C675
+position -6.40 0.3 24.00
+rotation 0 37 0
+scale 0.8 0.8 0.8
+object C676
+position -6.40 0.3 25.60
+rotation 0 40 0
+scale 0.8 0.8 0.8
+object C677
+position -6.40 0.3 27.20
+rotation 0 43 0
+scale 0.8 0.8 0.8
+object C678
+position -6.40 0.3 28.80
+rotation 0 46 0
+scale 0.8 0.8 0.8
+object C679
+position -6.40 0.3 30.40
+rotation 0 49 0
+scale 0.8 0.8 0.8
+object C680
+position -4.80 0.3 -32.00
+rotation 0 29 0
+scale 0.8 0.8 0.8
+object C681
+position -4.80 0.3 -30.40
+rotation 0 32 0
+scale 0.8 0.8 0.8
+object C682
+position -4.80 0.3 -28.80
+rotation 0 35 0
+scale 0.8 0.8 0.8
+object C683
+position -4.80 0.3 -27.20
+rotation 0 38 0
+scale 0.8 0.8 0.8
+object C684
+position -4.80 0.3 -25.60
+rotation 0 41 0
+scale 0.8 0.8 0.8
+object C685
+position -4.80 0.3 -24.00
+rotation 0 44 0
+scale 0.8 0.8 0.8
+object C686
+position -4.80 0.3 -22.40
+rotation 0 47 0
+scale 0.8 0.8 0.8
+object C687
+position -4.80 0.3 -20.80
+rotation 0 50 0
+scale 0.8 0.8 0.8
+object C688
+position -4.80 0.3 -19.20
+rotation 0 53 0
+scale 0.8 0.8 0.8
+object C689
+position -4.80 0.3 -17.60
+rotation 0 56 0
+scale 0.8 0.8 0.8
+object C690
+position -4.80 0.3 -16.00
+rotation 0 59 0
+scale 0.8 0.8 0.8
+object C691
+position -4.80 0.3 -14.40
+rotation 0 62 0
+scale 0.8 0.8 0.8
+object C692
+position -4.80 0.3 -12.80
+rotation 0 65 0
+scale 0.8 0.8 0.8
+object C693
+position -4.80 0.3 -11.20
+rotation 0 68 0
+scale 0.8 0.8 0.8
+object C694
+position -4.80 0.3 -9.60
+rotation 0 71 0
+scale 0.8 0.8 0.8
+object C695
+position -4.80 0.3 -8.00
+rotation 0 74 0
+scale 0.8 0.8 0.8
+object C696
+position -4.80 0.3 -6.40
+rotation 0 77 0
+scale 0.8 0.8 0.8
+object C697
+position -4.80 0.3 -4.80
+rotation 0 80 0
+scale 0.8 0.8 0.8
+object C698
+position -4.80 0.3 -3.20
+rotation 0 83 0
+scale 0.8 0.8 0.8
+object C699
+position -4.80 0.3 -1.60
+rotation 0 86 0
+scale 0.8 0.8 0.8
+object C700
+position -4.80 0.3 0.00
+rotation 0 89 0
+scale 0.8 0.8 0.8
+object C701
+position -4.80 0.3 1.60
+rotation 0 2 0
+scale 0.8 0.8 0.8
+object C702
+position -4.80 0.3 3.20
+rotation 0 5 0
+scale 0.8 0.8 0.8
+object C703
+position -4.80 0.3 4.80
+rotation 0 8 0
+scale 0.8 0.8 0.8
+object C704
+position -4.80 0.3 6.40
+rotation 0 11 0
+scale 0.8 0.8 0.8
+object C705
+position -4.80 0.3 8.00
+rotation 0 14 0
+scale 0.8 0.8 0.8
+object C706
+position -4.80 0.3 9.60
+rotation 0 17 0
+scale 0.8 0.8 0.8
+object C707
+position -4.80 0.3 11.20
+rotation 0 20 0
+scale 0.8 0.8 0.8
+object C708
+position -4.80 0.3 12.80
+rotation 0 23 0
+scale 0.8 0.8 0.8
+object C709
+position -4.80 0.3 14.40
+rotation 0 26 0
+scale 0.8 0.8 0.8
+object C710
+position -4.80 0.3 16.00
+rotation 0 29 0
+scale 0.8 0.8 0.8
+object C711
+position -4.80 0.3 17.60
+rotation 0 32 0
+scale 0.8 0.8 0.8
+object C712
+position -4.80 0.3 19.20
+rotation 0 35 0
+scale 0.8 0.8 0.8
+object C713
+position -4.80 0.3 20.80
+rotation 0 38 0
+scale 0.8 0.8 0.8
+object C714
+position -4.80 0.3 22.40
+rotation 0 41 0
+scale 0.8 0.8 0.8
+object C715
+position -4.80 0.3 24.00
+rotation 0 44 0
+scale 0.8 0.8 0.8
+object C716
+position -4.80 0.3 25.60
+rotation 0 47 0
+scale 0.8 0.8 0.8
+object C717
+position -4.80 0.3 27.20
+rotation 0 50 0
+scale 0.8 0.8 0.8
+object C718
+position -4.80 0.3 28.80
+rotation 0 53 0
+scale 0.8 0.8 0.8
+object C719
+position -4.80 0.3 30.40
+rotation 0 56 0
+scale 0.8 0.8 0.8
+object C720
+position -3.20 0.3 -32.00
+rotation 0 36 0
+scale 0.8 0.8 0.8
+object C721
+position -3.20 0.3 -30.40
+rotation 0 39 0
+scale 0.8 0.8 0.8
+object C722
+position -3.20 0.3 -28.80
+rotation 0 42 0
+scale 0.8 0.8 0.8
+object C723
+position -3.20 0.3 -27.20
+rotation 0 45 0
+scale 0.8 0.8 0.8
+object C724
+position -3.20 0.3 -25.60
+rotation 0 48 0
+scale 0.8 0.8 0.8
+object C725
+position -3.20 0.3 -24.00
+rotation 0 51 0
+scale 0.8 0.8 0.8
+object C726
+position -3.20 0.3 -22.40
+rotation 0 54 0
+scale 0.8 0.8 0.8
+object C727
+position -3.20 0.3 -20.80
+rotation 0 57 0
+scale 0.8 0.8 0.8
+object C728
+position -3.20 0.3 -19.20
+rotation 0 60 0
+scale 0.8 0.8 0.8
+object C729
+position -3.20 0.3 -17.60
+rotation 0 63 0
+scale 0.8 0.8 0.8
+object C730
+position -3.20 0.3 -16.00
+rotation 0 66 0
+scale 0.8 0.8 0.8
+object C731
+position -3.20 0.3 -14.40
+rotation 0 69 0
+scale 0.8 0.8 0.8
+object C732
+position -3.20 0.3 -12.80
+rotation 0 72 0
+scale 0.8 0.8 0.8
+object C733
+position -3.20 0.3 -11.20
+rotation 0 75 0
+scale 0.8 0.8 0.8
+object C734
+position -3.20 0.3 -9.60
+rotation 0 78 0
+scale 0.8 0.8 0.8
+object C735
+position -3.20 0.3 -8.00
+rotation 0 81 0
+scale 0.8 0.8 0.8
+object C736
+position -3.20 0.3 -6.40
+rotation 0 84 0
+scale 0.8 0.8 0.8
+object C737
+position -3.20 0.3 -4.80
+rotation 0 87 0
+scale 0.8 0.8 0.8
+object C738
+position -3.20 0.3 -3.20
+rotation 0 0 0
+scale 0.8 0.8 0.8
+object C739
+position -3.20 0.3 -1.60
+rotation 0 3 0
+scale 0.8 0.8 0.8
+object C740
+position -3.20 0.3 0.00
+rotation 0 6 0
+scale 0.8 0.8 0.8
+object C741
+position -3.20 0.3 1.60
+rotation 0 9 0
+scale 0.8 0.8 0.8
+object C742
+position -3.20 0.3 3.20
+rotation 0 12 0
+scale 0.8 0.8 0.8
+object C743
+position -3.20 0.3 4.80
+rotation 0 15 0
+scale 0.8 0.8 0.8
+object C744
+position -3.20 0.3 6.40
+rotation 0 18 0
+scale 0.8 0.8 0.8
+object C745
+position -3.20 0.3 8.00
+rotation 0 21 0
+scale 0.8 0.8 0.8
+object C746
+position -3.20 0.3 9.60
+rotation 0 24 0
+scale 0.8 0.8 0.8
+object C747
+position -3.20 0.3 11.20
+rotation 0 27 0
+scale 0.8 0.8 0.8
+object C748
+position -3.20 0.3 12.80
+rotation 0 30 0
+scale 0.8 0.8 0.8
+object C749
+position -3.20 0.3 14.40
+rotation 0 33 0
+scale 0.8 0.8 0.8
+object C750
+position -3.20 0.3 16.00
+rotation 0 36 0
+scale 0.8 0.8 0.8
+object C751
+position -3.20 0.3 17.60
+rotation 0 39 0
+scale 0.8 0.8 0.8
+object C752
+position -3.20 0.3 19.20
+rotation 0 42 0
+scale 0.8 0.8 0.8
+object C753
+position -3.20 0.3 20.80
+rotation 0 45 0
+scale 0.8 0.8 0.8
+object C754
+position -3.20 0.3 22.40
+rotation 0 48 0
+scale 0.8 0.8 0.8
+object C755
+position -3.20 0.3 24.00
+rotation 0 51 0
+scale 0.8 0.8 0.8
+object C756
+position -3.20 0.3 25.60
+rotation 0 54 0
+scale 0.8 0.8 0.8
+object C757
+position -3.20 0.3 27.20
+rotation 0 57 0
+scale 0.8 0.8 0.8
+object C758
+position -3.20 0.3 28.80
+rotation 0 60 0
+scale 0.8 0.8 0.8
+object C759
+position -3.20 0.3 30.40
+rotation 0 63 0
+scale 0.8 0.8 0.8
+object C760
+position -1.60 0.3 -32.00
+rotation 0 43 0
+scale 0.8 0.8 0.8
+object C761
+position -1.60 0.3 -30.40
+rotation 0 46 0
+scale 0.8 0.8 0.8
+object C762
+position -1.60 0.3 -28.80
+rotation 0 49 0
+scale 0.8 0.8 0.8
+object C763
+position -1.60 0.3 -27.20
+rotation 0 52 0
+scale 0.8 0.8 0.8
+object C764
+position -1.60 0.3 -25.60
+rotation 0 55 0
+scale 0.8 0.8 0.8
+object C765
+position -1.60 0.3 -24.00
+rotation 0 58 0
+scale 0.8 0.8 0.8
+object C766
+position -1.60 0.3 -22.40
+rotation 0 61 0
+scale 0.8 0.8 0.8
+object C767
+position -1.60 0.3 -20.80
+rotation 0 64 0
+scale 0.8 0.8 0.8
+object C768
+position -1.60 0.3 -19.20
+rotation 0 67 0
+scale 0.8 0.8 0.8
+object C769
+position -1.60 0.3 -17.60
+rotation 0 70 0
+scale 0.8 0.8 0.8
+object C770
+position -1.60 0.3 -16.00
+rotation 0 73 0
+scale 0.8 0.8 0.8
+object C771
+position -1.60 0.3 -14.40
+rotation 0 76 0
+scale 0.8 0.8 0.8
+object C772
+position -1.60 0.3 -12.80
+rotation 0 79 0
+scale 0.8 0.8 0.8
+object C773
+position -1.60 0.3 -11.20
+rotation 0 82 0
+scale 0.8 0.8 0.8
+object C774
+position -1.60 0.3 -9.60
+rotation 0 85 0
+scale 0.8 0.8 0.8
+object C775
+position -1.60 0.3 -8.00
+rotation 0 88 0
+scale 0.8 0.8 0.8
+object C776
+position -1.60 0.3 -6.40
+rotation 0 1 0
+scale 0.8 0.8 0.8
+object C777
+position -1.60 0.3 -4.80
+rotation 0 4 0
+scale 0.8 0.8 0.8
+object C778
+position -1.60 0.3 -3.20
+rotation 0 7 0
+scale 0.8 0.8 0.8
+object C779
+position -1.60 0.3 -1.60
+rotation 0 10 0
+scale 0.8 0.8 0.8
+object C780
+position -1.60 0.3 0.00
+rotation 0 13 0
+scale 0.8 0.8 0.8
+object C781
+position -1.60 0.3 1.60
+rotation 0 16 0
+scale 0.8 0.8 0.8
+object C782
+position -1.60 0.3 3.20
+rotation 0 19 0
+scale 0.8 0.8 0.8
+object C783
+position -1.60 0.3 4.80
+rotation 0 22 0
+scale 0.8 0.8 0.8
+object C784
+position -1.60 0.3 6.40
+rotation 0 25 0
+scale 0.8 0.8 0.8
+object C785
+position -1.60 0.3 8.00
+rotation 0 28 0
+scale 0.8 0.8 0.8
+object C786
+position -1.60 0.3 9.60
+rotation 0 31 0
+scale 0.8 0.8 0.8
+object C787
+position -1.60 0.3 11.20
+rotation 0 34 0
+scale 0.8 0.8 0.8
+object C788
+position -1.60 0.3 12.80
+rotation 0 37 0
+scale 0.8 0.8 0.8
+object C789
+position -1.60 0.3 14.40
+rotation 0 40 0
+scale 0.8 0.8 0.8
+object C790
+position -1.60 0.3 16.00
+rotation 0 43 0
+scale 0.8 0.8 0.8
+object C791
+position -1.60 0.3 17.60
+rotation 0 46 0
+scale 0.8 0.8 0.8
+object C792
+position -1.60 0.3 19.20
+rotation 0 49 0
+scale 0.8 0.8 0.8
+object C793
+position -1.60 0.3 20.80
+rotation 0 52 0
+scale 0.8 0.8 0.8
+object C794
+position -1.60 0.3 22.40
+rotation 0 55 0
+scale 0.8 0.8 0.8
+object C795
+position -1.60 0.3 24.00
+rotation 0 58 0
+scale 0.8 0.8 0.8
+object C796
+position -1.60 0.3 25.60
+rotation 0 61 0
+scale 0.8 0.8 0.8
+object C797
+position -1.60 0.3 27.20
+rotation 0 64 0
+scale 0.8 0.8 0.8
+object C798
+position -1.60 0.3 28.80
+rotation 0 67 0
+scale 0.8 0.8 0.8
+object C799
+position -1.60 0.3 30.40
+rotation 0 70 0
+scale 0.8 0.8 0.8
+object C800
+position 0.00 0.3 -32.00
+rotation 0 50 0
+scale 0.8 0.8 0.8
+object C801
+position 0.00 0.3 -30.40
+rotation 0 53 0
+scale 0.8 0.8 0.8
+object C802
+position 0.00 0.3 -28.80
+rotation 0 56 0
+scale 0.8 0.8 0.8
+object C803
+position 0.00 0.3 -27.20
+rotation 0 59 0
+scale 0.8 0.8 0.8
+object C804
+position 0.00 0.3 -25.60
+rotation 0 62 0
+scale 0.8 0.8 0.8
+object C805
+position 0.00 0.3 -24.00
+rotation 0 65 0
+scale 0.8 0.8 0.8
+object C806
+position 0.00 0.3 -22.40
+rotation 0 68 0
+scale 0.8 0.8 0.8
+object C807
+position 0.00 0.3 -20.80
+rotation 0 71 0
+scale 0.8 0.8 0.8
+object C808
+position 0.00 0.3 -19.20
+rotation 0 74 0
+scale 0.8 0.8 0.8
+object C809
+position 0.00 0.3 -17.60
+rotation 0 77 0
+scale 0.8 0.8 0.8
+object C810
+position 0.00 0.3 -16.00
+rotation 0 80 0
+scale 0.8 0.8 0.8
+object C811
+position 0.00 0.3 -14.40
+rotation 0 83 0
+scale 0.8 0.8 0.8
+object C812
+position 0.00 0.3 -12.80
+rotation 0 86 0
+scale 0.8 0.8 0.8
+object C813
+position 0.00 0.3 -11.20
+rotation 0 89 0
+scale 0.8 0.8 0.8
+object C814
+position 0.00 0.3 -9.60
+rotation 0 2 0
+scale 0.8 0.8 0.8
+object C815
+position 0.00 0.3 -8.00
+rotation 0 5 0
+scale 0.8 0.8 0.8
+object C816
+position 0.00 0.3 -6.40
+rotation 0 8 0
+scale 0.8 0.8 0.8
+object C817
+position 0.00 0.3 -4.80
+rotation 0 11 0
+scale 0.8 0.8 0.8
+object C818
+position 0.00 0.3 -3.20
+rotation 0 14 0
+scale 0.8 0.8 0.8
+object C819
+position 0.00 0.3 -1.60
+rotation 0 17 0
+scale 0.8 0.8 0.8
+object C820
+position 0.00 0.3 0.00
+rotation 0 20 0
+scale 0.8 0.8 0.8
+object C821
+position 0.00 0.3 1.60
+rotation 0 23 0
+scale 0.8 0.8 0.8
+object C822
+position 0.00 0.3 3.20
+rotation 0 26 0
+scale 0.8 0.8 0.8
+object C823
+position 0.00 0.3 4.80
+rotation 0 29 0
+scale 0.8 0.8 0.8
+object C824
+position 0.00 0.3 6.40
+rotation 0 32 0
+scale 0.8 0.8 0.8
+object C825
+position 0.00 0.3 8.00
+rotation 0 35 0
+scale 0.8 0.8 0.8
+object C826
+position 0.00 0.3 9.60
+rotation 0 38 0
+scale 0.8 0.8 0.8
+object C827
+position 0.00 0.3 11.20
+rotation 0 41 0
+scale 0.8 0.8 0.8
+object C828
+position 0.00 0.3 12.80
+rotation 0 44 0
+scale 0.8 0.8 0.8
+object C829
+position 0.00 0.3 14.40
+rotation 0 47 0
+scale 0.8 0.8 0.8
+object C830
+position 0.00 0.3 16.00
+rotation 0 50 0
+scale 0.8 0.8 0.8
+object C831
+position 0.00 0.3 17.60
+rotation 0 53 0
+scale 0.8 0.8 0.8
+object C832
+position 0.00 0.3 19.20
+rotation 0 56 0
+scale 0.8 0.8 0.8
+object C833
+position 0.00 0.3 20.80
+rotation 0 59 0
+scale 0.8 0.8 0.8
+object C834
+position 0.00 0.3 22.40
+rotation 0 62 0
+scale 0.8 0.8 0.8
+object C835
+position 0.00 0.3 24.00
+rotation 0 65 0
+scale 0.8 0.8 0.8
+object C836
+position 0.00 0.3 25.60
+rotation 0 68 0
+scale 0.8 0.8 0.8
+object C837
+position 0.00 0.3 27.20
+rotation 0 71 0
+scale 0.8 0.8 0.8
+object C838
+position 0.00 0.3 28.80
+rotation 0 74 0
+scale 0.8 0.8 0.8
+object C839
+position 0.00 0.3 30.40
+rotation 0 77 0
+scale 0.8 0.8 0.8
+object C840
+position 1.60 0.3 -32.00
+rotation 0 57 0
+scale 0.8 0.8 0.8
+object C841
+position 1.60 0.3 -30.40
+rotation 0 60 0
+scale 0.8 0.8 0.8
+object C842
+position 1.60 0.3 -28.80
+rotation 0 63 0
+scale 0.8 0.8 0.8
+object C843
+position 1.60 0.3 -27.20
+rotation 0 66 0
+scale 0.8 0.8 0.8
+object C844
+position 1.60 0.3 -25.60
+rotation 0 69 0
+scale 0.8 0.8 0.8
+object C845
+position 1.60 0.3 -24.00
+rotation 0 72 0
+scale 0.8 0.8 0.8
+object C846
+position 1.60 0.3 -22.40
+rotation 0 75 0
+scale 0.8 0.8 0.8
+object C847
+position 1.60 0.3 -20.80
+rotation 0 78 0
+scale 0.8 0.8 0.8
+object C848
+position 1.60 0.3 -19.20
+rotation 0 81 0
+scale 0.8 0.8 0.8
+object C849
+position 1.60 0.3 -17.60
+rotation 0 84 0
+scale 0.8 0.8 0.8
+object C850
+position 1.60 0.3 -16.00
+rotation 0 87 0
+scale 0.8 0.8 0.8
+object C851
+position 1.60 0.3 -14.40
+rotation 0 0 0
+scale 0.8 0.8 0.8
+object C852
+position 1.60 0.3 -12.80
+rotation 0 3 0
+scale 0.8 0.8 0.8
+object C853
+position 1.60 0.3 -11.20
+rotation 0 6 0
+scale 0.8 0.8 0.8
+object C854
+position 1.60 0.3 -9.60
+rotation 0 9 0
+scale 0.8 0.8 0.8
+object C855
+position 1.60 0.3 -8.00
+rotation 0 12 0
+scale 0.8 0.8 0.8
+object C856
+position 1.60 0.3 -6.40
+rotation 0 15 0
+scale 0.8 0.8 0.8
+object C857
+position 1.60 0.3 -4.80
+rotation 0 18 0
+scale 0.8 0.8 0.8
+object C858
+position 1.60 0.3 -3.20
+rotation 0 21 0
+scale 0.8 0.8 0.8
+object C859
+position 1.60 0.3 -1.60
+rotation 0 24 0
+scale 0.8 0.8 0.8
+object C860
+position 1.60 0.3 0.00
+rotation 0 27 0
+scale 0.8 0.8 0.8
+object C861
+position 1.60 0.3 1.60
+rotation 0 30 0
+scale 0.8 0.8 0.8
+object C862
+position 1.60 0.3 3.20
+rotation 0 33 0
+scale 0.8 0.8 0.8
+object C863
+position 1.60 0.3 4.80
+rotation 0 36 0
+scale 0.8 0.8 0.8
+object C864
+position 1.60 0.3 6.40
+rotation 0 39 0
+scale 0.8 0.8 0.8
+object C865
+position 1.60 0.3 8.00
+rotation 0 42 0
+scale 0.8 0.8 0.8
+object C866
+position 1.60 0.3 9.60
+rotation 0 45 0
+scale 0.8 0.8 0.8
+object C867
+position 1.60 0.3 11.20
+rotation 0 48 0
+scale 0.8 0.8 0.8
+object C868
+position 1.60 0.3 12.80
+rotation 0 51 0
+scale 0.8 0.8 0.8
+object C869
+position 1.60 0.3 14.40
+rotation 0 54 0
+scale 0.8 0.8 0.8
+object C870
+position 1.60 0.3 16.00
+rotation 0 57 0
+scale 0.8 0.8 0.8
+object C871
+position 1.60 0.3 17.60
+rotation 0 60 0
+scale 0.8 0.8 0.8
+object C872
+position 1.60 0.3 19.20
+rotation 0 63 0
+scale 0.8 0.8 0.8
+object C873
+position 1.60 0.3 20.80
+rotation 0 66 0
+scale 0.8 0.8 0.8
+object C874
+position 1.60 0.3 22.40
+rotation 0 69 0
+scale 0.8 0.8 0.8
+object C875
+position 1.60 0.3 24.00
+rotation 0 72 0
+scale 0.8 0.8 0.8
+object C876
+position 1.60 0.3 25.60
+rotation 0 75 0
+scale 0.8 0.8 0.8
+object C877
+position 1.60 0.3 27.20
+rotation 0 78 0
+scale 0.8 0.8 0.8
+object C878
+position 1.60 0.3 28.80
+rotation 0 81 0
+scale 0.8 0.8 0.8
+object C879
+position 1.60 0.3 30.40
+rotation 0 84 0
+scale 0.8 0.8 0.8
+object C880
+position 3.20 0.3 -32.00
+rotation 0 64 0
+scale 0.8 0.8 0.8
+object C881
+position 3.20 0.3 -30.40
+rotation 0 67 0
+scale 0.8 0.8 0.8
+object C882
+position 3.20 0.3 -28.80
+rotation 0 70 0
+scale 0.8 0.8 0.8
+object C883
+position 3.20 0.3 -27.20
+rotation 0 73 0
+scale 0.8 0.8 0.8
+object C884
+position 3.20 0.3 -25.60
+rotation 0 76 0
+scale 0.8 0.8 0.8
+object C885
+position 3.20 0.3 -24.00
+rotation 0 79 0
+scale 0.8 0.8 0.8
+object C886
+position 3.20 0.3 -22.40
+rotation 0 82 0
+scale 0.8 0.8 0.8
+object C887
+position 3.20 0.3 -20.80
+rotation 0 85 0
+scale 0.8 0.8 0.8
+object C888
+position 3.20 0.3 -19.20
+rotation 0 88 0
+scale 0.8 0.8 0.8
+object C889
+position 3.20 0.3 -17.60
+rotation 0 1 0
+scale 0.8 0.8 0.8
+object C890
+position 3.20 0.3 -16.00
+rotation 0 4 0
+scale 0.8 0.8 0.8
+object C891
+position 3.20 0.3 -14.40
+rotation 0 7 0
+scale 0.8 0.8 0.8
+object C892
+position 3.20 0.3 -12.80
+rotation 0 10 0
+scale 0.8 0.8 0.8
+object C893
+position 3.20 0.3 -11.20
+rotation 0 13 0
+scale 0.8 0.8 0.8
+object C894
+position 3.20 0.3 -9.60
+rotation 0 16 0
+scale 0.8 0.8 0.8
+object C895
+position 3.20 0.3 -8.00
+rotation 0 19 0
+scale 0.8 0.8 0.8
+object C896
+position 3.20 0.3 -6.40
+rotation 0 22 0
+scale 0.8 0.8 0.8
+object C897
+position 3.20 0.3 -4.80
+rotation 0 25 0
+scale 0.8 0.8 0.8
+object C898
+position 3.20 0.3 -3.20
+rotation 0 28 0
+scale 0.8 0.8 0.8
+object C899
+position 3.20 0.3 -1.60
+rotation 0 31 0
+scale 0.8 0.8 0.8
+object C900
+position 3.20 0.3 0.00
+rotation 0 34 0
+scale 0.8 0.8 0.8
+object C901
+position 3.20 0.3 1.60
+rotation 0 37 0
+scale 0.8 0.8 0.8
+object C902
+position 3.20 0.3 3.20
+rotation 0 40 0
+scale 0.8 0.8 0.8
+object C903
+position 3.20 0.3 4.80
+rotation 0 43 0
+scale 0.8 0.8 0.8
+object C904
+position 3.20 0.3 6.40
+rotation 0 46 0
+scale 0.8 0.8 0.8
+object C905
+position 3.20 0.3 8.00
+rotation 0 49 0
+scale 0.8 0.8 0.8
+object C906
+position 3.20 0.3 9.60
+rotation 0 52 0
+scale 0.8 0.8 0.8
+object C907
+position 3.20 0.3 11.20
+rotation 0 55 0
+scale 0.8 0.8 0.8
+object C908
+position 3.20 0.3 12.80
+rotation 0 58 0
+scale 0.8 0.8 0.8
+object C909
+position 3.20 0.3 14.40
+rotation 0 61 0
+scale 0.8 0.8 0.8
+object C910
+position 3.20 0.3 16.00
+rotation 0 64 0
+scale 0.8 0.8 0.8
+object C911
+position 3.20 0.3 17.60
+rotation 0 67 0
+scale 0.8 0.8 0.8
+object C912
+position 3.20 0.3 19.20
+rotation 0 70 0
+scale 0.8 0.8 0.8
+object C913
+position 3.20 0.3 20.80
+rotation 0 73 0
+scale 0.8 0.8 0.8
+object C914
+position 3.20 0.3 22.40
+rotation 0 76 0
+scale 0.8 0.8 0.8
+object C915
+position 3.20 0.3 24.00
+rotation 0 79 0
+scale 0.8 0.8 0.8
+object C916
+position 3.20 0.3 25.60
+rotation 0 82 0
+scale 0.8 0.8 0.8
+object C917
+position 3.20 0.3 27.20
+rotation 0 85 0
+scale 0.8 0.8 0.8
+object C918
+position 3.20 0.3 28.80
+rotation 0 88 0
+scale 0.8 0.8 0.8
+object C919
+position 3.20 0.3 30.40
+rotation 0 1 0
+scale 0.8 0.8 0.8
+object C920
+position 4.80 0.3 -32.00
+rotation 0 71 0
+scale 0.8 0.8 0.8
+object C921
+position 4.80 0.3 -30.40
+rotation 0 74 0
+scale 0.8 0.8 0.8
+object C922
+position 4.80 0.3 -28.80
+rotation 0 77 0
+scale 0.8 0.8 0.8
+object C923
+position 4.80 0.3 -27.20
+rotation 0 80 0
+scale 0.8 0.8 0.8
+object C924
+position 4.80 0.3 -25.60
+rotation 0 83 0
+scale 0.8 0.8 0.8
+object C925
+position 4.80 0.3 -24.00
+rotation 0 86 0
+scale 0.8 0.8 0.8
+object C926
+position 4.80 0.3 -22.40
+rotation 0 89 0
+scale 0.8 0.8 0.8
+object C927
+position 4.80 0.3 -20.80
+rotation 0 2 0
+scale 0.8 0.8 0.8
+object C928
+position 4.80 0.3 -19.20
+rotation 0 5 0
+scale 0.8 0.8 0.8
+object C929
+position 4.80 0.3 -17.60
+rotation 0 8 0
+scale 0.8 0.8 0.8
+object C930
+position 4.80 0.3 -16.00
+rotation 0 11 0
+scale 0.8 0.8 0.8
+object C931
+position 4.80 0.3 -14.40
+rotation 0 14 0
+scale 0.8 0.8 0.8
+object C932
+position 4.80 0.3 -12.80
+rotation 0 17 0
+scale 0.8 0.8 0.8
+object C933
+position 4.80 0.3 -11.20
+rotation 0 20 0
+scale 0.8 0.8 0.8
+object C934
+position 4.80 0.3 -9.60
+rotation 0 23 0
+scale 0.8 0.8 0.8
+object C935
+position 4.80 0.3 -8.00
+rotation 0 26 0
+scale 0.8 0.8 0.8
+object C936
+position 4.80 0.3 -6.40
+rotation 0 29 0
+scale 0.8 0.8 0.8
+object C937
+position 4.80 0.3 -4.80
+rotation 0 32 0
+scale 0.8 0.8 0.8
+object C938
+position 4.80 0.3 -3.20
+rotation 0 35 0
+scale 0.8 0.8 0.8
+object C939
+position 4.80 0.3 -1.60
+rotation 0 38 0
+scale 0.8 0.8 0.8
+object C940
+position 4.80 0.3 0.00
+rotation 0 41 0
+scale 0.8 0.8 0.8
+object C941
+position 4.80 0.3 1.60
+rotation 0 44 0
+scale 0.8 0.8 0.8
+object C942
+position 4.80 0.3 3.20
+rotation 0 47 0
+scale 0.8 0.8 0.8
+object C943
+position 4.80 0.3 4.80
+rotation 0 50 0
+scale 0.8 0.8 0.8
+object C944
+position 4.80 0.3 6.40
+rotation 0 53 0
+scale 0.8 0.8 0.8
+object C945
+position 4.80 0.3 8.00
+rotation 0 56 0
+scale 0.8 0.8 0.8
+object C946
+position 4.80 0.3 9.60
+rotation 0 59 0
+scale 0.8 0.8 0.8
+object C947
+position 4.80 0.3 11.20
+rotation 0 62 0
+scale 0.8 0.8 0.8
+object C948
+position 4.80 0.3 12.80
+rotation 0 65 0
+scale 0.8 0.8 0.8
+object C949
+position 4.80 0.3 14.40
+rotation 0 68 0
+scale 0.8 0.8 0.8
+object C950
+position 4.80 0.3 16.00
+rotation 0 71 0
+scale 0.8 0.8 0.8
+object C951
+position 4.80 0.3 17.60
+rotation 0 74 0
+scale 0.8 0.8 0.8
+object C952
+position 4.80 0.3 19.20
+rotation 0 77 0
+scale 0.8 0.8 0.8
+object C953
+position 4.80 0.3 20.80
+rotation 0 80 0
+scale 0.8 0.8 0.8
+object C954
+position 4.80 0.3 22.40
+rotation 0 83 0
+scale 0.8 0.8 0.8
+object C955
+position 4.80 0.3 24.00
+rotation 0 86 0
+scale 0.8 0.8 0.8
+object C956
+position 4.80 0.3 25.60
+rotation 0 89 0
+scale 0.8 0.8 0.8
+object C957
+position 4.80 0.3 27.20
+rotation 0 2 0
+scale 0.8 0.8 0.8
+object C958
+position 4.80 0.3 28.80
+rotation 0 5 0
+scale 0.8 0.8 0.8
+object C959
+position 4.80 0.3 30.40
+rotation 0 8 0
+scale 0.8 0.8 0.8
+object C960
+position 6.40 0.3 -32.00
+rotation 0 78 0
+scale 0.8 0.8 0.8
+object C961
+position 6.40 0.3 -30.40
+rotation 0 81 0
+scale 0.8 0.8 0.8
+object C962
+position 6.40 0.3 -28.80
+rotation 0 84 0
+scale 0.8 0.8 0.8
+object C963
+position 6.40 0.3 -27.20
+rotation 0 87 0
+scale 0.8 0.8 0.8
+object C964
+position 6.40 0.3 -25.60
+rotation 0 0 0
+scale 0.8 0.8 0.8
+object C965
+position 6.40 0.3 -24.00
+rotation 0 3 0
+scale 0.8 0.8 0.8
+object C966
+position 6.40 0.3 -22.40
+rotation 0 6 0
+scale 0.8 0.8 0.8
+object C967
+position 6.40 0.3 -20.80
+rotation 0 9 0
+scale 0.8 0.8 0.8
+object C968
+position 6.40 0.3 -19.20
+rotation 0 12 0
+scale 0.8 0.8 0.8
+object C969
+position 6.40 0.3 -17.60
+rotation 0 15 0
+scale 0.8 0.8 0.8
+object C970
+position 6.40 0.3 -16.00
+rotation 0 18 0
+scale 0.8 0.8 0.8
+object C971
+position 6.40 0.3 -14.40
+rotation 0 21 0
+scale 0.8 0.8 0.8
+object C972
+position 6.40 0.3 -12.80
+rotation 0 24 0
+scale 0.8 0.8 0.8
+object C973
+position 6.40 0.3 -11.20
+rotation 0 27 0
+scale 0.8 0.8 0.8
+object C974
+position 6.40 0.3 -9.60
+rotation 0 30 0
+scale 0.8 0.8 0.8
+object C975
+position 6.40 0.3 -8.00
+rotation 0 33 0
+scale 0.8 0.8 0.8
+object C976
+position 6.40 0.3 -6.40
+rotation 0 36 0
+scale 0.8 0.8 0.8
+object C977
+position 6.40 0.3 -4.80
+rotation 0 39 0
+scale 0.8 0.8 0.8
+object C978
+position 6.40 0.3 -3.20
+rotation 0 42 0
+scale 0.8 0.8 0.8
+object C979
+position 6.40 0.3 -1.60
+rotation 0 45 0
+scale 0.8 0.8 0.8
+object C980
+position 6.40 0.3 0.00
+rotation 0 48 0
+scale 0.8 0.8 0.8
+object C981
+position 6.40 0.3 1.60
+rotation 0 51 0
+scale 0.8 0.8 0.8
+object C982
+position 6.40 0.3 3.20
+rotation 0 54 0
+scale 0.8 0.8 0.8
+object C983
+position 6.40 0.3 4.80
+rotation 0 57 0
+scale 0.8 0.8 0.8
+object C984
+position 6.40 0.3 6.40
+rotation 0 60 0
+scale 0.8 0.8 0.8
+object C985
+position 6.40 0.3 8.00
+rotation 0 63 0
+scale 0.8 0.8 0.8
+object C986
+position 6.40 0.3 9.60
+rotation 0 66 0
+scale 0.8 0.8 0.8
+object C987
+position 6.40 0.3 11.20
+rotation 0 69 0
+scale 0.8 0.8 0.8
+object C988
+position 6.40 0.3 12.80
+rotation 0 72 0
+scale 0.8 0.8 0.8
+object C989
+position 6.40 0.3 14.40
+rotation 0 75 0
+scale 0.8 0.8 0.8
+object C990
+position 6.40 0.3 16.00
+rotation 0 78 0
+scale 0.8 0.8 0.8
+object C991
+position 6.40 0.3 17.60
+rotation 0 81 0
+scale 0.8 0.8 0.8
+object C992
+position 6.40 0.3 19.20
+rotation 0 84 0
+scale 0.8 0.8 0.8
+object C993
+position 6.40 0.3 20.80
+rotation 0 87 0
+scale 0.8 0.8 0.8
+object C994
+position 6.40 0.3 22.40
+rotation 0 0 0
+scale 0.8 0.8 0.8
+object C995
+position 6.40 0.3 24.00
+rotation 0 3 0
+scale 0.8 0.8 0.8
+object C996
+position 6.40 0.3 25.60
+rotation 0 6 0
+scale 0.8 0.8 0.8
+object C997
+position 6.40 0.3 27.20
+rotation 0 9 0
+scale 0.8 0.8 0.8
+object C998
+position 6.40 0.3 28.80
+rotation 0 12 0
+scale 0.8 0.8 0.8
+object C999
+position 6.40 0.3 30.40
+rotation 0 15 0
+scale 0.8 0.8 0.8
+object C1000
+position 8.00 0.3 -32.00
+rotation 0 85 0
+scale 0.8 0.8 0.8
+object C1001
+position 8.00 0.3 -30.40
+rotation 0 88 0
+scale 0.8 0.8 0.8
+object C1002
+position 8.00 0.3 -28.80
+rotation 0 1 0
+scale 0.8 0.8 0.8
+object C1003
+position 8.00 0.3 -27.20
+rotation 0 4 0
+scale 0.8 0.8 0.8
+object C1004
+position 8.00 0.3 -25.60
+rotation 0 7 0
+scale 0.8 0.8 0.8
+object C1005
+position 8.00 0.3 -24.00
+rotation 0 10 0
+scale 0.8 0.8 0.8
+object C1006
+position 8.00 0.3 -22.40
+rotation 0 13 0
+scale 0.8 0.8 0.8
+object C1007
+position 8.00 0.3 -20.80
+rotation 0 16 0
+scale 0.8 0.8 0.8
+object C1008
+position 8.00 0.3 -19.20
+rotation 0 19 0
+scale 0.8 0.8 0.8
+object C1009
+position 8.00 0.3 -17.60
+rotation 0 22 0
+scale 0.8 0.8 0.8
+object C1010
+position 8.00 0.3 -16.00
+rotation 0 25 0
+scale 0.8 0.8 0.8
+object C1011
+position 8.00 0.3 -14.40
+rotation 0 28 0
+scale 0.8 0.8 0.8
+object C1012
+position 8.00 0.3 -12.80
+rotation 0 31 0
+scale 0.8 0.8 0.8
+object C1013
+position 8.00 0.3 -11.20
+rotation 0 34 0
+scale 0.8 0.8 0.8
+object C1014
+position 8.00 0.3 -9.60
+rotation 0 37 0
+scale 0.8 0.8 0.8
+object C1015
+position 8.00 0.3 -8.00
+rotation 0 40 0
+scale 0.8 0.8 0.8
+object C1016
+position 8.00 0.3 -6.40
+rotation 0 43 0
+scale 0.8 0.8 0.8
+object C1017
+position 8.00 0.3 -4.80
+rotation 0 46 0
+scale 0.8 0.8 0.8
+object C1018
+position 8.00 0.3 -3.20
+rotation 0 49 0
+scale 0.8 0.8 0.8
+object C1019
+position 8.00 0.3 -1.60
+rotation 0 52 0
+scale 0.8 0.8 0.8
+object C1020
+position 8.00 0.3 0.00
+rotation 0 55 0
+scale 0.8 0.8 0.8
+object C1021
+position 8.00 0.3 1.60
+rotation 0 58 0
+scale 0.8 0.8 0.8
+object C1022
+position 8.00 0.3 3.20
+rotation 0 61 0
+scale 0.8 0.8 0.8
+object C1023
+position 8.00 0.3 4.80
+rotation 0 64 0
+scale 0.8 0.8 0.8
+object C1024
+position 8.00 0.3 6.40
+rotation 0 67 0
+scale 0.8 0.8 0.8
+object C1025
+position 8.00 0.3 8.00
+rotation 0 70 0
+scale 0.8 0.8 0.8
+object C1026
+position 8.00 0.3 9.60
+rotation 0 73 0
+scale 0.8 0.8 0.8
+object C1027
+position 8.00 0.3 11.20
+rotation 0 76 0
+scale 0.8 0.8 0.8
+object C1028
+position 8.00 0.3 12.80
+rotation 0 79 0
+scale 0.8 0.8 0.8
+object C1029
+position 8.00 0.3 14.40
+rotation 0 82 0
+scale 0.8 0.8 0.8
+object C1030
+position 8.00 0.3 16.00
+rotation 0 85 0
+scale 0.8 0.8 0.8
+object C1031
+position 8.00 0.3 17.60
+rotation 0 88 0
+scale 0.8 0.8 0.8
+object C1032
+position 8.00 0.3 19.20
+rotation 0 1 0
+scale 0.8 0.8 0.8
+object C1033
+position 8.00 0.3 20.80
+rotation 0 4 0
+scale 0.8 0.8 0.8
+object C1034
+position 8.00 0.3 22.40
+rotation 0 7 0
+scale 0.8 0.8 0.8
+object C1035
+position 8.00 0.3 24.00
+rotation 0 10 0
+scale 0.8 0.8 0.8
+object C1036
+position 8.00 0.3 25.60
+rotation 0 13 0
+scale 0.8 0.8 0.8
+object C1037
+position 8.00 0.3 27.20
+rotation 0 16 0
+scale 0.8 0.8 0.8
+object C1038
+position 8.00 0.3 28.80
+rotation 0 19 0
+scale 0.8 0.8 0.8
+object C1039
+position 8.00 0.3 30.40
+rotation 0 22 0
+scale 0.8 0.8 0.8
+object C1040
+position 9.60 0.3 -32.00
+rotation 0 2 0
+scale 0.8 0.8 0.8
+object C1041
+position 9.60 0.3 -30.40
+rotation 0 5 0
+scale 0.8 0.8 0.8
+object C1042
+position 9.60 0.3 -28.80
+rotation 0 8 0
+scale 0.8 0.8 0.8
+object C1043
+position 9.60 0.3 -27.20
+rotation 0 11 0
+scale 0.8 0.8 0.8
+object C1044
+position 9.60 0.3 -25.60
+rotation 0 14 0
+scale 0.8 0.8 0.8
+object C1045
+position 9.60 0.3 -24.00
+rotation 0 17 0
+scale 0.8 0.8 0.8
+object C1046
+position 9.60 0.3 -22.40
+rotation 0 20 0
+scale 0.8 0.8 0.8
+object C1047
+position 9.60 0.3 -20.80
+rotation 0 23 0
+scale 0.8 0.8 0.8
+object C1048
+position 9.60 0.3 -19.20
+rotation 0 26 0
+scale 0.8 0.8 0.8
+object C1049
+position 9.60 0.3 -17.60
+rotation 0 29 0
+scale 0.8 0.8 0.8
+object C1050
+position 9.60 0.3 -16.00
+rotation 0 32 0
+scale 0.8 0.8 0.8
+object C1051
+position 9.60 0.3 -14.40
+rotation 0 35 0
+scale 0.8 0.8 0.8
+object C1052
+position 9.60 0.3 -12.80
+rotation 0 38 0
+scale 0.8 0.8 0.8
+object C1053
+position 9.60 0.3 -11.20
+rotation 0 41 0
+scale 0.8 0.8 0.8
+object C1054
+position 9.60 0.3 -9.60
+rotation 0 44 0
+scale 0.8 0.8 0.8
+object C1055
+position 9.60 0.3 -8.00
+rotation 0 47 0
+scale 0.8 0.8 0.8
+object C1056
+position 9.60 0.3 -6.40
+rotation 0 50 0
+scale 0.8 0.8 0.8
+object C1057
+position 9.60 0.3 -4.80
+rotation 0 53 0
+scale 0.8 0.8 0.8
+object C1058
+position 9.60 0.3 -3.20
+rotation 0 56 0
+scale 0.8 0.8 0.8
+object C1059
+position 9.60 0.3 -1.60
+rotation 0 59 0
+scale 0.8 0.8 0.8
+object C1060
+position 9.60 0.3 0.00
+rotation 0 62 0
+scale 0.8 0.8 0.8
+object C1061
+position 9.60 0.3 1.60
+rotation 0 65 0
+scale 0.8 0.8 0.8
+object C1062
+position 9.60 0.3 3.20
+rotation 0 68 0
+scale 0.8 0.8 0.8
+object C1063
+position 9.60 0.3 4.80
+rotation 0 71 0
+scale 0.8 0.8 0.8
+object C1064
+position 9.60 0.3 6.40
+rotation 0 74 0
+scale 0.8 0.8 0.8
+object C1065
+position 9.60 0.3 8.00
+rotation 0 77 0
+scale 0.8 0.8 0.8
+object C1066
+position 9.60 0.3 9.60
+rotation 0 80 0
+scale 0.8 0.8 0.8
+object C1067
+position 9.60 0.3 11.20
+rotation 0 83 0
+scale 0.8 0.8 0.8
+object C1068
+position 9.60 0.3 12.80
+rotation 0 86 0
+scale 0.8 0.8 0.8
+object C1069
+position 9.60 0.3 14.40
+rotation 0 89 0
+scale 0.8 0.8 0.8
+object C1070
+position 9.60 0.3 16.00
+rotation 0 2 0
+scale 0.8 0.8 0.8
+object C1071
+position 9.60 0.3 17.60
+rotation 0 5 0
+scale 0.8 0.8 0.8
+object C1072
+position 9.60 0.3 19.20
+rotation 0 8 0
+scale 0.8 0.8 0.8
+object C1073
+position 9.60 0.3 20.80
+rotation 0 11 0
+scale 0.8 0.8 0.8
+object C1074
+position 9.60 0.3 22.40
+rotation 0 14 0
+scale 0.8 0.8 0.8
+object C1075
+position 9.60 0.3 24.00
+rotation 0 17 0
+scale 0.8 0.8 0.8
+object C1076
+position 9.60 0.3 25.60
+rotation 0 20 0
+scale 0.8 0.8 0.8
+object C1077
+position 9.60 0.3 27.20
+rotation 0 23 0
+scale 0.8 0.8 0.8
+object C1078
+position 9.60 0.3 28.80
+rotation 0 26 0
+scale 0.8 0.8 0.8
+object C1079
+position 9.60 0.3 30.40
+rotation 0 29 0
+scale 0.8 0.8 0.8
+object C1080
+position 11.20 0.3 -32.00
+rotation 0 9 0
+scale 0.8 0.8 0.8
+object C1081
+position 11.20 0.3 -30.40
+rotation 0 12 0
+scale 0.8 0.8 0.8
+object C1082
+position 11.20 0.3 -28.80
+rotation 0 15 0
+scale 0.8 0.8 0.8
+object C1083
+position 11.20 0.3 -27.20
+rotation 0 18 0
+scale 0.8 0.8 0.8
+object C1084
+position 11.20 0.3 -25.60
+rotation 0 21 0
+scale 0.8 0.8 0.8
+object C1085
+position 11.20 0.3 -24.00
+rotation 0 24 0
+scale 0.8 0.8 0.8
+object C1086
+position 11.20 0.3 -22.40
+rotation 0 27 0
+scale 0.8 0.8 0.8
+object C1087
+position 11.20 0.3 -20.80
+rotation 0 30 0
+scale 0.8 0.8 0.8
+object C1088
+position 11.20 0.3 -19.20
+rotation 0 33 0
+scale 0.8 0.8 0.8
+object C1089
+position 11.20 0.3 -17.60
+rotation 0 36 0
+scale 0.8 0.8 0.8
+object C1090
+position 11.20 0.3 -16.00
+rotation 0 39 0
+scale 0.8 0.8 0.8
+object C1091
+position 11.20 0.3 -14.40
+rotation 0 42 0
+scale 0.8 0.8 0.8
+object C1092
+position 11.20 0.3 -12.80
+rotation 0 45 0
+scale 0.8 0.8 0.8
+object C1093
+position 11.20 0.3 -11.20
+rotation 0 48 0
+scale 0.8 0.8 0.8
+object C1094
+position 11.20 0.3 -9.60
+rotation 0 51 0
+scale 0.8 0.8 0.8
+object C1095
+position 11.20 0.3 -8.00
+rotation 0 54 0
+scale 0.8 0.8 0.8
+object C1096
+position 11.20 0.3 -6.40
+rotation 0 57 0
+scale 0.8 0.8 0.8
+object C1097
+position 11.20 0.3 -4.80
+rotation 0 60 0
+scale 0.8 0.8 0.8
+object C1098
+position 11.20 0.3 -3.20
+rotation 0 63 0
+scale 0.8 0.8 0.8
+object C1099
+position 11.20 0.3 -1.60
+rotation 0 66 0
+scale 0.8 0.8 0.8
+object C1100
+position 11.20 0.3 0.00
+rotation 0 69 0
+scale 0.8 0.8 0.8
+object C1101
+position 11.20 0.3 1.60
+rotation 0 72 0
+scale 0.8 0.8 0.8
+object C1102
+position 11.20 0.3 3.20
+rotation 0 75 0
+scale 0.8 0.8 0.8
+object C1103
+position 11.20 0.3 4.80
+rotation 0 78 0
+scale 0.8 0.8 0.8
+object C1104
+position 11.20 0.3 6.40
+rotation 0 81 0
+scale 0.8 0.8 0.8
+object C1105
+position 11.20 0.3 8.00
+rotation 0 84 0
+scale 0.8 0.8 0.8
+object C1106
+position 11.20 0.3 9.60
+rotation 0 87 0
+scale 0.8 0.8 0.8
+object C1107
+position 11.20 0.3 11.20
+rotation 0 0 0
+scale 0.8 0.8 0.8
+object C1108
+position 11.20 0.3 12.80
+rotation 0 3 0
+scale 0.8 0.8 0.8
+object C1109
+position 11.20 0.3 14.40
+rotation 0 6 0
+scale 0.8 0.8 0.8
+object C1110
+position 11.20 0.3 16.00
+rotation 0 9 0
+scale 0.8 0.8 0.8
+object C1111
+position 11.20 0.3 17.60
+rotation 0 12 0
+scale 0.8 0.8 0.8
+object C1112
+position 11.20 0.3 19.20
+rotation 0 15 0
+scale 0.8 0.8 0.8
+object C1113
+position 11.20 0.3 20.80
+rotation 0 18 0
+scale 0.8 0.8 0.8
+object C1114
+position 11.20 0.3 22.40
+rotation 0 21 0
+scale 0.8 0.8 0.8
+object C1115
+position 11.20 0.3 24.00
+rotation 0 24 0
+scale 0.8 0.8 0.8
+object C1116
+position 11.20 0.3 25.60
+rotation 0 27 0
+scale 0.8 0.8 0.8
+object C1117
+position 11.20 0.3 27.20
+rotation 0 30 0
+scale 0.8 0.8 0.8
+object C1118
+position 11.20 0.3 28.80
+rotation 0 33 0
+scale 0.8 0.8 0.8
+object C1119
+position 11.20 0.3 30.40
+rotation 0 36 0
+scale 0.8 0.8 0.8
+object C1120
+position 12.80 0.3 -32.00
+rotation 0 16 0
+scale 0.8 0.8 0.8
+object C1121
+position 12.80 0.3 -30.40
+rotation 0 19 0
+scale 0.8 0.8 0.8
+object C1122
+position 12.80 0.3 -28.80
+rotation 0 22 0
+scale 0.8 0.8 0.8
+object C1123
+position 12.80 0.3 -27.20
+rotation 0 25 0
+scale 0.8 0.8 0.8
+object C1124
+position 12.80 0.3 -25.60
+rotation 0 28 0
+scale 0.8 0.8 0.8
+object C1125
+position 12.80 0.3 -24.00
+rotation 0 31 0
+scale 0.8 0.8 0.8
+object C1126
+position 12.80 0.3 -22.40
+rotation 0 34 0
+scale 0.8 0.8 0.8
+object C1127
+position 12.80 0.3 -20.80
+rotation 0 37 0
+scale 0.8 0.8 0.8
+object C1128
+position 12.80 0.3 -19.20
+rotation 0 40 0
+scale 0.8 0.8 0.8
+object C1129
+position 12.80 0.3 -17.60
+rotation 0 43 0
+scale 0.8 0.8 0.8
+object C1130
+position 12.80 0.3 -16.00
+rotation 0 46 0
+scale 0.8 0.8 0.8
+object C1131
+position 12.80 0.3 -14.40
+rotation 0 49 0
+scale 0.8 0.8 0.8
+object C1132
+position 12.80 0.3 -12.80
+rotation 0 52 0
+scale 0.8 0.8 0.8
+object C1133
+position 12.80 0.3 -11.20
+rotation 0 55 0
+scale 0.8 0.8 0.8
+object C1134
+position 12.80 0.3 -9.60
+rotation 0 58 0
+scale 0.8 0.8 0.8
+object C1135
+position 12.80 0.3 -8.00
+rotation 0 61 0
+scale 0.8 0.8 0.8
+object C1136
+position 12.80 0.3 -6.40
+rotation 0 64 0
+scale 0.8 0.8 0.8
+object C1137
+position 12.80 0.3 -4.80
+rotation 0 67 0
+scale 0.8 0.8 0.8
+object C1138
+position 12.80 0.3 -3.20
+rotation 0 70 0
+scale 0.8 0.8 0.8
+object C1139
+position 12.80 0.3 -1.60
+rotation 0 73 0
+scale 0.8 0.8 0.8
+object C1140
+position 12.80 0.3 0.00
+rotation 0 76 0
+scale 0.8 0.8 0.8
+object C1141
+position 12.80 0.3 1.60
+rotation 0 79 0
+scale 0.8 0.8 0.8
+object C1142
+position 12.80 0.3 3.20
+rotation 0 82 0
+scale 0.8 0.8 0.8
+object C1143
+position 12.80 0.3 4.80
+rotation 0 85 0
+scale 0.8 0.8 0.8
+object C1144
+position 12.80 0.3 6.40
+rotation 0 88 0
+scale 0.8 0.8 0.8
+object C1145
+position 12.80 0.3 8.00
+rotation 0 1 0
+scale 0.8 0.8 0.8
+object C1146
+position 12.80 0.3 9.60
+rotation 0 4 0
+scale 0.8 0.8 0.8
+object C1147
+position 12.80 0.3 11.20
+rotation 0 7 0
+scale 0.8 0.8 0.8
+object C1148
+position 12.80 0.3 12.80
+rotation 0 10 0
+scale 0.8 0.8 0.8
+object C1149
+position 12.80 0.3 14.40
+rotation 0 13 0
+scale 0.8 0.8 0.8
+object C1150
+position 12.80 0.3 16.00
+rotation 0 16 0
+scale 0.8 0.8 0.8
+object C1151
+position 12.80 0.3 17.60
+rotation 0 19 0
+scale 0.8 0.8 0.8
+object C1152
+position 12.80 0.3 19.20
+rotation 0 22 0
+scale 0.8 0.8 0.8
+object C1153
+position 12.80 0.3 20.80
+rotation 0 25 0
+scale 0.8 0.8 0.8
+object C1154
+position 12.80 0.3 22.40
+rotation 0 28 0
+scale 0.8 0.8 0.8
+object C1155
+position 12.80 0.3 24.00
+rotation 0 31 0
+scale 0.8 0.8 0.8
+object C1156
+position 12.80 0.3 25.60
+rotation 0 34 0
+scale 0.8 0.8 0.8
+object C1157
+position 12.80 0.3 27.20
+rotation 0 37 0
+scale 0.8 0.8 0.8
+object C1158
+position 12.80 0.3 28.80
+rotation 0 40 0
+scale 0.8 0.8 0.8
+object C1159
+position 12.80 0.3 30.40
+rotation 0 43 0
+scale 0.8 0.8 0.8
+object C1160
+position 14.40 0.3 -32.00
+rotation 0 23 0
+scale 0.8 0.8 0.8
+object C1161
+position 14.40 0.3 -30.40
+rotation 0 26 0
+scale 0.8 0.8 0.8
+object C1162
+position 14.40 0.3 -28.80
+rotation 0 29 0
+scale 0.8 0.8 0.8
+object C1163
+position 14.40 0.3 -27.20
+rotation 0 32 0
+scale 0.8 0.8 0.8
+object C1164
+position 14.40 0.3 -25.60
+rotation 0 35 0
+scale 0.8 0.8 0.8
+object C1165
+position 14.40 0.3 -24.00
+rotation 0 38 0
+scale 0.8 0.8 0.8
+object C1166
+position 14.40 0.3 -22.40
+rotation 0 41 0
+scale 0.8 0.8 0.8
+object C1167
+position 14.40 0.3 -20.80
+rotation 0 44 0
+scale 0.8 0.8 0.8
+object C1168
+position 14.40 0.3 -19.20
+rotation 0 47 0
+scale 0.8 0.8 0.8
+object C1169
+position 14.40 0.3 -17.60
+rotation 0 50 0
+scale 0.8 0.8 0.8
+object C1170
+position 14.40 0.3 -16.00
+rotation 0 53 0
+scale 0.8 0.8 0.8
+object C1171
+position 14.40 0.3 -14.40
+rotation 0 56 0
+scale 0.8 0.8 0.8
+object C1172
+position 14.40 0.3 -12.80
+rotation 0 59 0
+scale 0.8 0.8 0.8
+object C1173
+position 14.40 0.3 -11.20
+rotation 0 62 0
+scale 0.8 0.8 0.8
+object C1174
+position 14.40 0.3 -9.60
+rotation 0 65 0
+scale 0.8 0.8 0.8
+object C1175
+position 14.40 0.3 -8.00
+rotation 0 68 0
+scale 0.8 0.8 0.8
+object C1176
+position 14.40 0.3 -6.40
+rotation 0 71 0
+scale 0.8 0.8 0.8
+object C1177
+position 14.40 0.3 -4.80
+rotation 0 74 0
+scale 0.8 0.8 0.8
+object C1178
+position 14.40 0.3 -3.20
+rotation 0 77 0
+scale 0.8 0.8 0.8
+object C1179
+position 14.40 0.3 -1.60
+rotation 0 80 0
+scale 0.8 0.8 0.8
+object C1180
+position 14.40 0.3 0.00
+rotation 0 83 0
+scale 0.8 0.8 0.8
+object C1181
+position 14.40 0.3 1.60
+rotation 0 86 0
+scale 0.8 0.8 0.8
+object C1182
+position 14.40 0.3 3.20
+rotation 0 89 0
+scale 0.8 0.8 0.8
+object C1183
+position 14.40 0.3 4.80
+rotation 0 2 0
+scale 0.8 0.8 0.8
+object C1184
+position 14.40 0.3 6.40
+rotation 0 5 0
+scale 0.8 0.8 0.8
+object C1185
+position 14.40 0.3 8.00
+rotation 0 8 0
+scale 0.8 0.8 0.8
+object C1186
+position 14.40 0.3 9.60
+rotation 0 11 0
+scale 0.8 0.8 0.8
+object C1187
+position 14.40 0.3 11.20
+rotation 0 14 0
+scale 0.8 0.8 0.8
+object C1188
+position 14.40 0.3 12.80
+rotation 0 17 0
+scale 0.8 0.8 0.8
+object C1189
+position 14.40 0.3 14.40
+rotation 0 20 0
+scale 0.8 0.8 0.8
+object C1190
+position 14.40 0.3 16.00
+rotation 0 23 0
+scale 0.8 0.8 0.8
+object C1191
+position 14.40 0.3 17.60
+rotation 0 26 0
+scale 0.8 0.8 0.8
+object C1192
+position 14.40 0.3 19.20
+rotation 0 29 0
+scale 0.8 0.8 0.8
+object C1193
+position 14.40 0.3 20.80
+rotation 0 32 0
+scale 0.8 0.8 0.8
+object C1194
+position 14.40 0.3 22.40
+rotation 0 35 0
+scale 0.8 0.8 0.8
+object C1195
+position 14.40 0.3 24.00
+rotation 0 38 0
+scale 0.8 0.8 0.8
+object C1196
+position 14.40 0.3 25.60
+rotation 0 41 0
+scale 0.8 0.8 0.8
+object C1197
+position 14.40 0.3 27.20
+rotation 0 44 0
+scale 0.8 0.8 0.8
+object C1198
+position 14.40 0.3 28.80
+rotation 0 47 0
+scale 0.8 0.8 0.8
+object C1199
+position 14.40 0.3 30.40
+rotation 0 50 0
+scale 0.8 0.8 0.8
+object C1200
+position 16.00 0.3 -32.00
+rotation 0 30 0
+scale 0.8 0.8 0.8
+object C1201
+position 16.00 0.3 -30.40
+rotation 0 33 0
+scale 0.8 0.8 0.8
+object C1202
+position 16.00 0.3 -28.80
+rotation 0 36 0
+scale 0.8 0.8 0.8
+object C1203
+position 16.00 0.3 -27.20
+rotation 0 39 0
+scale 0.8 0.8 0.8
+object C1204
+position 16.00 0.3 -25.60
+rotation 0 42 0
+scale 0.8 0.8 0.8
+object C1205
+position 16.00 0.3 -24.00
+rotation 0 45 0
+scale 0.8 0.8 0.8
+object C1206
+position 16.00 0.3 -22.40
+rotation 0 48 0
+scale 0.8 0.8 0.8
+object C1207
+position 16.00 0.3 -20.80
+rotation 0 51 0
+scale 0.8 0.8 0.8
+object C1208
+position 16.00 0.3 -19.20
+rotation 0 54 0
+scale 0.8 0.8 0.8
+object C1209
+position 16.00 0.3 -17.60
+rotation 0 57 0
+scale 0.8 0.8 0.8
+object C1210
+position 16.00 0.3 -16.00
+rotation 0 60 0
+scale 0.8 0.8 0.8
+object C1211
+position 16.00 0.3 -14.40
+rotation 0 63 0
+scale 0.8 0.8 0.8
+object C1212
+position 16.00 0.3 -12.80
+rotation 0 66 0
+scale 0.8 0.8 0.8
+object C1213
+position 16.00 0.3 -11.20
+rotation 0 69 0
+scale 0.8 0.8 0.8
+object C1214
+position 16.00 0.3 -9.60
+rotation 0 72 0
+scale 0.8 0.8 0.8
+object C1215
+position 16.00 0.3 -8.00
+rotation 0 75 0
+scale 0.8 0.8 0.8
+object C1216
+position 16.00 0.3 -6.40
+rotation 0 78 0
+scale 0.8 0.8 0.8
+object C1217
+position 16.00 0.3 -4.80
+rotation 0 81 0
+scale 0.8 0.8 0.8
+object C1218
+position 16.00 0.3 -3.20
+rotation 0 84 0
+scale 0.8 0.8 0.8
+object C1219
+position 16.00 0.3 -1.60
+rotation 0 87 0
+scale 0.8 0.8 0.8
+object C1220
+position 16.00 0.3 0.00
+rotation 0 0 0
+scale 0.8 0.8 0.8
+object C1221
+position 16.00 0.3 1.60
+rotation 0 3 0
+scale 0.8 0.8 0.8
+object C1222
+position 16.00 0.3 3.20
+rotation 0 6 0
+scale 0.8 0.8 0.8
+object C1223
+position 16.00 0.3 4.80
+rotation 0 9 0
+scale 0.8 0.8 0.8
+object C1224
+position 16.00 0.3 6.40
+rotation 0 12 0
+scale 0.8 0.8 0.8
+object C1225
+position 16.00 0.3 8.00
+rotation 0 15 0
+scale 0.8 0.8 0.8
+object C1226
+position 16.00 0.3 9.60
+rotation 0 18 0
+scale 0.8 0.8 0.8
+object C1227
+position 16.00 0.3 11.20
+rotation 0 21 0
+scale 0.8 0.8 0.8
+object C1228
+position 16.00 0.3 12.80
+rotation 0 24 0
+scale 0.8 0.8 0.8
+object C1229
+position 16.00 0.3 14.40
+rotation 0 27 0
+scale 0.8 0.8 0.8
+object C1230
+position 16.00 0.3 16.00
+rotation 0 30 0
+scale 0.8 0.8 0.8
+object C1231
+position 16.00 0.3 17.60
+rotation 0 33 0
+scale 0.8 0.8 0.8
+object C1232
+position 16.00 0.3 19.20
+rotation 0 36 0
+scale 0.8 0.8 0.8
+object C1233
+position 16.00 0.3 20.80
+rotation 0 39 0
+scale 0.8 0.8 0.8
+object C1234
+position 16.00 0.3 22.40
+rotation 0 42 0
+scale 0.8 0.8 0.8
+object C1235
+position 16.00 0.3 24.00
+rotation 0 45 0
+scale 0.8 0.8 0.8
+object C1236
+position 16.00 0.3 25.60
+rotation 0 48 0
+scale 0.8 0.8 0.8
+object C1237
+position 16.00 0.3 27.20
+rotation 0 51 0
+scale 0.8 0.8 0.8
+object C1238
+position 16.00 0.3 28.80
+rotation 0 54 0
+scale 0.8 0.8 0.8
+object C1239
+position 16.00 0.3 30.40
+rotation 0 57 0
+scale 0.8 0.8 0.8
+object C1240
+position 17.60 0.3 -32.00
+rotation 0 37 0
+scale 0.8 0.8 0.8
+object C1241
+position 17.60 0.3 -30.40
+rotation 0 40 0
+scale 0.8 0.8 0.8
+object C1242
+position 17.60 0.3 -28.80
+rotation 0 43 0
+scale 0.8 0.8 0.8
+object C1243
+position 17.60 0.3 -27.20
+rotation 0 46 0
+scale 0.8 0.8 0.8
+object C1244
+position 17.60 0.3 -25.60
+rotation 0 49 0
+scale 0.8 0.8 0.8
+object C1245
+position 17.60 0.3 -24.00
+rotation 0 52 0
+scale 0.8 0.8 0.8
+object C1246
+position 17.60 0.3 -22.40
+rotation 0 55 0
+scale 0.8 0.8 0.8
+object C1247
+position 17.60 0.3 -20.80
+rotation 0 58 0
+scale 0.8 0.8 0.8
+object C1248
+position 17.60 0.3 -19.20
+rotation 0 61 0
+scale 0.8 0.8 0.8
+object C1249
+position 17.60 0.3 -17.60
+rotation 0 64 0
+scale 0.8 0.8 0.8
+object C1250
+position 17.60 0.3 -16.00
+rotation 0 67 0
+scale 0.8 0.8 0.8
+object C1251
+position 17.60 0.3 -14.40
+rotation 0 70 0
+scale 0.8 0.8 0.8
+object C1252
+position 17.60 0.3 -12.80
+rotation 0 73 0
+scale 0.8 0.8 0.8
+object C1253
+position 17.60 0.3 -11.20
+rotation 0 76 0
+scale 0.8 0.8 0.8
+object C1254
+position 17.60 0.3 -9.60
+rotation 0 79 0
+scale 0.8 0.8 0.8
+object C1255
+position 17.60 0.3 -8.00
+rotation 0 82 0
+scale 0.8 0.8 0.8
+object C1256
+position 17.60 0.3 -6.40
+rotation 0 85 0
+scale 0.8 0.8 0.8
+object C1257
+position 17.60 0.3 -4.80
+rotation 0 88 0
+scale 0.8 0.8 0.8
+object C1258
+position 17.60 0.3 -3.20
+rotation 0 1 0
+scale 0.8 0.8 0.8
+object C1259
+position 17.60 0.3 -1.60
+rotation 0 4 0
+scale 0.8 0.8 0.8
+object C1260
+position 17.60 0.3 0.00
+rotation 0 7 0
+scale 0.8 0.8 0.8
+object C1261
+position 17.60 0.3 1.60
+rotation 0 10 0
+scale 0.8 0.8 0.8
+object C1262
+position 17.60 0.3 3.20
+rotation 0 13 0
+scale 0.8 0.8 0.8
+object C1263
+position 17.60 0.3 4.80
+rotation 0 16 0
+scale 0.8 0.8 0.8
+object C1264
+position 17.60 0.3 6.40
+rotation 0 19 0
+scale 0.8 0.8 0.8
+object C1265
+position 17.60 0.3 8.00
+rotation 0 22 0
+scale 0.8 0.8 0.8
+object C1266
+position 17.60 0.3 9.60
+rotation 0 25 0
+scale 0.8 0.8 0.8
+object C1267
+position 17.60 0.3 11.20
+rotation 0 28 0
+scale 0.8 0.8 0.8
+object C1268
+position 17.60 0.3 12.80
+rotation 0 31 0
+scale 0.8 0.8 0.8
+object C1269
+position 17.60 0.3 14.40
+rotation 0 34 0
+scale 0.8 0.8 0.8
+object C1270
+position 17.60 0.3 16.00
+rotation 0 37 0
+scale 0.8 0.8 0.8
+object C1271
+position 17.60 0.3 17.60
+rotation 0 40 0
+scale 0.8 0.8 0.8
+object C1272
+position 17.60 0.3 19.20
+rotation 0 43 0
+scale 0.8 0.8 0.8
+object C1273
+position 17.60 0.3 20.80
+rotation 0 46 0
+scale 0.8 0.8 0.8
+object C1274
+position 17.60 0.3 22.40
+rotation 0 49 0
+scale 0.8 0.8 0.8
+object C1275
+position 17.60 0.3 24.00
+rotation 0 52 0
+scale 0.8 0.8 0.8
+object C1276
+position 17.60 0.3 25.60
+rotation 0 55 0
+scale 0.8 0.8 0.8
+object C1277
+position 17.60 0.3 27.20
+rotation 0 58 0
+scale 0.8 0.8 0.8
+object C1278
+position 17.60 0.3 28.80
+rotation 0 61 0
+scale 0.8 0.8 0.8
+object C1279
+position 17.60 0.3 30.40
+rotation 0 64 0
+scale 0.8 0.8 0.8
+object C1280
+position 19.20 0.3 -32.00
+rotation 0 44 0
+scale 0.8 0.8 0.8
+object C1281
+position 19.20 0.3 -30.40
+rotation 0 47 0
+scale 0.8 0.8 0.8
+object C1282
+position 19.20 0.3 -28.80
+rotation 0 50 0
+scale 0.8 0.8 0.8
+object C1283
+position 19.20 0.3 -27.20
+rotation 0 53 0
+scale 0.8 0.8 0.8
+object C1284
+position 19.20 0.3 -25.60
+rotation 0 56 0
+scale 0.8 0.8 0.8
+object C1285
+position 19.20 0.3 -24.00
+rotation 0 59 0
+scale 0.8 0.8 0.8
+object C1286
+position 19.20 0.3 -22.40
+rotation 0 62 0
+scale 0.8 0.8 0.8
+object C1287
+position 19.20 0.3 -20.80
+rotation 0 65 0
+scale 0.8 0.8 0.8
+object C1288
+position 19.20 0.3 -19.20
+rotation 0 68 0
+scale 0.8 0.8 0.8
+object C1289
+position 19.20 0.3 -17.60
+rotation 0 71 0
+scale 0.8 0.8 0.8
+object C1290
+position 19.20 0.3 -16.00
+rotation 0 74 0
+scale 0.8 0.8 0.8
+object C1291
+position 19.20 0.3 -14.40
+rotation 0 77 0
+scale 0.8 0.8 0.8
+object C1292
+position 19.20 0.3 -12.80
+rotation 0 80 0
+scale 0.8 0.8 0.8
+object C1293
+position 19.20 0.3 -11.20
+rotation 0 83 0
+scale 0.8 0.8 0.8
+object C1294
+position 19.20 0.3 -9.60
+rotation 0 86 0
+scale 0.8 0.8 0.8
+object C1295
+position 19.20 0.3 -8.00
+rotation 0 89 0
+scale 0.8 0.8 0.8
+object C1296
+position 19.20 0.3 -6.40
+rotation 0 2 0
+scale 0.8 0.8 0.8
+object C1297
+position 19.20 0.3 -4.80
+rotation 0 5 0
+scale 0.8 0.8 0.8
+object C1298
+position 19.20 0.3 -3.20
+rotation 0 8 0
+scale 0.8 0.8 0.8
+object C1299
+position 19.20 0.3 -1.60
+rotation 0 11 0
+scale 0.8 0.8 0.8
+object C1300
+position 19.20 0.3 0.00
+rotation 0 14 0
+scale 0.8 0.8 0.8
+object C1301
+position 19.20 0.3 1.60
+rotation 0 17 0
+scale 0.8 0.8 0.8
+object C1302
+position 19.20 0.3 3.20
+rotation 0 20 0
+scale 0.8 0.8 0.8
+object C1303
+position 19.20 0.3 4.80
+rotation 0 23 0
+scale 0.8 0.8 0.8
+object C1304
+position 19.20 0.3 6.40
+rotation 0 26 0
+scale 0.8 0.8 0.8
+object C1305
+position 19.20 0.3 8.00
+rotation 0 29 0
+scale 0.8 0.8 0.8
+object C1306
+position 19.20 0.3 9.60
+rotation 0 32 0
+scale 0.8 0.8 0.8
+object C1307
+position 19.20 0.3 11.20
+rotation 0 35 0
+scale 0.8 0.8 0.8
+object C1308
+position 19.20 0.3 12.80
+rotation 0 38 0
+scale 0.8 0.8 0.8
+object C1309
+position 19.20 0.3 14.40
+rotation 0 41 0
+scale 0.8 0.8 0.8
+object C1310
+position 19.20 0.3 16.00
+rotation 0 44 0
+scale 0.8 0.8 0.8
+object C1311
+position 19.20 0.3 17.60
+rotation 0 47 0
+scale 0.8 0.8 0.8
+object C1312
+position 19.20 0.3 19.20
+rotation 0 50 0
+scale 0.8 0.8 0.8
+object C1313
+position 19.20 0.3 20.80
+rotation 0 53 0
+scale 0.8 0.8 0.8
+object C1314
+position 19.20 0.3 22.40
+rotation 0 56 0
+scale 0.8 0.8 0.8
+object C1315
+position 19.20 0.3 24.00
+rotation 0 59 0
+scale 0.8 0.8 0.8
+object C1316
+position 19.20 0.3 25.60
+rotation 0 62 0
+scale 0.8 0.8 0.8
+object C1317
+position 19.20 0.3 27.20
+rotation 0 65 0
+scale 0.8 0.8 0.8
+object C1318
+position 19.20 0.3 28.80
+rotation 0 68 0
+scale 0.8 0.8 0.8
+object C1319
+position 19.20 0.3 30.40
+rotation 0 71 0
+scale 0.8 0.8 0.8
+object C1320
+position 20.80 0.3 -32.00
+rotation 0 51 0
+scale 0.8 0.8 0.8
+object C1321
+position 20.80 0.3 -30.40
+rotation 0 54 0
+scale 0.8 0.8 0.8
+object C1322
+position 20.80 0.3 -28.80
+rotation 0 57 0
+scale 0.8 0.8 0.8
+object C1323
+position 20.80 0.3 -27.20
+rotation 0 60 0
+scale 0.8 0.8 0.8
+object C1324
+position 20.80 0.3 -25.60
+rotation 0 63 0
+scale 0.8 0.8 0.8
+object C1325
+position 20.80 0.3 -24.00
+rotation 0 66 0
+scale 0.8 0.8 0.8
+object C1326
+position 20.80 0.3 -22.40
+rotation 0 69 0
+scale 0.8 0.8 0.8
+object C1327
+position 20.80 0.3 -20.80
+rotation 0 72 0
+scale 0.8 0.8 0.8
+object C1328
+position 20.80 0.3 -19.20
+rotation 0 75 0
+scale 0.8 0.8 0.8
+object C1329
+position 20.80 0.3 -17.60
+rotation 0 78 0
+scale 0.8 0.8 0.8
+object C1330
+position 20.80 0.3 -16.00
+rotation 0 81 0
+scale 0.8 0.8 0.8
+object C1331
+position 20.80 0.3 -14.40
+rotation 0 84 0
+scale 0.8 0.8 0.8
+object C1332
+position 20.80 0.3 -12.80
+rotation 0 87 0
+scale 0.8 0.8 0.8
+object C1333
+position 20.80 0.3 -11.20
+rotation 0 0 0
+scale 0.8 0.8 0.8
+object C1334
+position 20.80 0.3 -9.60
+rotation 0 3 0
+scale 0.8 0.8 0.8
+object C1335
+position 20.80 0.3 -8.00
+rotation 0 6 0
+scale 0.8 0.8 0.8
+object C1336
+position 20.80 0.3 -6.40
+rotation 0 9 0
+scale 0.8 0.8 0.8
+object C1337
+position 20.80 0.3 -4.80
+rotation 0 12 0
+scale 0.8 0.8 0.8
+object C1338
+position 20.80 0.3 -3.20
+rotation 0 15 0
+scale 0.8 0.8 0.8
+object C1339
+position 20.80 0.3 -1.60
+rotation 0 18 0
+scale 0.8 0.8 0.8
+object C1340
+position 20.80 0.3 0.00
+rotation 0 21 0
+scale 0.8 0.8 0.8
+object C1341
+position 20.80 0.3 1.60
+rotation 0 24 0
+scale 0.8 0.8 0.8
+object C1342
+position 20.80 0.3 3.20
+rotation 0 27 0
+scale 0.8 0.8 0.8
+object C1343
+position 20.80 0.3 4.80
+rotation 0 30 0
+scale 0.8 0.8 0.8
+object C1344
+position 20.80 0.3 6.40
+rotation 0 33 0
+scale 0.8 0.8 0.8
+object C1345
+position 20.80 0.3 8.00
+rotation 0 36 0
+scale 0.8 0.8 0.8
+object C1346
+position 20.80 0.3 9.60
+rotation 0 39 0
+scale 0.8 0.8 0.8
+object C1347
+position 20.80 0.3 11.20
+rotation 0 42 0
+scale 0.8 0.8 0.8
+object C1348
+position 20.80 0.3 12.80
+rotation 0 45 0
+scale 0.8 0.8 0.8
+object C1349
+position 20.80 0.3 14.40
+rotation 0 48 0
+scale 0.8 0.8 0.8
+object C1350
+position 20.80 0.3 16.00
+rotation 0 51 0
+scale 0.8 0.8 0.8
+object C1351
+position 20.80 0.3 17.60
+rotation 0 54 0
+scale 0.8 0.8 0.8
+object C1352
+position 20.80 0.3 19.20
+rotation 0 57 0
+scale 0.8 0.8 0.8
+object C1353
+position 20.80 0.3 20.80
+rotation 0 60 0
+scale 0.8 0.8 0.8
+object C1354
+position 20.80 0.3 22.40
+rotation 0 63 0
+scale 0.8 0.8 0.8
+object C1355
+position 20.80 0.3 24.00
+rotation 0 66 0
+scale 0.8 0.8 0.8
+object C1356
+position 20.80 0.3 25.60
+rotation 0 69 0
+scale 0.8 0.8 0.8
+object C1357
+position 20.80 0.3 27.20
+rotation 0 72 0
+scale 0.8 0.8 0.8
+object C1358
+position 20.80 0.3 28.80
+rotation 0 75 0
+scale 0.8 0.8 0.8
+object C1359
+position 20.80 0.3 30.40
+rotation 0 78 0
+scale 0.8 0.8 0.8
+object C1360
+position 22.40 0.3 -32.00
+rotation 0 58 0
+scale 0.8 0.8 0.8
+object C1361
+position 22.40 0.3 -30.40
+rotation 0 61 0
+scale 0.8 0.8 0.8
+object C1362
+position 22.40 0.3 -28.80
+rotation 0 64 0
+scale 0.8 0.8 0.8
+object C1363
+position 22.40 0.3 -27.20
+rotation 0 67 0
+scale 0.8 0.8 0.8
+object C1364
+position 22.40 0.3 -25.60
+rotation 0 70 0
+scale 0.8 0.8 0.8
+object C1365
+position 22.40 0.3 -24.00
+rotation 0 73 0
+scale 0.8 0.8 0.8
+object C1366
+position 22.40 0.3 -22.40
+rotation 0 76 0
+scale 0.8 0.8 0.8
+object C1367
+position 22.40 0.3 -20.80
+rotation 0 79 0
+scale 0.8 0.8 0.8
+object C1368
+position 22.40 0.3 -19.20
+rotation 0 82 0
+scale 0.8 0.8 0.8
+object C1369
+position 22.40 0.3 -17.60
+rotation 0 85 0
+scale 0.8 0.8 0.8
+object C1370
+position 22.40 0.3 -16.00
+rotation 0 88 0
+scale 0.8 0.8 0.8
+object C1371
+position 22.40 0.3 -14.40
+rotation 0 1 0
+scale 0.8 0.8 0.8
+object C1372
+position 22.40 0.3 -12.80
+rotation 0 4 0
+scale 0.8 0.8 0.8
+object C1373
+position 22.40 0.3 -11.20
+rotation 0 7 0
+scale 0.8 0.8 0.8
+object C1374
+position 22.40 0.3 -9.60
+rotation 0 10 0
+scale 0.8 0.8 0.8
+object C1375
+position 22.40 0.3 -8.00
+rotation 0 13 0
+scale 0.8 0.8 0.8
+object C1376
+position 22.40 0.3 -6.40
+rotation 0 16 0
+scale 0.8 0.8 0.8
+object C1377
+position 22.40 0.3 -4.80
+rotation 0 19 0
+scale 0.8 0.8 0.8
+object C1378
+position 22.40 0.3 -3.20
+rotation 0 22 0
+scale 0.8 0.8 0.8
+object C1379
+position 22.40 0.3 -1.60
+rotation 0 25 0
+scale 0.8 0.8 0.8
+object C1380
+position 22.40 0.3 0.00
+rotation 0 28 0
+scale 0.8 0.8 0.8
+object C1381
+position 22.40 0.3 1.60
+rotation 0 31 0
+scale 0.8 0.8 0.8
+object C1382
+position 22.40 0.3 3.20
+rotation 0 34 0
+scale 0.8 0.8 0.8
+object C1383
+position 22.40 0.3 4.80
+rotation 0 37 0
+scale 0.8 0.8 0.8
+object C1384
+position 22.40 0.3 6.40
+rotation 0 40 0
+scale 0.8 0.8 0.8
+object C1385
+position 22.40 0.3 8.00
+rotation 0 43 0
+scale 0.8 0.8 0.8
+object C1386
+position 22.40 0.3 9.60
+rotation 0 46 0
+scale 0.8 0.8 0.8
+object C1387
+position 22.40 0.3 11.20
+rotation 0 49 0
+scale 0.8 0.8 0.8
+object C1388
+position 22.40 0.3 12.80
+rotation 0 52 0
+scale 0.8 0.8 0.8
+object C1389
+position 22.40 0.3 14.40
+rotation 0 55 0
+scale 0.8 0.8 0.8
+object C1390
+position 22.40 0.3 16.00
+rotation 0 58 0
+scale 0.8 0.8 0.8
+object C1391
+position 22.40 0.3 17.60
+rotation 0 61 0
+scale 0.8 0.8 0.8
+object C1392
+position 22.40 0.3 19.20
+rotation 0 64 0
+scale 0.8 0.8 0.8
+object C1393
+position 22.40 0.3 20.80
+rotation 0 67 0
+scale 0.8 0.8 0.8
+object C1394
+position 22.40 0.3 22.40
+rotation 0 70 0
+scale 0.8 0.8 0.8
+object C1395
+position 22.40 0.3 24.00
+rotation 0 73 0
+scale 0.8 0.8 0.8
+object C1396
+position 22.40 0.3 25.60
+rotation 0 76 0
+scale 0.8 0.8 0.8
+object C1397
+position 22.40 0.3 27.20
+rotation 0 79 0
+scale 0.8 0.8 0.8
+object C1398
+position 22.40 0.3 28.80
+rotation 0 82 0
+scale 0.8 0.8 0.8
+object C1399
+position 22.40 0.3 30.40
+rotation 0 85 0
+scale 0.8 0.8 0.8
+object C1400
+position 24.00 0.3 -32.00
+rotation 0 65 0
+scale 0.8 0.8 0.8
+object C1401
+position 24.00 0.3 -30.40
+rotation 0 68 0
+scale 0.8 0.8 0.8
+object C1402
+position 24.00 0.3 -28.80
+rotation 0 71 0
+scale 0.8 0.8 0.8
+object C1403
+position 24.00 0.3 -27.20
+rotation 0 74 0
+scale 0.8 0.8 0.8
+object C1404
+position 24.00 0.3 -25.60
+rotation 0 77 0
+scale 0.8 0.8 0.8
+object C1405
+position 24.00 0.3 -24.00
+rotation 0 80 0
+scale 0.8 0.8 0.8
+object C1406
+position 24.00 0.3 -22.40
+rotation 0 83 0
+scale 0.8 0.8 0.8
+object C1407
+position 24.00 0.3 -20.80
+rotation 0 86 0
+scale 0.8 0.8 0.8
+object C1408
+position 24.00 0.3 -19.20
+rotation 0 89 0
+scale 0.8 0.8 0.8
+object C1409
+position 24.00 0.3 -17.60
+rotation 0 2 0
+scale 0.8 0.8 0.8
+object C1410
+position 24.00 0.3 -16.00
+rotation 0 5 0
+scale 0.8 0.8 0.8
+object C1411
+position 24.00 0.3 -14.40
+rotation 0 8 0
+scale 0.8 0.8 0.8
+object C1412
+position 24.00 0.3 -12.80
+rotation 0 11 0
+scale 0.8 0.8 0.8
+object C1413
+position 24.00 0.3 -11.20
+rotation 0 14 0
+scale 0.8 0.8 0.8
+object C1414
+position 24.00 0.3 -9.60
+rotation 0 17 0
+scale 0.8 0.8 0.8
+object C1415
+position 24.00 0.3 -8.00
+rotation 0 20 0
+scale 0.8 0.8 0.8
+object C1416
+position 24.00 0.3 -6.40
+rotation 0 23 0
+scale 0.8 0.8 0.8
+object C1417
+position 24.00 0.3 -4.80
+rotation 0 26 0
+scale 0.8 0.8 0.8
+object C1418
+position 24.00 0.3 -3.20
+rotation 0 29 0
+scale 0.8 0.8 0.8
+object C1419
+position 24.00 0.3 -1.60
+rotation 0 32 0
+scale 0.8 0.8 0.8
+object C1420
+position 24.00 0.3 0.00
+rotation 0 35 0
+scale 0.8 0.8 0.8
+object C1421
+position 24.00 0.3 1.60
+rotation 0 38 0
+scale 0.8 0.8 0.8
+object C1422
+position 24.00 0.3 3.20
+rotation 0 41 0
+scale 0.8 0.8 0.8
+object C1423
+position 24.00 0.3 4.80
+rotation 0 44 0
+scale 0.8 0.8 0.8
+object C1424
+position 24.00 0.3 6.40
+rotation 0 47 0
+scale 0.8 0.8 0.8
+object C1425
+position 24.00 0.3 8.00
+rotation 0 50 0
+scale 0.8 0.8 0.8
+object C1426
+position 24.00 0.3 9.60
+rotation 0 53 0
+scale 0.8 0.8 0.8
+object C1427
+position 24.00 0.3 11.20
+rotation 0 56 0
+scale 0.8 0.8 0.8
+object C1428
+position 24.00 0.3 12.80
+rotation 0 59 0
+scale 0.8 0.8 0.8
+object C1429
+position 24.00 0.3 14.40
+rotation 0 62 0
+scale 0.8 0.8 0.8
+object C1430
+position 24.00 0.3 16.00
+rotation 0 65 0
+scale 0.8 0.8 0.8
+object C1431
+position 24.00 0.3 17.60
+rotation 0 68 0
+scale 0.8 0.8 0.8
+object C1432
+position 24.00 0.3 19.20
+rotation 0 71 0
+scale 0.8 0.8 0.8
+object C1433
+position 24.00 0.3 20.80
+rotation 0 74 0
+scale 0.8 0.8 0.8
+object C1434
+position 24.00 0.3 22.40
+rotation 0 77 0
+scale 0.8 0.8 0.8
+object C1435
+position 24.00 0.3 24.00
+rotation 0 80 0
+scale 0.8 0.8 0.8
+object C1436
+position 24.00 0.3 25.60
+rotation 0 83 0
+scale 0.8 0.8 0.8
+object C1437
+position 24.00 0.3 27.20
+rotation 0 86 0
+scale 0.8 0.8 0.8
+object C1438
+position 24.00 0.3 28.80
+rotation 0 89 0
+scale 0.8 0.8 0.8
+object C1439
+position 24.00 0.3 30.40
+rotation 0 2 0
+scale 0.8 0.8 0.8
+object C1440
+position 25.60 0.3 -32.00
+rotation 0 72 0
+scale 0.8 0.8 0.8
+object C1441
+position 25.60 0.3 -30.40
+rotation 0 75 0
+scale 0.8 0.8 0.8
+object C1442
+position 25.60 0.3 -28.80
+rotation 0 78 0
+scale 0.8 0.8 0.8
+object C1443
+position 25.60 0.3 -27.20
+rotation 0 81 0
+scale 0.8 0.8 0.8
+object C1444
+position 25.60 0.3 -25.60
+rotation 0 84 0
+scale 0.8 0.8 0.8
+object C1445
+position 25.60 0.3 -24.00
+rotation 0 87 0
+scale 0.8 0.8 0.8
+object C1446
+position 25.60 0.3 -22.40
+rotation 0 0 0
+scale 0.8 0.8 0.8
+object C1447
+position 25.60 0.3 -20.80
+rotation 0 3 0
+scale 0.8 0.8 0.8
+object C1448
+position 25.60 0.3 -19.20
+rotation 0 6 0
+scale 0.8 0.8 0.8
+object C1449
+position 25.60 0.3 -17.60
+rotation 0 9 0
+scale 0.8 0.8 0.8
+object C1450
+position 25.60 0.3 -16.00
+rotation 0 12 0
+scale 0.8 0.8 0.8
+object C1451
+position 25.60 0.3 -14.40
+rotation 0 15 0
+scale 0.8 0.8 0.8
+object C1452
+position 25.60 0.3 -12.80
+rotation 0 18 0
+scale 0.8 0.8 0.8
+object C1453
+position 25.60 0.3 -11.20
+rotation 0 21 0
+scale 0.8 0.8 0.8
+object C1454
+position 25.60 0.3 -9.60
+rotation 0 24 0
+scale 0.8 0.8 0.8
+object C1455
+position 25.60 0.3 -8.00
+rotation 0 27 0
+scale 0.8 0.8 0.8
+object C1456
+position 25.60 0.3 -6.40
+rotation 0 30 0
+scale 0.8 0.8 0.8
+object C1457
+position 25.60 0.3 -4.80
+rotation 0 33 0
+scale 0.8 0.8 0.8
+object C1458
+position 25.60 0.3 -3.20
+rotation 0 36 0
+scale 0.8 0.8 0.8
+object C1459
+position 25.60 0.3 -1.60
+rotation 0 39 0
+scale 0.8 0.8 0.8
+object C1460
+position 25.60 0.3 0.00
+rotation 0 42 0
+scale 0.8 0.8 0.8
+object C1461
+position 25.60 0.3 1.60
+rotation 0 45 0
+scale 0.8 0.8 0.8
+object C1462
+position 25.60 0.3 3.20
+rotation 0 48 0
+scale 0.8 0.8 0.8
+object C1463
+position 25.60 0.3 4.80
+rotation 0 51 0
+scale 0.8 0.8 0.8
+object C1464
+position 25.60 0.3 6.40
+rotation 0 54 0
+scale 0.8 0.8 0.8
+object C1465
+position 25.60 0.3 8.00
+rotation 0 57 0
+scale 0.8 0.8 0.8
+object C1466
+position 25.60 0.3 9.60
+rotation 0 60 0
+scale 0.8 0.8 0.8
+object C1467
+position 25.60 0.3 11.20
+rotation 0 63 0
+scale 0.8 0.8 0.8
+object C1468
+position 25.60 0.3 12.80
+rotation 0 66 0
+scale 0.8 0.8 0.8
+object C1469
+position 25.60 0.3 14.40
+rotation 0 69 0
+scale 0.8 0.8 0.8
+object C1470
+position 25.60 0.3 16.00
+rotation 0 72 0
+scale 0.8 0.8 0.8
+object C1471
+position 25.60 0.3 17.60
+rotation 0 75 0
+scale 0.8 0.8 0.8
+object C1472
+position 25.60 0.3 19.20
+rotation 0 78 0
+scale 0.8 0.8 0.8
+object C1473
+position 25.60 0.3 20.80
+rotation 0 81 0
+scale 0.8 0.8 0.8
+object C1474
+position 25.60 0.3 22.40
+rotation 0 84 0
+scale 0.8 0.8 0.8
+object C1475
+position 25.60 0.3 24.00
+rotation 0 87 0
+scale 0.8 0.8 0.8
+object C1476
+position 25.60 0.3 25.60
+rotation 0 0 0
+scale 0.8 0.8 0.8
+object C1477
+position 25.60 0.3 27.20
+rotation 0 3 0
+scale 0.8 0.8 0.8
+object C1478
+position 25.60 0.3 28.80
+rotation 0 6 0
+scale 0.8 0.8 0.8
+object C1479
+position 25.60 0.3 30.40
+rotation 0 9 0
+scale 0.8 0.8 0.8
+object C1480
+position 27.20 0.3 -32.00
+rotation 0 79 0
+scale 0.8 0.8 0.8
+object C1481
+position 27.20 0.3 -30.40
+rotation 0 82 0
+scale 0.8 0.8 0.8
+object C1482
+position 27.20 0.3 -28.80
+rotation 0 85 0
+scale 0.8 0.8 0.8
+object C1483
+position 27.20 0.3 -27.20
+rotation 0 88 0
+scale 0.8 0.8 0.8
+object C1484
+position 27.20 0.3 -25.60
+rotation 0 1 0
+scale 0.8 0.8 0.8
+object C1485
+position 27.20 0.3 -24.00
+rotation 0 4 0
+scale 0.8 0.8 0.8
+object C1486
+position 27.20 0.3 -22.40
+rotation 0 7 0
+scale 0.8 0.8 0.8
+object C1487
+position 27.20 0.3 -20.80
+rotation 0 10 0
+scale 0.8 0.8 0.8
+object C1488
+position 27.20 0.3 -19.20
+rotation 0 13 0
+scale 0.8 0.8 0.8
+object C1489
+position 27.20 0.3 -17.60
+rotation 0 16 0
+scale 0.8 0.8 0.8
+object C1490
+position 27.20 0.3 -16.00
+rotation 0 19 0
+scale 0.8 0.8 0.8
+object C1491
+position 27.20 0.3 -14.40
+rotation 0 22 0
+scale 0.8 0.8 0.8
+object C1492
+position 27.20 0.3 -12.80
+rotation 0 25 0
+scale 0.8 0.8 0.8
+object C1493
+position 27.20 0.3 -11.20
+rotation 0 28 0
+scale 0.8 0.8 0.8
+object C1494
+position 27.20 0.3 -9.60
+rotation 0 31 0
+scale 0.8 0.8 0.8
+object C1495
+position 27.20 0.3 -8.00
+rotation 0 34 0
+scale 0.8 0.8 0.8
+object C1496
+position 27.20 0.3 -6.40
+rotation 0 37 0
+scale 0.8 0.8 0.8
+object C1497
+position 27.20 0.3 -4.80
+rotation 0 40 0
+scale 0.8 0.8 0.8
+object C1498
+position 27.20 0.3 -3.20
+rotation 0 43 0
+scale 0.8 0.8 0.8
+object C1499
+position 27.20 0.3 -1.60
+rotation 0 46 0
+scale 0.8 0.8 0.8
+object C1500
+position 27.20 0.3 0.00
+rotation 0 49 0
+scale 0.8 0.8 0.8
+object C1501
+position 27.20 0.3 1.60
+rotation 0 52 0
+scale 0.8 0.8 0.8
+object C1502
+position 27.20 0.3 3.20
+rotation 0 55 0
+scale 0.8 0.8 0.8
+object C1503
+position 27.20 0.3 4.80
+rotation 0 58 0
+scale 0.8 0.8 0.8
+object C1504
+position 27.20 0.3 6.40
+rotation 0 61 0
+scale 0.8 0.8 0.8
+object C1505
+position 27.20 0.3 8.00
+rotation 0 64 0
+scale 0.8 0.8 0.8
+object C1506
+position 27.20 0.3 9.60
+rotation 0 67 0
+scale 0.8 0.8 0.8
+object C1507
+position 27.20 0.3 11.20
+rotation 0 70 0
+scale 0.8 0.8 0.8
+object C1508
+position 27.20 0.3 12.80
+rotation 0 73 0
+scale 0.8 0.8 0.8
+object C1509
+position 27.20 0.3 14.40
+rotation 0 76 0
+scale 0.8 0.8 0.8
+object C1510
+position 27.20 0.3 16.00
+rotation 0 79 0
+scale 0.8 0.8 0.8
+object C1511
+position 27.20 0.3 17.60
+rotation 0 82 0
+scale 0.8 0.8 0.8
+object C1512
+position 27.20 0.3 19.20
+rotation 0 85 0
+scale 0.8 0.8 0.8
+object C1513
+position 27.20 0.3 20.80
+rotation 0 88 0
+scale 0.8 0.8 0.8
+object C1514
+position 27.20 0.3 22.40
+rotation 0 1 0
+scale 0.8 0.8 0.8
+object C1515
+position 27.20 0.3 24.00
+rotation 0 4 0
+scale 0.8 0.8 0.8
+object C1516
+position 27.20 0.3 25.60
+rotation 0 7 0
+scale 0.8 0.8 0.8
+object C1517
+position 27.20 0.3 27.20
+rotation 0 10 0
+scale 0.8 0.8 0.8
+object C1518
+position 27.20 0.3 28.80
+rotation 0 13 0
+scale 0.8 0.8 0.8
+object C1519
+position 27.20 0.3 30.40
+rotation 0 16 0
+scale 0.8 0.8 0.8
+object C1520
+position 28.80 0.3 -32.00
+rotation 0 86 0
+scale 0.8 0.8 0.8
+object C1521
+position 28.80 0.3 -30.40
+rotation 0 89 0
+scale 0.8 0.8 0.8
+object C1522
+position 28.80 0.3 -28.80
+rotation 0 2 0
+scale 0.8 0.8 0.8
+object C1523
+position 28.80 0.3 -27.20
+rotation 0 5 0
+scale 0.8 0.8 0.8
+object C1524
+position 28.80 0.3 -25.60
+rotation 0 8 0
+scale 0.8 0.8 0.8
+object C1525
+position 28.80 0.3 -24.00
+rotation 0 11 0
+scale 0.8 0.8 0.8
+object C1526
+position 28.80 0.3 -22.40
+rotation 0 14 0
+scale 0.8 0.8 0.8
+object C1527
+position 28.80 0.3 -20.80
+rotation 0 17 0
+scale 0.8 0.8 0.8
+object C1528
+position 28.80 0.3 -19.20
+rotation 0 20 0
+scale 0.8 0.8 0.8
+object C1529
+position 28.80 0.3 -17.60
+rotation 0 23 0
+scale 0.8 0.8 0.8
+object C1530
+position 28.80 0.3 -16.00
+rotation 0 26 0
+scale 0.8 0.8 0.8
+object C1531
+position 28.80 0.3 -14.40
+rotation 0 29 0
+scale 0.8 0.8 0.8
+object C1532
+position 28.80 0.3 -12.80
+rotation 0 32 0
+scale 0.8 0.8 0.8
+object C1533
+position 28.80 0.3 -11.20
+rotation 0 35 0
+scale 0.8 0.8 0.8
+object C1534
+position 28.80 0.3 -9.60
+rotation 0 38 0
+scale 0.8 0.8 0.8
+object C1535
+position 28.80 0.3 -8.00
+rotation 0 41 0
+scale 0.8 0.8 0.8
+object C1536
+position 28.80 0.3 -6.40
+rotation 0 44 0
+scale 0.8 0.8 0.8
+object C1537
+position 28.80 0.3 -4.80
+rotation 0 47 0
+scale 0.8 0.8 0.8
+object C1538
+position 28.80 0.3 -3.20
+rotation 0 50 0
+scale 0.8 0.8 0.8
+object C1539
+position 28.80 0.3 -1.60
+rotation 0 53 0
+scale 0.8 0.8 0.8
+object C1540
+position 28.80 0.3 0.00
+rotation 0 56 0
+scale 0.8 0.8 0.8
+object C1541
+position 28.80 0.3 1.60
+rotation 0 59 0
+scale 0.8 0.8 0.8
+object C1542
+position 28.80 0.3 3.20
+rotation 0 62 0
+scale 0.8 0.8 0.8
+object C1543
+position 28.80 0.3 4.80
+rotation 0 65 0
+scale 0.8 0.8 0.8
+object C1544
+position 28.80 0.3 6.40
+rotation 0 68 0
+scale 0.8 0.8 0.8
+object C1545
+position 28.80 0.3 8.00
+rotation 0 71 0
+scale 0.8 0.8 0.8
+object C1546
+position 28.80 0.3 9.60
+rotation 0 74 0
+scale 0.8 0.8 0.8
+object C1547
+position 28.80 0.3 11.20
+rotation 0 77 0
+scale 0.8 0.8 0.8
+object C1548
+position 28.80 0.3 12.80
+rotation 0 80 0
+scale 0.8 0.8 0.8
+object C1549
+position 28.80 0.3 14.40
+rotation 0 83 0
+scale 0.8 0.8 0.8
+object C1550
+position 28.80 0.3 16.00
+rotation 0 86 0
+scale 0.8 0.8 0.8
+object C1551
+position 28.80 0.3 17.60
+rotation 0 89 0
+scale 0.8 0.8 0.8
+object C1552
+position 28.80 0.3 19.20
+rotation 0 2 0
+scale 0.8 0.8 0.8
+object C1553
+position 28.80 0.3 20.80
+rotation 0 5 0
+scale 0.8 0.8 0.8
+object C1554
+position 28.80 0.3 22.40
+rotation 0 8 0
+scale 0.8 0.8 0.8
+object C1555
+position 28.80 0.3 24.00
+rotation 0 11 0
+scale 0.8 0.8 0.8
+object C1556
+position 28.80 0.3 25.60
+rotation 0 14 0
+scale 0.8 0.8 0.8
+object C1557
+position 28.80 0.3 27.20
+rotation 0 17 0
+scale 0.8 0.8 0.8
+object C1558
+position 28.80 0.3 28.80
+rotation 0 20 0
+scale 0.8 0.8 0.8
+object C1559
+position 28.80 0.3 30.40
+rotation 0 23 0
+scale 0.8 0.8 0.8
+object C1560
+position 30.40 0.3 -32.00
+rotation 0 3 0
+scale 0.8 0.8 0.8
+object C1561
+position 30.40 0.3 -30.40
+rotation 0 6 0
+scale 0.8 0.8 0.8
+object C1562
+position 30.40 0.3 -28.80
+rotation 0 9 0
+scale 0.8 0.8 0.8
+object C1563
+position 30.40 0.3 -27.20
+rotation 0 12 0
+scale 0.8 0.8 0.8
+object C1564
+position 30.40 0.3 -25.60
+rotation 0 15 0
+scale 0.8 0.8 0.8
+object C1565
+position 30.40 0.3 -24.00
+rotation 0 18 0
+scale 0.8 0.8 0.8
+object C1566
+position 30.40 0.3 -22.40
+rotation 0 21 0
+scale 0.8 0.8 0.8
+object C1567
+position 30.40 0.3 -20.80
+rotation 0 24 0
+scale 0.8 0.8 0.8
+object C1568
+position 30.40 0.3 -19.20
+rotation 0 27 0
+scale 0.8 0.8 0.8
+object C1569
+position 30.40 0.3 -17.60
+rotation 0 30 0
+scale 0.8 0.8 0.8
+object C1570
+position 30.40 0.3 -16.00
+rotation 0 33 0
+scale 0.8 0.8 0.8
+object C1571
+position 30.40 0.3 -14.40
+rotation 0 36 0
+scale 0.8 0.8 0.8
+object C1572
+position 30.40 0.3 -12.80
+rotation 0 39 0
+scale 0.8 0.8 0.8
+object C1573
+position 30.40 0.3 -11.20
+rotation 0 42 0
+scale 0.8 0.8 0.8
+object C1574
+position 30.40 0.3 -9.60
+rotation 0 45 0
+scale 0.8 0.8 0.8
+object C1575
+position 30.40 0.3 -8.00
+rotation 0 48 0
+scale 0.8 0.8 0.8
+object C1576
+position 30.40 0.3 -6.40
+rotation 0 51 0
+scale 0.8 0.8 0.8
+object C1577
+position 30.40 0.3 -4.80
+rotation 0 54 0
+scale 0.8 0.8 0.8
+object C1578
+position 30.40 0.3 -3.20
+rotation 0 57 0
+scale 0.8 0.8 0.8
+object C1579
+position 30.40 0.3 -1.60
+rotation 0 60 0
+scale 0.8 0.8 0.8
+object C1580
+position 30.40 0.3 0.00
+rotation 0 63 0
+scale 0.8 0.8 0.8
+object C1581
+position 30.40 0.3 1.60
+rotation 0 66 0
+scale 0.8 0.8 0.8
+object C1582
+position 30.40 0.3 3.20
+rotation 0 69 0
+scale 0.8 0.8 0.8
+object C1583
+position 30.40 0.3 4.80
+rotation 0 72 0
+scale 0.8 0.8 0.8
+object C1584
+position 30.40 0.3 6.40
+rotation 0 75 0
+scale 0.8 0.8 0.8
+object C1585
+position 30.40 0.3 8.00
+rotation 0 78 0
+scale 0.8 0.8 0.8
+object C1586
+position 30.40 0.3 9.60
+rotation 0 81 0
+scale 0.8 0.8 0.8
+object C1587
+position 30.40 0.3 11.20
+rotation 0 84 0
+scale 0.8 0.8 0.8
+object C1588
+position 30.40 0.3 12.80
+rotation 0 87 0
+scale 0.8 0.8 0.8
+object C1589
+position 30.40 0.3 14.40
+rotation 0 0 0
+scale 0.8 0.8 0.8
+object C1590
+position 30.40 0.3 16.00
+rotation 0 3 0
+scale 0.8 0.8 0.8
+object C1591
+position 30.40 0.3 17.60
+rotation 0 6 0
+scale 0.8 0.8 0.8
+object C1592
+position 30.40 0.3 19.20
+rotation 0 9 0
+scale 0.8 0.8 0.8
+object C1593
+position 30.40 0.3 20.80
+rotation 0 12 0
+scale 0.8 0.8 0.8
+object C1594
+position 30.40 0.3 22.40
+rotation 0 15 0
+scale 0.8 0.8 0.8
+object C1595
+position 30.40 0.3 24.00
+rotation 0 18 0
+scale 0.8 0.8 0.8
+object C1596
+position 30.40 0.3 25.60
+rotation 0 21 0
+scale 0.8 0.8 0.8
+object C1597
+position 30.40 0.3 27.20
+rotation 0 24 0
+scale 0.8 0.8 0.8
+object C1598
+position 30.40 0.3 28.80
+rotation 0 27 0
+scale 0.8 0.8 0.8
+object C1599
+position 30.40 0.3 30.40
+rotation 0 30 0
+scale 0.8 0.8 0.8
+light Sun
+position 0 10 0
+lighttype directional
+color 1 1 1
+intensity 1.5
+rotation -60 -20 0

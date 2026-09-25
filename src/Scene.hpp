@@ -143,8 +143,8 @@ struct Scene {
     bool showSky = true;
 };
 
-// Caps the per-frame GPU uniform buffer sizing in Main.cpp (each object gets its own aligned slot)
-constexpr size_t kMaxSceneObjects = 256;
+// Caps how many scene objects are drawn: sizes the per-frame instance buffers in Main.cpp
+constexpr size_t kMaxSceneObjects = 4096;
 
 // Relative to the build/ directory, where run.sh/clean_run.sh launch the binary from
 constexpr const char* kSceneFilePath = "../scene/scene.txt";

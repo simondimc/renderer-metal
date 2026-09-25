@@ -31,6 +31,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
+#include <tuple>
 #include <dispatch/dispatch.h>
 #include <unordered_map>
 #include <vector>
@@ -313,18 +315,25 @@ int main() {
     // frame below as new paths show up in the scene (see the scene editor's "Add Mesh" button).
     std::unordered_map<std::string, MeshData> meshCache;
 
-    // One Uniforms slot per scene object per frame, plus one for the axis gizmo, one per possible
-    // light marker, and one per possible light direction ray. 1024-byte stride is Metal's safe
-    // alignment for per-draw buffer offsets, rounded up from sizeof(Uniforms) (which now holds up
-    // to kMaxLights shadow matrices; the lights themselves are in LightCuller's buffer).
-    constexpr NS::UInteger kUniformStride = 1024;
-    static_assert(sizeof(Uniforms) <= kUniformStride, "Uniforms grew past the reserved per-object stride");
-    constexpr NS::UInteger kGizmoUniformOffset = kMaxSceneObjects * kUniformStride;
+    // Overlay draws (axis gizmo, light markers, light direction rays) each get their own Uniforms slot per
+    // frame: one for the gizmo, one per possible marker, one per possible ray. 256 bytes is Metal's required
+    // alignment for a buffer bound at an offset.
+    constexpr NS::UInteger kUniformStride = 256;
+    static_assert(sizeof(Uniforms) <= kUniformStride, "Uniforms grew past the reserved per-draw stride");
+    constexpr NS::UInteger kGizmoUniformOffset = 0;
     constexpr NS::UInteger kLightMarkerUniformOffset = kGizmoUniformOffset + kUniformStride;
     constexpr NS::UInteger kLightRayUniformOffset = kLightMarkerUniformOffset + kMaxClusteredLights * kUniformStride;
-    constexpr NS::UInteger kTotalUniformSlots = kMaxSceneObjects + 1 + kMaxClusteredLights + kMaxClusteredLights;
+    constexpr NS::UInteger kTotalUniformSlots = 1 + kMaxClusteredLights + kMaxClusteredLights;
 
-    // The CPU writes this frame's Uniforms straight into mapped memory (ResourceStorageModeShared)
+    // Scene geometry is drawn instanced: every object is one InstanceData entry in the frame's instance buffer, and
+    // a draw covers a run of objects that share a mesh. Which of them a given pass actually draws (frustum
+    // culling differs per pass - the camera's, each shadow map's) is a list of instance indices in the visible
+    // buffer: a draw's base instance points at its list, and the vertex shader looks its object up through it.
+    // Every pass encoded in a frame appends its own lists, so the buffer holds up to a full copy of the instance
+    // count per pass (shadow maps alone are up to 6 faces x kMaxLights lights). Anything past its capacity is dropped.
+    constexpr NS::UInteger kVisibleListCapacity = 48 * kMaxSceneObjects;
+
+    // The CPU writes this frame's per-frame data straight into mapped memory (ResourceStorageModeShared)
     // while the GPU may still be reading last frame's - or the frame before that's - draw calls out
     // of the same buffer, since commit() below doesn't block the CPU. One buffer per in-flight frame
     // (rotated by frameIndex) plus frameBoundarySemaphore (signaled from each command buffer's
@@ -332,8 +341,14 @@ int main() {
     // the GPU hasn't finished consuming yet.
     constexpr int kMaxFramesInFlight = 3;
     MTL::Buffer* uniformBuffers[kMaxFramesInFlight];
+    MTL::Buffer* frameUniformBuffers[kMaxFramesInFlight];
+    MTL::Buffer* instanceBuffers[kMaxFramesInFlight];
+    MTL::Buffer* visibleListBuffers[kMaxFramesInFlight];
     for (int i = 0; i < kMaxFramesInFlight; i++) {
         uniformBuffers[i] = device->newBuffer(kTotalUniformSlots * kUniformStride, MTL::ResourceStorageModeShared);
+        frameUniformBuffers[i] = device->newBuffer(sizeof(FrameUniforms), MTL::ResourceStorageModeShared);
+        instanceBuffers[i] = device->newBuffer(kMaxSceneObjects * sizeof(InstanceData), MTL::ResourceStorageModeShared);
+        visibleListBuffers[i] = device->newBuffer(kVisibleListCapacity * sizeof(uint32_t), MTL::ResourceStorageModeShared);
     }
     dispatch_semaphore_t frameBoundarySemaphore = dispatch_semaphore_create(kMaxFramesInFlight);
     // Per-pass and whole-frame GPU timing shown in the overlay (see GpuTimer.hpp); F3 hides the
@@ -792,6 +807,9 @@ int main() {
             // Released by this frame's command buffer completion handler, below.
             dispatch_semaphore_wait(frameBoundarySemaphore, DISPATCH_TIME_FOREVER);
             MTL::Buffer* uniformBuffer = uniformBuffers[frameIndex];
+            MTL::Buffer* frameUniformBuffer = frameUniformBuffers[frameIndex];
+            MTL::Buffer* instanceBuffer = instanceBuffers[frameIndex];
+            MTL::Buffer* visibleListBuffer = visibleListBuffers[frameIndex];
 
             // Motion blur's reprojection matrix (see postParams below). Instead of "last frame's
             // camera", it reprojects to a reference pose one shutter-time behind the current one
@@ -940,22 +958,54 @@ int main() {
                 MTL::IndexType indexType;
                 const MeshData* mesh; // null for Cube; only used for glTF's per-material submeshes
                 WorldBounds bounds;   // world-space box around the whole object, for frustum culling
+                simd::float4x4 model; // local-to-world, built once here for everything below that needs it
             };
             std::vector<RenderableObject> renderables;
             for (const auto& obj : scene.objects) {
                 if (renderables.size() >= kMaxSceneObjects) break;
                 if (obj.type == SceneObjectType::Cube) {
                     // The cube mesh spans -0.5..0.5 on every axis (see CubeMesh.hpp).
+                    const simd::float4x4 model = objectModelMatrix(obj);
                     renderables.push_back({&obj, vertexBuffer, indexBuffer, indexCount, MTL::IndexTypeUInt16, nullptr,
-                                           transformBounds(simd_make_float3(-0.5f, -0.5f, -0.5f), simd_make_float3(0.5f, 0.5f, 0.5f),
-                                                           objectModelMatrix(obj))});
+                                           transformBounds(simd_make_float3(-0.5f, -0.5f, -0.5f), simd_make_float3(0.5f, 0.5f, 0.5f), model),
+                                           model});
                 } else if (obj.type == SceneObjectType::Mesh && !obj.meshPath.empty()) {
                     auto it = meshCache.find(obj.meshPath);
                     if (it != meshCache.end() && it->second.indexCount > 0) {
                         const MeshData& m = it->second;
+                        const simd::float4x4 model = objectModelMatrix(obj);
                         renderables.push_back({&obj, m.vertexBuffer, m.indexBuffer, m.indexCount, m.indexType, &m,
-                                               transformBounds(m.localMin, m.localMax, objectModelMatrix(obj))});
+                                               transformBounds(m.localMin, m.localMax, model), model});
                     }
+                }
+            }
+
+            // Instancing: renderables that draw the same geometry the same way form a group, drawn together with
+            // one call per submesh. "The same way" = same buffers, and for a plain mesh the same texture set (a
+            // glTF mesh takes its textures from its own materials, so its objects' texture set is irrelevant).
+            struct InstanceGroup {
+                MTL::Buffer* vertexBuffer;
+                MTL::Buffer* indexBuffer;
+                NS::UInteger indexCount;
+                MTL::IndexType indexType;
+                const MeshData* mesh;
+                std::string textureSet;              // Cube/.obj only: the Scene Editor texture set to bind
+                std::vector<NS::UInteger> members;   // indices into renderables
+            };
+            std::vector<InstanceGroup> instanceGroups;
+            {
+                std::map<std::tuple<MTL::Buffer*, MTL::Buffer*, const MeshData*, std::string>, size_t> groupOf;
+                for (NS::UInteger i = 0; i < renderables.size(); i++) {
+                    const auto& r = renderables[i];
+                    const bool ownMaterials = r.mesh && !r.mesh->submeshes.empty();
+                    std::string textureSet = ownMaterials ? std::string() : r.obj->material.textureSet;
+                    auto key = std::make_tuple(r.vertexBuffer, r.indexBuffer, r.mesh, textureSet);
+                    auto found = groupOf.find(key);
+                    if (found == groupOf.end()) {
+                        found = groupOf.emplace(key, instanceGroups.size()).first;
+                        instanceGroups.push_back({r.vertexBuffer, r.indexBuffer, r.indexCount, r.indexType, r.mesh, textureSet, {}});
+                    }
+                    instanceGroups[found->second].members.push_back(i);
                 }
             }
 
@@ -1001,7 +1051,7 @@ int main() {
                         localMax = it->second.localMax;
                     }
 
-                    simd::float4x4 modelMatrix = objectModelMatrix(*r.obj);
+                    const simd::float4x4& modelMatrix = r.model;
                     simd::float4x4 invModel = simd_inverse(modelMatrix);
                     simd::float4 localOrigin4 = invModel * simd_make_float4(rayOrigin.x, rayOrigin.y, rayOrigin.z, 1.0f);
                     simd::float4 localDir4 = invModel * simd_make_float4(rayDir.x, rayDir.y, rayDir.z, 0.0f);
@@ -1024,17 +1074,17 @@ int main() {
                 selectedObjectIndex = hitIndex;
             }
 
-            // Write every drawn object's Uniforms into its own aligned slot before any draw call
-            // touches the buffer - drawIndexedPrimitives only records GPU work, it doesn't execute
-            // it yet, so overwriting the same slot before commit would corrupt earlier draws' data.
+            // The frame's shared constants and every drawn object's instance data, written before any draw call
+            // touches the buffers - drawIndexedPrimitives only records GPU work, it doesn't execute it yet, so
+            // overwriting an entry before commit would corrupt earlier draws' data.
+            FrameUniforms frameUniforms = computeFrameUniforms(camera, lights, lightCount, liveWidth, liveHeight, jitterNDC);
+            memcpy(frameUniformBuffer->contents(), &frameUniforms, sizeof(FrameUniforms));
+            InstanceData* instanceData = static_cast<InstanceData*>(instanceBuffer->contents());
             for (NS::UInteger i = 0; i < renderables.size(); i++) {
-                Uniforms uniforms = computeUniforms(camera, objectModelMatrix(*renderables[i].obj), lights, lightCount,
-                                                     liveWidth, liveHeight, &renderables[i].obj->material, jitterNDC);
-                memcpy((uint8_t*)uniformBuffer->contents() + i * kUniformStride, &uniforms, sizeof(Uniforms));
+                instanceData[i] = computeInstanceData(renderables[i].model, &renderables[i].obj->material);
             }
             if (camera.uiMode) {
-                Uniforms gizmoUniforms = computeUniforms(camera, matrix_identity_float4x4, lights, lightCount,
-                                                          liveWidth, liveHeight);
+                Uniforms gizmoUniforms = computeUniforms(camera, matrix_identity_float4x4, liveWidth, liveHeight);
                 memcpy((uint8_t*)uniformBuffer->contents() + kGizmoUniformOffset, &gizmoUniforms, sizeof(Uniforms));
 
                 // Light markers: a small translate-only model matrix places the marker at each light.
@@ -1047,14 +1097,12 @@ int main() {
                         simd_make_float4(0.0f, 0.0f, 1.0f, 0.0f),
                         simd_make_float4(lights[i].position.x, lights[i].position.y, lights[i].position.z, 1.0f)
                     );
-                    Uniforms markerUniforms = computeUniforms(camera, markerModel, lights, lightCount,
-                                                               liveWidth, liveHeight);
+                    Uniforms markerUniforms = computeUniforms(camera, markerModel, liveWidth, liveHeight);
                     memcpy((uint8_t*)uniformBuffer->contents() + kLightMarkerUniformOffset + i * kUniformStride,
                            &markerUniforms, sizeof(Uniforms));
 
                     if (lightObjects[i] && lights[i].type != LightType::Point) {
-                        Uniforms rayUniforms = computeUniforms(camera, objectModelMatrix(*lightObjects[i]),
-                                                                lights, lightCount, liveWidth, liveHeight);
+                        Uniforms rayUniforms = computeUniforms(camera, objectModelMatrix(*lightObjects[i]), liveWidth, liveHeight);
                         memcpy((uint8_t*)uniformBuffer->contents() + kLightRayUniformOffset + i * kUniformStride,
                                &rayUniforms, sizeof(Uniforms));
                     }
@@ -1110,28 +1158,65 @@ int main() {
             auto isVisible = [&](const auto& renderable, const Frustum& frustum) {
                 return !kFrustumCulling || frustumIntersects(frustum, renderable.bounds);
             };
+            // A draw's run of instances: `count` objects whose instance indices sit at visibleList[base...].
+            struct InstanceRun {
+                NS::UInteger base = 0;
+                NS::UInteger count = 0;
+            };
+            uint32_t* visibleList = static_cast<uint32_t*>(visibleListBuffer->contents());
+            NS::UInteger visibleCursor = 0;
+            // Appends the members of `group` that lie inside `frustum` (all of them for a null frustum) as a new list.
+            auto emitVisible = [&](const InstanceGroup& group, const Frustum* frustum) {
+                InstanceRun run;
+                run.base = visibleCursor;
+                for (NS::UInteger member : group.members) {
+                    if (frustum && !isVisible(renderables[member], *frustum)) continue;
+                    if (visibleCursor >= kVisibleListCapacity) break;
+                    visibleList[visibleCursor++] = (uint32_t)member;
+                    run.count++;
+                }
+                return run;
+            };
+            // A one-object list, for the draws that need a single instance (sorted glass, the selection mask).
+            auto emitSingle = [&](NS::UInteger renderableIndex) {
+                InstanceRun run;
+                run.base = visibleCursor;
+                if (visibleCursor < kVisibleListCapacity) {
+                    visibleList[visibleCursor++] = (uint32_t)renderableIndex;
+                    run.count = 1;
+                }
+                return run;
+            };
+            // What every instanced geometry draw's vertex stage reads: the frame constants, all objects' data
+            // and the visible lists.
+            auto bindInstanceBuffers = [&](MTL::RenderCommandEncoder* encoder) {
+                encoder->setVertexBuffer(frameUniformBuffer, 0, 1);
+                encoder->setVertexBuffer(instanceBuffer, 0, 3);
+                encoder->setVertexBuffer(visibleListBuffer, 0, 4);
+            };
             auto drawShadowCasters = [&](MTL::RenderCommandEncoder* encoder, const Frustum& frustum) {
+                bindInstanceBuffers(encoder);
                 encoder->setFragmentTexture(whiteTexture, 0);
                 encoder->setFragmentBytes(&defaultParams, sizeof(MaterialParams), 4);
-                for (NS::UInteger i = 0; i < renderables.size(); i++) {
-                    const auto& r = renderables[i];
-                    if (!isVisible(r, frustum)) continue;
-                    encoder->setVertexBuffer(r.vertexBuffer, 0, 0);
-                    encoder->setVertexBuffer(uniformBuffer, i * kUniformStride, 1);
-                    if (r.mesh && r.mesh->hasNonOpaqueSubmeshes) {
-                        for (const MeshSubmesh& sub : r.mesh->submeshes) {
-                            const MeshMaterial& mat = r.mesh->materials[sub.materialIndex];
+                for (const InstanceGroup& group : instanceGroups) {
+                    InstanceRun run = emitVisible(group, &frustum);
+                    if (run.count == 0) continue;
+                    encoder->setVertexBuffer(group.vertexBuffer, 0, 0);
+                    if (group.mesh && group.mesh->hasNonOpaqueSubmeshes) {
+                        for (const MeshSubmesh& sub : group.mesh->submeshes) {
+                            const MeshMaterial& mat = group.mesh->materials[sub.materialIndex];
                             if (mat.drawPass() != DrawPass::Opaque) continue; // glass/blend cast no shadow
                             encoder->setFragmentTexture(mat.albedo ? mat.albedo : whiteTexture, 0);
                             encoder->setFragmentBytes(&mat.params, sizeof(MaterialParams), 4);
-                            encoder->drawIndexedPrimitives(MTL::PrimitiveTypeTriangle, sub.indexCount, r.indexType,
-                                                           r.indexBuffer, sub.indexOffset * sizeof(uint32_t));
+                            encoder->drawIndexedPrimitives(MTL::PrimitiveTypeTriangle, sub.indexCount, group.indexType,
+                                                           group.indexBuffer, sub.indexOffset * sizeof(uint32_t),
+                                                           run.count, 0, run.base);
                         }
                         encoder->setFragmentTexture(whiteTexture, 0);
                         encoder->setFragmentBytes(&defaultParams, sizeof(MaterialParams), 4);
                     } else {
-                        encoder->drawIndexedPrimitives(MTL::PrimitiveTypeTriangle, r.indexCount, r.indexType,
-                                                       r.indexBuffer, 0);
+                        encoder->drawIndexedPrimitives(MTL::PrimitiveTypeTriangle, group.indexCount, group.indexType,
+                                                       group.indexBuffer, 0, run.count, 0, run.base);
                     }
                 }
             };
@@ -1145,7 +1230,7 @@ int main() {
             // map, since nothing here tracks which lights an object can reach.
             uint64_t casterSignature = kHashSeed;
             for (const auto& r : renderables) {
-                simd::float4x4 model = objectModelMatrix(*r.obj);
+                const simd::float4x4& model = r.model;
                 casterSignature = hashBytes(casterSignature, &model, sizeof(model));
                 const void* geometry[3] = {r.vertexBuffer, r.indexBuffer, r.mesh};
                 casterSignature = hashBytes(casterSignature, geometry, sizeof(geometry));
@@ -1347,6 +1432,9 @@ int main() {
                 encoder->setFragmentTexture(screenAO, kAOTextureSlot);
                 encoder->setFragmentBytes(&scene.environmentIntensity, sizeof(float), 3);
                 lightCuller.bind(encoder); // fragment buffers 4-7: cluster grid, lights, per-cluster lists
+                bindInstanceBuffers(encoder);
+                encoder->setFragmentBuffer(frameUniformBuffer, 0, 1);
+                encoder->setFragmentBuffer(instanceBuffer, 0, 8);
             };
 
             MTL::RenderPassDescriptor* hdrRPD = MTL::RenderPassDescriptor::renderPassDescriptor();
@@ -1384,37 +1472,38 @@ int main() {
             };
             std::vector<TransparentDraw> transmissiveDraws, blendDraws;
 
-            for (NS::UInteger i = 0; i < renderables.size(); i++) {
-                const auto& r = renderables[i];
-                if (!isVisible(r, cameraFrustum)) continue; // also keeps its glass/blend submeshes out of A2
-                NS::UInteger offset = i * kUniformStride;
-                hdrEncoder->setVertexBuffer(r.vertexBuffer, 0, 0);
-                hdrEncoder->setVertexBuffer(uniformBuffer, offset, 1);
-                hdrEncoder->setFragmentBuffer(uniformBuffer, offset, 1);
+            for (const InstanceGroup& group : instanceGroups) {
+                InstanceRun run = emitVisible(group, &cameraFrustum); // also keeps culled glass/blend submeshes out of A2
+                if (run.count == 0) continue;
+                hdrEncoder->setVertexBuffer(group.vertexBuffer, 0, 0);
 
-                if (r.mesh && !r.mesh->submeshes.empty()) {
+                if (group.mesh && !group.mesh->submeshes.empty()) {
                     // glTF: one draw per material run, each with the file's own textures/factors.
-                    simd::float4x4 modelMatrix = objectModelMatrix(*r.obj);
-                    for (const MeshSubmesh& sub : r.mesh->submeshes) {
-                        const MeshMaterial& mat = r.mesh->materials[sub.materialIndex];
+                    for (const MeshSubmesh& sub : group.mesh->submeshes) {
+                        const MeshMaterial& mat = group.mesh->materials[sub.materialIndex];
                         DrawPass drawPass = mat.drawPass();
                         if (drawPass != DrawPass::Opaque) {
-                            simd::float4 world = modelMatrix * simd_make_float4(sub.center.x, sub.center.y, sub.center.z, 1.0f);
-                            simd::float3 toCamera = simd_make_float3(world.x, world.y, world.z) - camera.position;
-                            (drawPass == DrawPass::Transmissive ? transmissiveDraws : blendDraws)
-                                .push_back({i, &sub, simd_length_squared(toCamera)});
+                            // Glass and blend are sorted per object, so each instance queues its own draw.
+                            for (NS::UInteger k = 0; k < run.count; k++) {
+                                NS::UInteger i = visibleList[run.base + k];
+                                simd::float4 world = instanceData[i].model * simd_make_float4(sub.center.x, sub.center.y, sub.center.z, 1.0f);
+                                simd::float3 toCamera = simd_make_float3(world.x, world.y, world.z) - camera.position;
+                                (drawPass == DrawPass::Transmissive ? transmissiveDraws : blendDraws)
+                                    .push_back({i, &sub, simd_length_squared(toCamera)});
+                            }
                             continue;
                         }
                         bindMeshMaterial(hdrEncoder, mat);
                         hdrEncoder->drawIndexedPrimitives(
-                            MTL::PrimitiveTypeTriangle, sub.indexCount, r.indexType, r.indexBuffer,
-                            sub.indexOffset * sizeof(uint32_t) // glTF meshes always use 32-bit indices
+                            MTL::PrimitiveTypeTriangle, sub.indexCount, group.indexType, group.indexBuffer,
+                            sub.indexOffset * sizeof(uint32_t), // glTF meshes always use 32-bit indices
+                            run.count, 0, run.base
                         );
                     }
                 } else {
-                    // Cube / .obj: the object's Scene Editor texture set. An unknown or failed set
+                    // Cube / .obj: the group's Scene Editor texture set. An unknown or failed set
                     // falls back to the neutral stand-ins, so the material's flat values apply.
-                    const TextureSet* set = textureLibrary.get(r.obj->material.textureSet);
+                    const TextureSet* set = textureLibrary.get(group.textureSet);
                     hdrEncoder->setFragmentTexture(set && set->albedo ? set->albedo : whiteTexture, 0);
                     hdrEncoder->setFragmentTexture(set && set->normal ? set->normal : flatNormalTexture, 1);
                     hdrEncoder->setFragmentTexture(set && set->orm ? set->orm : whiteTexture, kOrmTextureSlot);
@@ -1426,10 +1515,11 @@ int main() {
                     hdrEncoder->setFragmentBytes(set ? &set->params : &defaultParams, sizeof(MaterialParams), 2);
                     hdrEncoder->drawIndexedPrimitives(
                         MTL::PrimitiveTypeTriangle,
-                        r.indexCount,
-                        r.indexType,
-                        r.indexBuffer,
-                        0
+                        group.indexCount,
+                        group.indexType,
+                        group.indexBuffer,
+                        0,
+                        run.count, 0, run.base
                     );
                 }
             }
@@ -1491,14 +1581,13 @@ int main() {
 
                 auto drawTransparent = [&](const TransparentDraw& draw) {
                     const auto& r = renderables[draw.renderableIndex];
-                    NS::UInteger offset = draw.renderableIndex * kUniformStride;
+                    InstanceRun run = emitSingle(draw.renderableIndex);
+                    if (run.count == 0) return;
                     transparentEncoder->setVertexBuffer(r.vertexBuffer, 0, 0);
-                    transparentEncoder->setVertexBuffer(uniformBuffer, offset, 1);
-                    transparentEncoder->setFragmentBuffer(uniformBuffer, offset, 1);
                     bindMeshMaterial(transparentEncoder, r.mesh->materials[draw.submesh->materialIndex]);
                     transparentEncoder->drawIndexedPrimitives(
                         MTL::PrimitiveTypeTriangle, draw.submesh->indexCount, r.indexType, r.indexBuffer,
-                        draw.submesh->indexOffset * sizeof(uint32_t)
+                        draw.submesh->indexOffset * sizeof(uint32_t), 1, 0, run.base
                     );
                 };
 
@@ -1651,11 +1740,12 @@ int main() {
                     const auto& r = renderables[i];
                     selectionMaskEncoder->setDepthStencilState(maskDepthState);
                     selectionMaskEncoder->setRenderPipelineState(selectionMaskPipelineState);
-                    NS::UInteger offset = i * kUniformStride;
+                    InstanceRun run = emitSingle(i);
+                    if (run.count == 0) break;
+                    bindInstanceBuffers(selectionMaskEncoder);
                     selectionMaskEncoder->setVertexBuffer(r.vertexBuffer, 0, 0);
-                    selectionMaskEncoder->setVertexBuffer(uniformBuffer, offset, 1);
                     selectionMaskEncoder->drawIndexedPrimitives(
-                        MTL::PrimitiveTypeTriangle, r.indexCount, r.indexType, r.indexBuffer, 0
+                        MTL::PrimitiveTypeTriangle, r.indexCount, r.indexType, r.indexBuffer, 0, 1, 0, run.base
                     );
                     break;
                 }
@@ -1956,6 +2046,9 @@ int main() {
     }
     for (int i = 0; i < kMaxFramesInFlight; i++) {
         uniformBuffers[i]->release();
+        frameUniformBuffers[i]->release();
+        instanceBuffers[i]->release();
+        visibleListBuffers[i]->release();
     }
     cmdQueue->release();
     device->release();
