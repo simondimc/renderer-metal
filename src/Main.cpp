@@ -91,12 +91,14 @@ int main() {
     glfwGetFramebufferSize(window, &width, &height);
     cppMetalLayer->setDrawableSize(CGSizeMake(width, height));
 
-    // Allocate Depth Buffer based on initial window framebuffer sizing
+    // Allocate Depth Buffer based on initial window framebuffer sizing. ShaderRead (on top of
+    // RenderTarget) so the post-process pass can sample it back for Depth of Field (see
+    // postProcessFragmentMain in Shader.metal).
     MTL::TextureDescriptor* desc = MTL::TextureDescriptor::texture2DDescriptor(
         MTL::PixelFormatDepth32Float, (NS::UInteger)width, (NS::UInteger)height, false
     );
     desc->setStorageMode(MTL::StorageModePrivate);
-    desc->setUsage(MTL::TextureUsageRenderTarget);
+    desc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
     MTL::Texture* depthTexture = device->newTexture(desc);
 
     // Offscreen HDR color target: the scene pass (see fragmentMain in Shader.metal) writes
@@ -397,7 +399,7 @@ int main() {
                 MTL::PixelFormatDepth32Float, (NS::UInteger)width, (NS::UInteger)height, false
             );
             newDesc->setStorageMode(MTL::StorageModePrivate);
-            newDesc->setUsage(MTL::TextureUsageRenderTarget);
+            newDesc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
             depthTexture = device->newTexture(newDesc);
 
             MTL::TextureDescriptor* newHdrDesc = MTL::TextureDescriptor::texture2DDescriptor(
@@ -759,7 +761,11 @@ int main() {
             postEncoder->setRenderPipelineState(postProcessPipelineState);
             postEncoder->setFragmentTexture(hdrColorTexture, 0);
             postEncoder->setFragmentTexture(bloomTextureA, 1);
+            postEncoder->setFragmentTexture(depthTexture, 2);
             postEncoder->setFragmentSamplerState(postProcessSamplerState, 0);
+            // Nearest + clamp, same as the shadow maps - see postProcessFragmentMain's comment on
+            // why Depth of Field can't linearly filter raw depth.
+            postEncoder->setFragmentSamplerState(shadowSamplerState, 1);
             // Field order/count must match PostProcessParams in Shader.metal exactly - this is a
             // raw byte copy, not a described/reflected layout.
             struct {
@@ -772,13 +778,18 @@ int main() {
                 float colorGradingSaturation;
                 float colorGradingContrast;
                 float bloomIntensity;
+                float dofFocusDistance;
+                float dofFocusRange;
+                float dofStrength;
                 float time;
             } postParams = {
                 scene.exposure, (float)(int)scene.toneMapOperator,
                 scene.vignetteStrength, scene.chromaticAberrationStrength,
                 scene.filmGrainStrength, scene.sharpenStrength,
                 scene.colorGradingSaturation, scene.colorGradingContrast,
-                scene.bloomIntensity, currentTime
+                scene.bloomIntensity,
+                scene.dofFocusDistance, scene.dofFocusRange, scene.dofStrength,
+                currentTime
             };
             postEncoder->setFragmentBytes(&postParams, sizeof(postParams), 0);
             postEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, (NS::UInteger)3);

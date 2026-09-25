@@ -15,6 +15,11 @@ using namespace metal;
 #define TONE_MAP_ACES 2
 #define TONE_MAP_UNCHARTED2 3
 
+// Must match nearPlane/farPlane in computeUniforms (Uniforms.cpp) - used by postProcessFragmentMain
+// to linearize the raw depth buffer for Depth of Field (see its comment).
+#define CAMERA_NEAR_PLANE 0.1
+#define CAMERA_FAR_PLANE 100.0
+
 struct VertexInput {
     float3 position [[attribute(0)]];
     float2 uv       [[attribute(1)]];
@@ -356,6 +361,9 @@ struct PostProcessParams {
     float colorGradingSaturation;     // 1 = neutral
     float colorGradingContrast;       // 1 = neutral
     float bloomIntensity;             // 0 = off - blend amount of the blurred bright-pass buffer
+    float dofFocusDistance;           // world-space distance from the camera that stays sharp
+    float dofFocusRange;              // distance either side of dofFocusDistance that stays sharp
+    float dofStrength;                // 0 = off - max blend-in amount of the out-of-focus blur
     float time;                       // seconds - animates the film grain so it doesn't look static
 };
 
@@ -380,8 +388,10 @@ static float3 resolveColor(float3 hdrColor, constant PostProcessParams& params) 
 fragment float4 postProcessFragmentMain(PostProcessVertexOut in [[stage_in]],
                                         texture2d<float> hdrTexture [[texture(0)]],
                                         texture2d<float> bloomTexture [[texture(1)]],
+                                        depth2d<float> depthTexture [[texture(2)]],
                                         constant PostProcessParams& params [[buffer(0)]],
-                                        sampler smp [[sampler(0)]]) {
+                                        sampler smp [[sampler(0)]],
+                                        sampler depthSampler [[sampler(1)]]) {
     float2 uv = in.uv;
     float2 texelSize = 1.0 / float2(hdrTexture.get_width(), hdrTexture.get_height());
     float2 centerOffset = uv - 0.5; // screen-center-relative, for vignette/aberration falloff
@@ -403,6 +413,35 @@ fragment float4 postProcessFragmentMain(PostProcessVertexOut in [[stage_in]],
     // in a NaN that survives being multiplied by 0.
     if (params.bloomIntensity > 0.0) {
         hdrColor += bloomTexture.sample(smp, uv).rgb * params.bloomIntensity;
+    }
+
+    // Depth of Field: linearize the raw hardware depth (see the CAMERA_NEAR_PLANE/FAR_PLANE
+    // comment - this reverses computeUniforms' projection matrix) into a view-space distance, then
+    // blend toward a small blurred average as that distance moves away from dofFocusDistance.
+    // depthSampler is nearest + clamp (see Main.cpp) - linearly filtering raw depth would blend
+    // foreground/background distances at silhouette edges into a meaningless value, same reasoning
+    // as the shadow maps' sampler.
+    if (params.dofStrength > 0.0) {
+        float rawDepth = depthTexture.sample(depthSampler, uv);
+        float linearDepth = (CAMERA_FAR_PLANE * CAMERA_NEAR_PLANE)
+                           / (CAMERA_FAR_PLANE - rawDepth * (CAMERA_FAR_PLANE - CAMERA_NEAR_PLANE));
+        float coc = saturate(abs(linearDepth - params.dofFocusDistance) / max(params.dofFocusRange, 1e-4))
+                  * params.dofStrength;
+
+        if (coc > 0.0) {
+            constexpr float2 diskOffsets[8] = {
+                float2(1.0, 0.0),       float2(0.7071, 0.7071),
+                float2(0.0, 1.0),       float2(-0.7071, 0.7071),
+                float2(-1.0, 0.0),      float2(-0.7071, -0.7071),
+                float2(0.0, -1.0),      float2(0.7071, -0.7071),
+            };
+            float2 blurRadius = texelSize * coc * 8.0; // *8 so a moderate dofStrength reads as a visible blur, not a faint softening
+            float3 blurSum = float3(0.0);
+            for (int i = 0; i < 8; i++) {
+                blurSum += hdrTexture.sample(smp, uv + diskOffsets[i] * blurRadius).rgb;
+            }
+            hdrColor = mix(hdrColor, blurSum / 8.0, coc);
+        }
     }
 
     float3 color = resolveColor(hdrColor, params);

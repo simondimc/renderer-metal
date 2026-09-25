@@ -128,6 +128,7 @@ simd::float3 objectUp(const SceneObject& obj) {
 //   sharpen <v>             (global - see Scene::sharpenStrength)
 //   colorgrading <saturation> <contrast>    (global - see Scene::colorGradingSaturation/Contrast)
 //   bloom <threshold> <intensity>           (global - see Scene::bloomThreshold/Intensity)
+//   dof <focusDistance> <focusRange> <strength>  (global - see Scene::dofFocusDistance/Range/Strength)
 //   object <name>          (a Cube or Mesh) or  light <name>          (a Light)
 //   position <x> <y> <z>
 //   rotation <x> <y> <z>    (degrees; Cube/Mesh always, Light only for Directional/Spot/Area)
@@ -157,6 +158,7 @@ bool saveScene(const Scene& scene, const std::string& path) {
     out << "sharpen " << scene.sharpenStrength << "\n";
     out << "colorgrading " << scene.colorGradingSaturation << " " << scene.colorGradingContrast << "\n";
     out << "bloom " << scene.bloomThreshold << " " << scene.bloomIntensity << "\n";
+    out << "dof " << scene.dofFocusDistance << " " << scene.dofFocusRange << " " << scene.dofStrength << "\n";
     for (const auto& obj : scene.objects) {
         out << (obj.type == SceneObjectType::Light ? "light " : "object ") << obj.name << "\n";
         out << "position " << obj.position[0] << " " << obj.position[1] << " " << obj.position[2] << "\n";
@@ -219,6 +221,8 @@ bool loadScene(Scene& scene, const std::string& path) {
             ss >> loaded.colorGradingSaturation >> loaded.colorGradingContrast;
         } else if (keyword == "bloom") {
             ss >> loaded.bloomThreshold >> loaded.bloomIntensity;
+        } else if (keyword == "dof") {
+            ss >> loaded.dofFocusDistance >> loaded.dofFocusRange >> loaded.dofStrength;
         } else if (keyword == "object" || keyword == "light") {
             SceneObject obj;
             obj.type = (keyword == "light") ? SceneObjectType::Light : SceneObjectType::Cube;

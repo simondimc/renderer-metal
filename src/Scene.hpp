@@ -61,6 +61,12 @@ struct Scene {
     // blend intensity (0 = off) - see the bloomExtract/blur passes in Main.cpp and Shader.metal.
     float bloomThreshold = 1.0f;
     float bloomIntensity = 0.0f;
+    // Depth of Field: world-space distance from the camera that stays sharp, the range either
+    // side of it that also stays sharp, and the blend strength of the out-of-focus blur (0 = off)
+    // - see postProcessFragmentMain in Shader.metal.
+    float dofFocusDistance = 10.0f;
+    float dofFocusRange = 5.0f;
+    float dofStrength = 0.0f;
 };
 
 // Caps the per-frame GPU uniform buffer sizing in Main.cpp (each object gets its own aligned slot)

@@ -35,6 +35,9 @@ void drawSceneEditorPanel(Scene& scene, int& selectedIndex) {
         ImGui::DragFloat("Contrast", &scene.colorGradingContrast, 0.01f, 0.0f, 2.0f);
         ImGui::DragFloat("Bloom Threshold", &scene.bloomThreshold, 0.01f, 0.0f, 10.0f);
         ImGui::DragFloat("Bloom Intensity", &scene.bloomIntensity, 0.01f, 0.0f, 5.0f);
+        ImGui::DragFloat("DoF Focus Distance", &scene.dofFocusDistance, 0.1f, 0.0f, 100.0f);
+        ImGui::DragFloat("DoF Focus Range", &scene.dofFocusRange, 0.1f, 0.01f, 50.0f);
+        ImGui::DragFloat("DoF Strength", &scene.dofStrength, 0.01f, 0.0f, 1.0f);
         ImGui::TreePop();
     }
     ImGui::Separator();

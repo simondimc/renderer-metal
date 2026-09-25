@@ -31,7 +31,7 @@
 - [x] Chromatic Aberration
 - [x] Film Grain
 - [x] Color Grading (Saturation/Contrast - not LUT-based yet)
-- Depth of Field
+- [x] Depth of Field
 - Motion Blur
 - [x] Sharpening
 - Lens Flare
