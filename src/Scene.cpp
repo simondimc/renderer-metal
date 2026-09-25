@@ -137,6 +137,8 @@ simd::float3 objectUp(const SceneObject& obj) {
 //   scale <x> <y> <z>       (Cube/Mesh only)
 //   material <r> <g> <b> <metallic> <roughness> <ao> <useTextures 0|1>   (Cube/Mesh only - see
 //                            Material in Scene.hpp; absent = defaults, so old scene files load unchanged)
+//   texture <set name>      (Cube/Mesh only - folder name under texture/, see Material::textureSet;
+//                            absent = kDefaultTextureSet, so old scene files load unchanged)
 //   meshpath <path>         (Mesh only - presence of this line is what makes an "object" block a
 //                            Mesh rather than a Cube, so old scene files without it still load as
 //                            Cube unchanged)
@@ -187,6 +189,7 @@ bool saveScene(const Scene& scene, const std::string& path) {
             const Material& m = obj.material;
             out << "material " << m.albedo[0] << " " << m.albedo[1] << " " << m.albedo[2] << " "
                 << m.metallic << " " << m.roughness << " " << m.ao << " " << (m.useTextures ? 1 : 0) << "\n";
+            out << "texture " << m.textureSet << "\n";
             if (obj.type == SceneObjectType::Mesh) {
                 out << "meshpath " << obj.meshPath << "\n";
             }
@@ -258,6 +261,11 @@ bool loadScene(Scene& scene, const std::string& path) {
             int useTextures = 1;
             ss >> m.albedo[0] >> m.albedo[1] >> m.albedo[2] >> m.metallic >> m.roughness >> m.ao >> useTextures;
             m.useTextures = useTextures != 0;
+        } else if (haveCurrent && keyword == "texture") {
+            std::string& set = loaded.objects.back().material.textureSet;
+            std::getline(ss, set);
+            size_t start = set.find_first_not_of(' ');
+            set = (start == std::string::npos) ? kDefaultTextureSet : set.substr(start);
         } else if (haveCurrent && keyword == "color") {
             float* c = loaded.objects.back().color;
             ss >> c[0] >> c[1] >> c[2];

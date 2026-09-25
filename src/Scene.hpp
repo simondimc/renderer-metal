@@ -18,9 +18,13 @@ enum class LightType { Point, Directional, Spot, Area };
 // the order of TONE_MAP_* defines in Shader.metal.
 enum class ToneMapOperator { Clamp, Reinhard, ACES, Uncharted2 };
 
-// Metallic-roughness PBR material (see fragmentMain in Shader.metal). There is a single global
-// albedo/normal/roughness/metallic texture set for now (loaded in Main.cpp), so materials don't pick
-// textures per object yet - useTextures just chooses between that set and flat scalar values.
+// Name of the texture set (a folder under texture/, see TextureLibrary.hpp) that new objects and
+// scene files without a "texture" line use.
+constexpr const char* kDefaultTextureSet = "metal_plate_4k";
+
+// Metallic-roughness PBR material (see fragmentMain in Shader.metal). Cubes and .obj meshes take
+// their albedo/normal/roughness/metallic maps from the texture set named by textureSet (glTF meshes
+// bring their own materials instead); useTextures chooses between those maps and flat scalar values.
 //   useTextures = true:  final albedo = texture * albedo, metallic = metalTexture * metallic,
 //                        roughness = roughTexture * roughness, and the normal map is applied. The
 //                        defaults (all 1) therefore leave the textures untouched.
@@ -31,6 +35,7 @@ struct Material {
     float roughness = 1.0f;  // 0 = mirror-smooth, 1 = fully rough
     float ao = 1.0f;         // ambient occlusion multiplier on the (still constant) ambient term
     bool useTextures = true;
+    std::string textureSet = kDefaultTextureSet;
 };
 
 // A single instance in the scene - either a cube (mesh/textures are shared, only the transform

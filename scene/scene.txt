@@ -15,16 +15,19 @@ position 0 0 0
 rotation 0 0 0
 scale 1 1 1
 material 1 1 1 1 1 1 1
+texture metal_plate_4k
 object Cube 2
 position 0 -1 0
 rotation 0 0 0
 scale 100 1 100
 material 1 1 1 1 1 1 1
+texture metal_plate_4k
 object Cube 3
 position 4.15 -0.2 2.8
 rotation 0 0 0
 scale 1 1 1
 material 1 1 1 1 1 1 1
+texture metal_plate_4k
 light Light 1
 position -2.95 0.3 2
 lighttype point
@@ -55,10 +58,18 @@ position -4.4 -0.65 3
 rotation 0 0 0
 scale 1 1 1
 material 1 1 1 1 1 1 1
+texture metal_plate_4k
 meshpath ../model/Duck.glb
 object Mesh 2
 position 0 -0.5 9
 rotation 0 34 0
 scale 10 10 10
 material 1 1 1 1 1 1 1
+texture metal_plate_4k
 meshpath ../model/ABeautifulGame.glb
+object Cube 4
+position -1.45 0 0
+rotation 0 0 0
+scale 1 1 1
+material 1 1 1 0 1 1 1
+texture smoked_walnut_veneer_4k

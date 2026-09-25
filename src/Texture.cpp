@@ -62,29 +62,47 @@ MTL::Texture* loadTextureFromMemory(MTL::Device* device, const unsigned char* da
     return texture;
 }
 
-MTL::Texture* loadPackedORMTexture(MTL::Device* device, const char* roughnessPath, const char* metallicPath) {
+MTL::Texture* loadPackedORMTexture(MTL::Device* device, const char* occlusionPath, const char* roughnessPath,
+                                   const char* metallicPath) {
     stbi_set_flip_vertically_on_load(true);
 
-    int rw, rh, mw, mh, channels;
-    unsigned char* rough = stbi_load(roughnessPath, &rw, &rh, &channels, STBI_grey);
-    unsigned char* metal = stbi_load(metallicPath, &mw, &mh, &channels, STBI_grey);
-    if (!rough || !metal || rw != mw || rh != mh) {
-        fprintf(stderr, "Failed to load/match ORM inputs %s + %s\n", roughnessPath, metallicPath);
-        if (rough) stbi_image_free(rough);
-        if (metal) stbi_image_free(metal);
-        return nullptr;
+    // R = occlusion, G = roughness, B = metallic; a missing map falls back to fillValue.
+    const char* paths[3] = {occlusionPath, roughnessPath, metallicPath};
+    const unsigned char fillValues[3] = {255, 255, 0};
+    unsigned char* channelData[3] = {nullptr, nullptr, nullptr};
+    int w = 0, h = 0;
+    bool ok = true;
+    for (int c = 0; c < 3 && ok; c++) {
+        if (!paths[c]) continue;
+        int cw, ch, channels;
+        channelData[c] = stbi_load(paths[c], &cw, &ch, &channels, STBI_grey);
+        if (!channelData[c]) {
+            fprintf(stderr, "Failed to load ORM input %s: %s\n", paths[c], stbi_failure_reason());
+            ok = false;
+        } else if (w == 0) {
+            w = cw;
+            h = ch;
+        } else if (cw != w || ch != h) {
+            fprintf(stderr, "ORM input %s is %dx%d, expected %dx%d\n", paths[c], cw, ch, w, h);
+            ok = false;
+        }
     }
 
-    std::vector<unsigned char> packed((size_t)rw * rh * 4);
-    for (size_t i = 0; i < (size_t)rw * rh; i++) {
-        packed[i * 4 + 0] = 255;      // occlusion: none baked
-        packed[i * 4 + 1] = rough[i]; // roughness
-        packed[i * 4 + 2] = metal[i]; // metallic
-        packed[i * 4 + 3] = 255;
+    MTL::Texture* texture = nullptr;
+    if (ok && w > 0) {
+        std::vector<unsigned char> packed((size_t)w * h * 4);
+        for (size_t i = 0; i < (size_t)w * h; i++) {
+            for (int c = 0; c < 3; c++) {
+                packed[i * 4 + c] = channelData[c] ? channelData[c][i] : fillValues[c];
+            }
+            packed[i * 4 + 3] = 255;
+        }
+        texture = uploadRGBA8(device, packed.data(), w, h, /*isSRGB=*/false, true);
     }
-    stbi_image_free(rough);
-    stbi_image_free(metal);
-    return uploadRGBA8(device, packed.data(), rw, rh, /*isSRGB=*/false, true);
+    for (int c = 0; c < 3; c++) {
+        if (channelData[c]) stbi_image_free(channelData[c]);
+    }
+    return texture;
 }
 
 MTL::Texture* createSolidTexture(MTL::Device* device, unsigned char r, unsigned char g, unsigned char b,

@@ -1,5 +1,6 @@
 #include "SceneEditorPanel.hpp"
 #include "imgui.h"
+#include <algorithm>
 #include <cstring>
 #include <string>
 
@@ -13,11 +14,21 @@ int countOfType(const Scene& scene, SceneObjectType type) {
     return count;
 }
 
+// glTF meshes bring their own materials and textures, so a texture set only applies to everything else
+bool usesTextureSet(const SceneObject& obj) {
+    if (obj.type != SceneObjectType::Mesh) return true;
+    auto endsWith = [&](const char* ext) {
+        size_t n = strlen(ext);
+        return obj.meshPath.size() >= n && obj.meshPath.compare(obj.meshPath.size() - n, n, ext) == 0;
+    };
+    return !endsWith(".gltf") && !endsWith(".glb");
+}
+
 // Order must match ToneMapOperator in Scene.hpp
 constexpr const char* kToneMapOperatorNames[] = {"Clamp", "Reinhard", "ACES", "Uncharted2"};
 } // namespace
 
-void drawSceneEditorPanel(Scene& scene, int& selectedIndex) {
+void drawSceneEditorPanel(Scene& scene, int& selectedIndex, TextureLibrary& textureLibrary) {
     ImGui::Begin("Scene Editor");
 
     ImGui::DragFloat("Exposure", &scene.exposure, 0.01f, 0.01f, 10.0f);
@@ -140,6 +151,27 @@ void drawSceneEditorPanel(Scene& scene, int& selectedIndex) {
             if (ImGui::TreeNodeEx("Material", ImGuiTreeNodeFlags_DefaultOpen)) {
                 Material& m = obj.material;
                 ImGui::Checkbox("Use Textures", &m.useTextures);
+                if (usesTextureSet(obj)) {
+                    const auto& sets = textureLibrary.setNames();
+                    bool known = std::find(sets.begin(), sets.end(), m.textureSet) != sets.end();
+                    std::string preview = known ? m.textureSet : m.textureSet + " (missing)";
+                    ImGui::BeginDisabled(!m.useTextures);
+                    if (ImGui::BeginCombo("Texture Set", preview.c_str())) {
+                        for (const std::string& name : sets) {
+                            if (ImGui::Selectable(name.c_str(), name == m.textureSet)) {
+                                m.textureSet = name;
+                            }
+                        }
+                        ImGui::EndCombo();
+                    }
+                    ImGui::EndDisabled();
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Rescan")) {
+                        textureLibrary.rescan();
+                    }
+                } else {
+                    ImGui::TextDisabled("Texture set: from the glTF file");
+                }
                 ImGui::ColorEdit3("Albedo", m.albedo);
                 ImGui::SliderFloat("Metallic", &m.metallic, 0.0f, 1.0f);
                 ImGui::SliderFloat("Roughness", &m.roughness, 0.0f, 1.0f);

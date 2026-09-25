@@ -15,9 +15,12 @@ MTL::Texture* loadTexture(MTL::Device* device, const char* path, bool isSRGB);
 // embedded in a .glb - and never flips it: glTF UVs put (0,0) at the image's top-left.
 MTL::Texture* loadTextureFromMemory(MTL::Device* device, const unsigned char* data, size_t size, bool isSRGB);
 
-// Packs two single-channel images (same size) into one glTF-style "ORM" texture: R = 1 (no baked
-// occlusion), G = roughness, B = metallic. Non-sRGB. Flipped like loadTexture.
-MTL::Texture* loadPackedORMTexture(MTL::Device* device, const char* roughnessPath, const char* metallicPath);
+// Packs up to three single-channel images (same size) into one glTF-style "ORM" texture: R =
+// occlusion, G = roughness, B = metallic. Any path may be null when the set lacks that map; it then
+// gets a neutral constant (no occlusion, fully rough, non-metal). At least one path is required.
+// Non-sRGB. Flipped like loadTexture.
+MTL::Texture* loadPackedORMTexture(MTL::Device* device, const char* occlusionPath, const char* roughnessPath,
+                                   const char* metallicPath);
 
 // A 1x1 texture of one flat color - stands in for a material's missing albedo/normal/ORM map.
 MTL::Texture* createSolidTexture(MTL::Device* device, unsigned char r, unsigned char g, unsigned char b,

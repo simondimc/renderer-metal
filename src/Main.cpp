@@ -18,7 +18,9 @@
 #include "Scene.hpp"
 #include "SceneEditorPanel.hpp"
 #include "Shadow.hpp"
+#include <memory>
 #include "Texture.hpp"
+#include "TextureLibrary.hpp"
 #include "UI.hpp"
 #include "Uniforms.hpp"
 #include "imgui.h"
@@ -388,17 +390,10 @@ int main() {
     maskDepthDesc->setDepthWriteEnabled(false);
     MTL::DepthStencilState* maskDepthState = device->newDepthStencilState(maskDepthDesc);
 
-    // run.sh/clean_run.sh launch the binary with the build/ directory as cwd
-    MTL::Texture* colorTexture = loadTexture(device, "../texture/metal_plate_4k/textures/metal_plate_diff_4k.jpg", /*isSRGB=*/true);
-    // Converted offline from the source EXR (DWAA compression, unsupported by stb_image) via ffmpeg.
-    // Normal maps store linear tangent-space vectors, not color, so this one stays non-sRGB.
-    MTL::Texture* normalTexture = loadTexture(device, "../texture/metal_plate_4k/textures/metal_plate_nor_gl_4k.png", /*isSRGB=*/false);
-    // Roughness/metallic are also converted offline from EXR; both are linear scalar data (not
-    // color). Packed into one glTF-style ORM texture so this default set and glTF materials go
-    // through the same shader path.
-    MTL::Texture* ormTexture = loadPackedORMTexture(device, "../texture/metal_plate_4k/textures/metal_plate_rough_4k.png",
-                                                    "../texture/metal_plate_4k/textures/metal_plate_metal_4k.png");
-    if (!colorTexture || !normalTexture || !ormTexture) return -1;
+    // run.sh/clean_run.sh launch the binary with the build/ directory as cwd. Each subfolder of
+    // texture/ is a set the Scene Editor can assign per object; sets load on first use.
+    auto textureLibraryPtr = std::make_unique<TextureLibrary>(device, "../texture");
+    TextureLibrary& textureLibrary = *textureLibraryPtr;
     // Stand-ins for a glTF material's missing maps: white (albedo/ORM - leaves the factors as-is)
     // and a straight-up tangent-space normal (leaves the vertex normal unperturbed).
     MTL::Texture* whiteTexture = createSolidTexture(device, 255, 255, 255, 255, /*isSRGB=*/false);
@@ -588,7 +583,7 @@ int main() {
 
             beginUIFrame(overlayRPD);
             if (camera.uiMode) {
-                drawSceneEditorPanel(scene, selectedObjectIndex);
+                drawSceneEditorPanel(scene, selectedObjectIndex, textureLibrary);
             }
 
             // Lazily load any newly-referenced Mesh asset - editing the path field or adding a
@@ -904,12 +899,14 @@ int main() {
                         );
                     }
                 } else {
-                    // Cube / .obj: the default (metal plate) texture set with neutral factors.
+                    // Cube / .obj: the object's Scene Editor texture set. An unknown or failed set
+                    // falls back to the neutral stand-ins, so the material's flat values apply.
+                    const TextureSet* set = textureLibrary.get(r.obj->material.textureSet);
                     static const MaterialParams defaultParams;
-                    hdrEncoder->setFragmentTexture(colorTexture, 0);
-                    hdrEncoder->setFragmentTexture(normalTexture, 1);
-                    hdrEncoder->setFragmentTexture(ormTexture, kOrmTextureSlot);
-                    hdrEncoder->setFragmentBytes(&defaultParams, sizeof(MaterialParams), 2);
+                    hdrEncoder->setFragmentTexture(set && set->albedo ? set->albedo : whiteTexture, 0);
+                    hdrEncoder->setFragmentTexture(set && set->normal ? set->normal : flatNormalTexture, 1);
+                    hdrEncoder->setFragmentTexture(set && set->orm ? set->orm : whiteTexture, kOrmTextureSlot);
+                    hdrEncoder->setFragmentBytes(set ? &set->params : &defaultParams, sizeof(MaterialParams), 2);
                     hdrEncoder->drawIndexedPrimitives(
                         MTL::PrimitiveTypeTriangle,
                         r.indexCount,
@@ -1146,8 +1143,6 @@ int main() {
     shadowSamplerDesc->release();
     samplerState->release();
     samplerDesc->release();
-    colorTexture->release();
-    normalTexture->release();
     for (size_t i = 0; i < kMaxLights; i++) {
         shadowCubeMaps[i]->release();
     }
@@ -1189,6 +1184,7 @@ int main() {
     library->release();
     vertexBuffer->release();
     indexBuffer->release();
+    textureLibraryPtr.reset(); // releases every loaded texture set
     for (auto& entry : meshCache) {
         if (entry.second.vertexBuffer) entry.second.vertexBuffer->release();
         if (entry.second.indexBuffer) entry.second.indexBuffer->release();
