@@ -34,7 +34,7 @@
 - [x] Depth of Field
 - [x] Motion Blur
 - [x] Sharpening
-- Lens Flare
+- [x] Lens Flare
 - Outline / Edge Detection
 
 ### Materials & Shading

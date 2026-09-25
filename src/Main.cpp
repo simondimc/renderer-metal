@@ -805,6 +805,7 @@ int main() {
                 float dofFocusRange;
                 float dofStrength;
                 float motionBlurStrength;
+                float lensFlareStrength;
                 float time;
             } postParams = {
                 reprojectionMatrix,
@@ -815,9 +816,42 @@ int main() {
                 scene.bloomIntensity,
                 scene.dofFocusDistance, scene.dofFocusRange, scene.dofStrength,
                 scene.motionBlurStrength,
+                scene.lensFlareStrength,
                 currentTime
             };
             postEncoder->setFragmentBytes(&postParams, sizeof(postParams), 0);
+
+            // Lens flare light data: each active light's screen-space position/depth (projected
+            // through this frame's camera, same currentViewProj used for motion blur's
+            // reprojectionMatrix above) plus its color - see LensFlareLight's comment in
+            // Shader.metal. Field order/count must match that struct exactly, same raw-byte-copy
+            // rule as PostProcessParams. Always kMaxLights slots (inactive ones left zeroed, i.e.
+            // active=0) for the same fixed-size-array reason as the main pass's shadow map arrays.
+            struct LensFlareLightGPU {
+                float screenX, screenY, ndcDepth, active, colorR, colorG, colorB, pad;
+            };
+            LensFlareLightGPU lensFlareLights[kMaxLights] = {};
+            if (scene.lensFlareStrength > 0.0f) {
+                for (int i = 0; i < lightCount && i < (int)kMaxLights; i++) {
+                    simd::float4 clip = currentViewProj * simd_make_float4(
+                        lights[i].position.x, lights[i].position.y, lights[i].position.z, 1.0f
+                    );
+                    if (clip.w <= 0.0f) continue;
+                    simd::float3 ndc = simd_make_float3(clip.x / clip.w, clip.y / clip.w, clip.z / clip.w);
+                    if (fabsf(ndc.x) > 1.0f || fabsf(ndc.y) > 1.0f) continue;
+
+                    LensFlareLightGPU& entry = lensFlareLights[i];
+                    entry.screenX = ndc.x * 0.5f + 0.5f;
+                    entry.screenY = 0.5f - ndc.y * 0.5f; // matches the uv.y-flip convention used throughout the post pass
+                    entry.ndcDepth = ndc.z;
+                    entry.active = 1.0f;
+                    entry.colorR = lights[i].color.x * lights[i].intensity;
+                    entry.colorG = lights[i].color.y * lights[i].intensity;
+                    entry.colorB = lights[i].color.z * lights[i].intensity;
+                }
+            }
+            postEncoder->setFragmentBytes(lensFlareLights, sizeof(lensFlareLights), 1);
+
             postEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, (NS::UInteger)3);
             postEncoder->endEncoding();
 

@@ -130,6 +130,7 @@ simd::float3 objectUp(const SceneObject& obj) {
 //   bloom <threshold> <intensity>           (global - see Scene::bloomThreshold/Intensity)
 //   dof <focusDistance> <focusRange> <strength>  (global - see Scene::dofFocusDistance/Range/Strength)
 //   motionblur <strength>   (global - see Scene::motionBlurStrength)
+//   lensflare <strength>    (global - see Scene::lensFlareStrength)
 //   object <name>          (a Cube or Mesh) or  light <name>          (a Light)
 //   position <x> <y> <z>
 //   rotation <x> <y> <z>    (degrees; Cube/Mesh always, Light only for Directional/Spot/Area)
@@ -161,6 +162,7 @@ bool saveScene(const Scene& scene, const std::string& path) {
     out << "bloom " << scene.bloomThreshold << " " << scene.bloomIntensity << "\n";
     out << "dof " << scene.dofFocusDistance << " " << scene.dofFocusRange << " " << scene.dofStrength << "\n";
     out << "motionblur " << scene.motionBlurStrength << "\n";
+    out << "lensflare " << scene.lensFlareStrength << "\n";
     for (const auto& obj : scene.objects) {
         out << (obj.type == SceneObjectType::Light ? "light " : "object ") << obj.name << "\n";
         out << "position " << obj.position[0] << " " << obj.position[1] << " " << obj.position[2] << "\n";
@@ -227,6 +229,8 @@ bool loadScene(Scene& scene, const std::string& path) {
             ss >> loaded.dofFocusDistance >> loaded.dofFocusRange >> loaded.dofStrength;
         } else if (keyword == "motionblur") {
             ss >> loaded.motionBlurStrength;
+        } else if (keyword == "lensflare") {
+            ss >> loaded.lensFlareStrength;
         } else if (keyword == "object" || keyword == "light") {
             SceneObject obj;
             obj.type = (keyword == "light") ? SceneObjectType::Light : SceneObjectType::Cube;

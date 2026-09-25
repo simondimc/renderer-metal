@@ -370,7 +370,23 @@ struct PostProcessParams {
     float dofFocusRange;              // distance either side of dofFocusDistance that stays sharp
     float dofStrength;                // 0 = off - max blend-in amount of the out-of-focus blur
     float motionBlurStrength;         // 0 = off - how far (in UV space) the smear reaches
+    float lensFlareStrength;          // 0 = off - see LensFlareLight/lensFlareLights below
     float time;                       // seconds - animates the film grain so it doesn't look static
+};
+
+// One active light's screen-space data for the lens flare pass (see Main.cpp, which projects
+// SceneLight::position through the current camera view-projection to fill this each frame). Plain
+// floats throughout, like PostProcessParams, so its layout can't drift from the mirrored C++
+// struct through a vector type's alignment padding.
+struct LensFlareLight {
+    float screenX;
+    float screenY;
+    float ndcDepth; // this light's own projected depth (Metal's [0,1]) - for the occlusion test
+    float active;   // >0.5 = on-screen and in front of the camera; 0 = ignore this slot
+    float colorR;
+    float colorG;
+    float colorB;
+    float _pad;
 };
 
 // Base HDR scene color plus bloom, at one UV - used everywhere below that averages several taps of
@@ -409,6 +425,7 @@ fragment float4 postProcessFragmentMain(PostProcessVertexOut in [[stage_in]],
                                         texture2d<float> bloomTexture [[texture(1)]],
                                         depth2d<float> depthTexture [[texture(2)]],
                                         constant PostProcessParams& params [[buffer(0)]],
+                                        constant LensFlareLight* lensFlareLights [[buffer(1)]],
                                         sampler smp [[sampler(0)]],
                                         sampler depthSampler [[sampler(1)]]) {
     float2 uv = in.uv;
@@ -486,6 +503,41 @@ fragment float4 postProcessFragmentMain(PostProcessVertexOut in [[stage_in]],
                 blurSum += sampleSceneColor(sampleUV, hdrTexture, bloomTexture, smp, params);
             }
             hdrColor = blurSum / float(sampleCount);
+        }
+    }
+
+    // Lens Flare: added last (after Depth of Field/Motion Blur, not before) so their multi-tap
+    // averaging can't dilute it the same way it used to dilute bloom - a flare is an artifact of
+    // the lens/camera itself, not scene light, so it shouldn't be softened by effects that operate
+    // on the scene's own geometry. For each active light (screen-projected on the CPU each frame -
+    // see LensFlareLight's comment), draws a soft glow at its screen position plus a few "ghost"
+    // artifacts strung along the line through the screen center - the secondary reflections a real
+    // lens catches when pointed near a bright source.
+    if (params.lensFlareStrength > 0.0) {
+        for (int i = 0; i < MAX_LIGHTS; i++) {
+            LensFlareLight light = lensFlareLights[i];
+            if (light.active < 0.5) continue;
+
+            float2 lightUV = float2(light.screenX, light.screenY);
+            // Smaller depth = closer to camera (Metal's [0,1], 0 = near). Occluded (skip this
+            // light entirely) if something in the depth buffer sits closer than the light itself.
+            float occluderDepth = depthTexture.sample(depthSampler, lightUV);
+            if (occluderDepth < light.ndcDepth - 0.001) continue;
+
+            float3 flareColor = float3(light.colorR, light.colorG, light.colorB);
+
+            float glowDist = length(uv - lightUV);
+            float glow = exp(-glowDist * glowDist * 400.0);
+            hdrColor += flareColor * glow * params.lensFlareStrength;
+
+            float2 towardCenter = float2(0.5, 0.5) - lightUV;
+            constexpr float ghostT[4] = {0.3, 0.6, 1.0, 1.4}; // position along the light->center line
+            for (int g = 0; g < 4; g++) {
+                float2 ghostUV = lightUV + towardCenter * ghostT[g];
+                float ghostDist = length(uv - ghostUV);
+                float ghost = exp(-ghostDist * ghostDist * 2000.0);
+                hdrColor += flareColor * ghost * params.lensFlareStrength * 0.3;
+            }
         }
     }
 

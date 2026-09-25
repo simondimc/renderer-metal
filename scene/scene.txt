@@ -9,6 +9,7 @@ colorgrading 1 1
 bloom 0.03 0.57
 dof 3 3 0.4
 motionblur 3
+lensflare 0.001
 object Cube
 position 0 0 0
 rotation 0 0 0

@@ -70,6 +70,9 @@ struct Scene {
     // Motion Blur: camera-only (no per-object velocity data) - 0 = off, higher smears further
     // along the camera's own frame-to-frame motion. See Main.cpp's reprojectionMatrix.
     float motionBlurStrength = 0.0f;
+    // Lens Flare: 0 = off - glow + ghost artifacts for lights on-screen and unoccluded. See
+    // LensFlareLight in Shader.metal and Main.cpp's per-light screen projection.
+    float lensFlareStrength = 0.0f;
 };
 
 // Caps the per-frame GPU uniform buffer sizing in Main.cpp (each object gets its own aligned slot)
