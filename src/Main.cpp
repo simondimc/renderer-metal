@@ -431,12 +431,16 @@ int main() {
     bool toggleKeyWasPressed = false;
     bool leftMouseWasPressed = false; // edge-detects a click for the Scene Editor's picking, below
 
-    // Last frame's camera view-projection, for motion blur's reprojection (see postParams below).
-    // Initialized to this frame's own VP on first use (a few lines into the loop) rather than
-    // identity, so frame 1 - before anything has "last frame" data yet - reprojects to a no-op
-    // instead of a huge bogus jump.
-    simd::float4x4 previousViewProj = matrix_identity_float4x4;
-    bool havePreviousViewProj = false;
+    // Motion blur's camera-velocity tracking (see the reprojectionMatrix block in the loop below):
+    // last tracked pose/time plus a smoothed velocity, so the blur follows how fast the camera is
+    // *actually moving* rather than that one frame's raw pose delta - which is uneven with mouse
+    // look (events arrive in bursts, and frame times vary), making the blur length pulse from frame
+    // to frame and the image look like it's jumping.
+    simd::float3 lastCamPosition = camera.position;
+    float lastCamYaw = camera.yaw, lastCamPitch = camera.pitch;
+    float lastCamTime = (float)glfwGetTime();
+    simd::float3 smoothedVelPosition = simd_make_float3(0.0f, 0.0f, 0.0f);
+    float smoothedVelYaw = 0.0f, smoothedVelPitch = 0.0f;
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -529,18 +533,31 @@ int main() {
             dispatch_semaphore_wait(frameBoundarySemaphore, DISPATCH_TIME_FOREVER);
             MTL::Buffer* uniformBuffer = uniformBuffers[frameIndex];
 
-            // Motion blur's reprojection matrix (see postParams below): computed from this frame's
-            // and last frame's bare camera view-projections (no per-object model matrix - see
-            // computeViewProj in Uniforms.cpp), before previousViewProj is overwritten for next
-            // frame. On the very first frame there's no real "last frame" yet, so it's seeded to
-            // this frame's own VP - reprojecting to itself is a no-op rather than a bogus jump.
+            // Motion blur's reprojection matrix (see postParams below). Instead of "last frame's
+            // camera", it reprojects to a reference pose one shutter-time behind the current one
+            // along the camera's *smoothed* velocity: refPose = pose - velocity * shutterTime. That
+            // makes the blur length depend on how fast the camera is moving, not on this frame's
+            // raw pose delta (uneven with mouse look) or on the frame rate, and it dies out within
+            // a few tens of ms of the camera stopping. Strength scales the shutter time (1 unit =
+            // 8ms, roughly one 120Hz frame of exposure).
             simd::float4x4 currentViewProj = computeViewProj(camera, liveWidth, liveHeight);
-            if (!havePreviousViewProj) {
-                previousViewProj = currentViewProj;
-                havePreviousViewProj = true;
-            }
-            simd::float4x4 reprojectionMatrix = previousViewProj * simd_inverse(currentViewProj);
-            previousViewProj = currentViewProj;
+            float poseDt = fmaxf(currentTime - lastCamTime, 1e-4f);
+            constexpr float kVelocitySmoothingSeconds = 0.04f;
+            float smoothingAlpha = 1.0f - expf(-poseDt / kVelocitySmoothingSeconds);
+            smoothedVelPosition += ((camera.position - lastCamPosition) / poseDt - smoothedVelPosition) * smoothingAlpha;
+            smoothedVelYaw += ((camera.yaw - lastCamYaw) / poseDt - smoothedVelYaw) * smoothingAlpha;
+            smoothedVelPitch += ((camera.pitch - lastCamPitch) / poseDt - smoothedVelPitch) * smoothingAlpha;
+            lastCamPosition = camera.position;
+            lastCamYaw = camera.yaw;
+            lastCamPitch = camera.pitch;
+            lastCamTime = currentTime;
+
+            float shutterSeconds = 0.008f * scene.motionBlurStrength;
+            Camera referenceCamera = camera;
+            referenceCamera.position -= smoothedVelPosition * shutterSeconds;
+            referenceCamera.yaw -= smoothedVelYaw * shutterSeconds;
+            referenceCamera.pitch -= smoothedVelPitch * shutterSeconds;
+            simd::float4x4 reprojectionMatrix = computeViewProj(referenceCamera, liveWidth, liveHeight) * simd_inverse(currentViewProj);
 
             // Overlay pass descriptor (gizmo/light markers/rays + ImGui - see the pass split
             // below): drawn on top of the already-resolved drawable, after the HDR scene pass and

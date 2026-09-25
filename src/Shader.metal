@@ -504,15 +504,36 @@ fragment float4 postProcessFragmentMain(PostProcessVertexOut in [[stage_in]],
         if (previousClip.w > 0.0) {
             float2 previousNDC = previousClip.xy / previousClip.w;
             float2 previousUV = previousNDC * float2(0.5, -0.5) + float2(0.5, 0.5);
-            float2 motionVector = (uv - previousUV) * params.motionBlurStrength;
+            // Strength is already baked into reprojectionMatrix (as shutter time, see Main.cpp), so
+            // this is the actual smear to apply - not scaled again here.
+            float2 motionVector = uv - previousUV;
 
-            constexpr int sampleCount = 8;
-            float3 blurSum = hdrColor;
-            for (int i = 1; i < sampleCount; i++) {
-                float2 sampleUV = uv - motionVector * (float(i) / float(sampleCount - 1));
-                blurSum += sampleSceneColor(sampleUV, hdrTexture, bloomTexture, smp, params);
+            // Under half a texel of smear is invisible - skipping the 7 extra (2-sample) taps there
+            // makes motion blur free while the camera is static, instead of always paying full cost.
+            float smearTexels = length(motionVector / texelSize);
+            if (smearTexels > 0.5) {
+                // A fixed 8 taps stretched over a long smear (high strength / fast camera) lands
+                // them tens of pixels apart, which reads as discrete "ghost" copies of the frame -
+                // stepped and laggy-looking, not a smooth blur. So: cap the smear length (a real
+                // shutter never blurs across many frames of travel), scale the tap count with the
+                // remaining length (~1 tap per 6px, 4..12), and jitter each pixel's tap positions
+                // with interleaved-gradient noise so any leftover banding turns into fine grain.
+                constexpr float maxSmearTexels = 48.0;
+                if (smearTexels > maxSmearTexels) {
+                    motionVector *= maxSmearTexels / smearTexels;
+                    smearTexels = maxSmearTexels;
+                }
+                int sampleCount = clamp(int(smearTexels / 6.0) + 2, 4, 12);
+                float jitter = fract(52.9829189 * fract(dot(in.position.xy, float2(0.06711056, 0.00583715))));
+
+                float3 blurSum = hdrColor;
+                for (int i = 1; i < sampleCount; i++) {
+                    float t = (float(i) + jitter - 0.5) / float(sampleCount - 1);
+                    float2 sampleUV = uv - motionVector * t;
+                    blurSum += sampleSceneColor(sampleUV, hdrTexture, bloomTexture, smp, params);
+                }
+                hdrColor = blurSum / float(sampleCount);
             }
-            hdrColor = blurSum / float(sampleCount);
         }
     }
 
