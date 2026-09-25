@@ -73,6 +73,14 @@ void drawSceneEditorPanel(Scene& scene, int& selectedIndex, TextureLibrary& text
         ImGui::TreePop();
     }
 
+    if (ImGui::TreeNode("Screen-Space Reflections")) {
+        ImGui::DragFloat("SSR Strength", &scene.ssrStrength, 0.01f, 0.0f, 1.0f);
+        ImGui::DragFloat("SSR Max Distance", &scene.ssrMaxDistance, 0.1f, 0.5f, 100.0f);
+        ImGui::DragFloat("SSR Thickness", &scene.ssrThickness, 0.01f, 0.02f, 3.0f);
+        ImGui::TextDisabled("(0 strength = off)");
+        ImGui::TreePop();
+    }
+
     if (ImGui::TreeNode("Post-Processing")) {
         ImGui::DragFloat("Vignette", &scene.vignetteStrength, 0.01f, 0.0f, 2.0f);
         ImGui::DragFloat("Chromatic Aberration", &scene.chromaticAberrationStrength, 0.01f, 0.0f, 2.0f);

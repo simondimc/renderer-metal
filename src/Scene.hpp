@@ -112,6 +112,15 @@ struct Scene {
     float ambientOcclusionStrength = 0.0f;
     float ambientOcclusionRadius = 0.5f;
     AmbientOcclusionMode ambientOcclusionMode = AmbientOcclusionMode::GTAO;
+    // Screen-space reflections (see ssrFragmentMain in Shader.metal and Main.cpp's SSR pass): glossy
+    // surfaces reflect the rest of the visible scene instead of only the environment map. Strength is
+    // the blend toward the traced reflection wherever a ray finds a hit (0 = off and the SSR pass is
+    // skipped entirely, 1 = fully replace the image-based reflection there); maxDistance is how far
+    // a reflection ray travels in world units; thickness is how far behind a depth-buffer surface a
+    // ray may pass and still count as hitting it (thin things have no recorded back side).
+    float ssrStrength = 0.0f;
+    float ssrMaxDistance = 15.0f;
+    float ssrThickness = 0.3f;
     // Image-based lighting (see fragmentMain in Shader.metal): the environment lights every surface
     // from all directions and is what metals reflect. environment names an entry of the
     // EnvironmentLibrary; intensity scales both the lighting and the visible sky; showSky = false

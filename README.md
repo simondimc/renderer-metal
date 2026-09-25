@@ -51,7 +51,7 @@
 
 ### Global Illumination
 - [x] Ambient Occlusion
-- Screen-Space Reflections (SSR)
+- [x] Screen-Space Reflections (SSR)
 - Precomputed/Baked GI (Lightmaps, Light Probes)
 - Voxel Cone Tracing / ReSTIR
 

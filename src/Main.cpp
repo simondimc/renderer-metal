@@ -216,6 +216,12 @@ int main() {
     MTL::Texture* aoTextureA = makeAOTexture(MTL::PixelFormatR16Float, (NS::UInteger)width, (NS::UInteger)height);
     MTL::Texture* aoTextureB = makeAOTexture(MTL::PixelFormatR16Float, (NS::UInteger)width, (NS::UInteger)height);
 
+    // Screen-space reflection G-buffer (see SceneFragmentOut and ssrFragmentMain in Shader.metal): the
+    // scene pass writes each pixel's shading normal + roughness and its specular weight as extra color
+    // attachments, and the SSR pass reads them back. Full resolution, never leaves the GPU.
+    MTL::Texture* ssrNormalTexture = makeAOTexture(MTL::PixelFormatRGBA16Float, (NS::UInteger)width, (NS::UInteger)height);
+    MTL::Texture* ssrWeightTexture = makeAOTexture(MTL::PixelFormatRGBA16Float, (NS::UInteger)width, (NS::UInteger)height);
+
     // Shadow cube maps: one 6-face cube texture per light slot, storing that light's distance to
     // the nearest occluder in every direction (see Shader.metal's cubeShadowFragmentMain). All
     // kMaxLights are allocated up front since the shader's fixed-size texture array (see
@@ -336,6 +342,9 @@ int main() {
     pipeDesc->setFragmentFunction(fragFunc);
     pipeDesc->setVertexDescriptor(vertexDesc);
     pipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatRGBA16Float);
+    // Attachments 1 and 2: the SSR G-buffer (normal + roughness, specular weight) - see SceneFragmentOut.
+    pipeDesc->colorAttachments()->object(1)->setPixelFormat(MTL::PixelFormatRGBA16Float);
+    pipeDesc->colorAttachments()->object(2)->setPixelFormat(MTL::PixelFormatRGBA16Float);
     pipeDesc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
 
     MTL::RenderPipelineState* pipelineState = device->newRenderPipelineState(pipeDesc, &error);
@@ -371,6 +380,12 @@ int main() {
     skyPipeDesc->setVertexFunction(skyVertFunc);
     skyPipeDesc->setFragmentFunction(skyFragFunc);
     skyPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatRGBA16Float);
+    // The sky is drawn inside the scene pass, so it has to declare the G-buffer attachments too - but
+    // writes nothing to them: sky pixels keep the cleared zero weight, which SSR skips.
+    for (NS::UInteger gbufferSlot = 1; gbufferSlot <= 2; gbufferSlot++) {
+        skyPipeDesc->colorAttachments()->object(gbufferSlot)->setPixelFormat(MTL::PixelFormatRGBA16Float);
+        skyPipeDesc->colorAttachments()->object(gbufferSlot)->setWriteMask(MTL::ColorWriteMaskNone);
+    }
     skyPipeDesc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
     MTL::RenderPipelineState* skyPipelineState = device->newRenderPipelineState(skyPipeDesc, &error);
 
@@ -429,6 +444,22 @@ int main() {
     aoBlurPipeDesc->setFragmentFunction(aoBlurFragFunc);
     aoBlurPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatR16Float);
     MTL::RenderPipelineState* aoBlurPipelineState = device->newRenderPipelineState(aoBlurPipeDesc, &error);
+
+    // Screen-space reflection PSO: full-screen pass drawn straight into the HDR target, adding its
+    // correction ((traced - environment) * weight, negative where the traced color is darker) onto
+    // what the scene pass left there. Alpha is left as it was.
+    MTL::Function* ssrFragFunc = library->newFunction(NS::String::string("ssrFragmentMain", NS::UTF8StringEncoding));
+    MTL::RenderPipelineDescriptor* ssrPipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
+    ssrPipeDesc->setVertexFunction(postProcessVertFunc);
+    ssrPipeDesc->setFragmentFunction(ssrFragFunc);
+    auto ssrColorAttachment = ssrPipeDesc->colorAttachments()->object(0);
+    ssrColorAttachment->setPixelFormat(MTL::PixelFormatRGBA16Float);
+    ssrColorAttachment->setBlendingEnabled(true);
+    ssrColorAttachment->setSourceRGBBlendFactor(MTL::BlendFactorOne);
+    ssrColorAttachment->setDestinationRGBBlendFactor(MTL::BlendFactorOne);
+    ssrColorAttachment->setSourceAlphaBlendFactor(MTL::BlendFactorZero);
+    ssrColorAttachment->setDestinationAlphaBlendFactor(MTL::BlendFactorOne);
+    MTL::RenderPipelineState* ssrPipelineState = device->newRenderPipelineState(ssrPipeDesc, &error);
 
     // Cube shadow pass PSO: outputs world-space distance-to-light as a color value (see
     // Shader.metal's cubeShadowFragmentMain) plus a scratch depth attachment for hidden-surface
@@ -613,6 +644,8 @@ int main() {
             aoNormalTexture->release();
             aoTextureA->release();
             aoTextureB->release();
+            ssrNormalTexture->release();
+            ssrWeightTexture->release();
             width = liveWidth;
             height = liveHeight;
             cppMetalLayer->setDrawableSize(CGSizeMake(width, height));
@@ -652,6 +685,8 @@ int main() {
             aoNormalTexture = makeAOTexture(MTL::PixelFormatRGBA16Float, (NS::UInteger)width, (NS::UInteger)height);
             aoTextureA = makeAOTexture(MTL::PixelFormatR16Float, (NS::UInteger)width, (NS::UInteger)height);
             aoTextureB = makeAOTexture(MTL::PixelFormatR16Float, (NS::UInteger)width, (NS::UInteger)height);
+            ssrNormalTexture = makeAOTexture(MTL::PixelFormatRGBA16Float, (NS::UInteger)width, (NS::UInteger)height);
+            ssrWeightTexture = makeAOTexture(MTL::PixelFormatRGBA16Float, (NS::UInteger)width, (NS::UInteger)height);
         }
 
         // Fetch the canvas
@@ -1114,6 +1149,17 @@ int main() {
             hdrColorAttachment->setLoadAction(MTL::LoadActionClear);
             hdrColorAttachment->setStoreAction(MTL::StoreActionStore);
             hdrColorAttachment->setTexture(hdrColorTexture);
+            // G-buffer for SSR: cleared to zero (= no reflection, which is what sky pixels keep) and kept
+            // only when SSR runs - otherwise DontCare, so the extra targets never leave tile memory.
+            const bool ssrActive = scene.ssrStrength > 0.0f;
+            MTL::Texture* gbufferTextures[2] = {ssrNormalTexture, ssrWeightTexture};
+            for (NS::UInteger g = 0; g < 2; g++) {
+                auto gbufferAttachment = hdrRPD->colorAttachments()->object(1 + g);
+                gbufferAttachment->setTexture(gbufferTextures[g]);
+                gbufferAttachment->setClearColor({0.0, 0.0, 0.0, 0.0});
+                gbufferAttachment->setLoadAction(ssrActive ? MTL::LoadActionClear : MTL::LoadActionDontCare);
+                gbufferAttachment->setStoreAction(ssrActive ? MTL::StoreActionStore : MTL::StoreActionDontCare);
+            }
             hdrRPD->depthAttachment()->setTexture(depthTexture);
             hdrRPD->depthAttachment()->setLoadAction(MTL::LoadActionClear);
             hdrRPD->depthAttachment()->setClearDepth(1.0);
@@ -1220,6 +1266,14 @@ int main() {
                 hdr2Color->setTexture(hdrColorTexture);
                 hdr2Color->setLoadAction(MTL::LoadActionLoad);
                 hdr2Color->setStoreAction(MTL::StoreActionStore);
+                // Glass/blend overwrite their pixels' G-buffer entries with zero weight (see
+                // fragmentMain), so this pass has to load and keep them along with the color.
+                for (NS::UInteger g = 0; g < 2; g++) {
+                    auto gbufferAttachment = hdr2RPD->colorAttachments()->object(1 + g);
+                    gbufferAttachment->setTexture(gbufferTextures[g]);
+                    gbufferAttachment->setLoadAction(ssrActive ? MTL::LoadActionLoad : MTL::LoadActionDontCare);
+                    gbufferAttachment->setStoreAction(ssrActive ? MTL::StoreActionStore : MTL::StoreActionDontCare);
+                }
                 hdr2RPD->depthAttachment()->setTexture(depthTexture);
                 hdr2RPD->depthAttachment()->setLoadAction(MTL::LoadActionLoad);
                 hdr2RPD->depthAttachment()->setStoreAction(MTL::StoreActionStore);
@@ -1257,6 +1311,55 @@ int main() {
                 transparentEncoder->setRenderPipelineState(blendPipelineState);
                 for (const TransparentDraw& draw : blendDraws) drawTransparent(draw);
                 transparentEncoder->endEncoding();
+            }
+
+            // --- Screen-space reflections (see ssrFragmentMain in Shader.metal): once the whole scene -
+            // opaque, sky and glass - is in hdrColorTexture, copy it into a mip-chained texture (the
+            // pass can't read the target it adds to, and the mips are what rough reflections blur
+            // with) and run the ray-march over the depth buffer and the scene pass's G-buffer,
+            // adding the correction straight into hdrColorTexture so bloom, DoF and the rest see the
+            // reflections too. Reuses transmissionTexture for the copy: glass has finished with it
+            // by now, and the two are never needed at the same time. Skipped at strength 0, when the
+            // G-buffer was never stored either.
+            if (ssrActive) {
+                MTL::BlitCommandEncoder* ssrBlit = cmdBuffer->blitCommandEncoder();
+                ssrBlit->copyFromTexture(hdrColorTexture, 0, 0, MTL::Origin(0, 0, 0),
+                                         MTL::Size(hdrColorTexture->width(), hdrColorTexture->height(), 1),
+                                         transmissionTexture, 0, 0, MTL::Origin(0, 0, 0));
+                ssrBlit->generateMipmaps(transmissionTexture);
+                ssrBlit->endEncoding();
+
+                simd::float4x4 ssrProjection = computeProjection(liveWidth, liveHeight);
+                struct {
+                    simd::float4x4 viewMatrix;
+                    float projScaleX;
+                    float projScaleY;
+                    float strength;
+                    float maxDistance;
+                    float thickness;
+                    float environmentIntensity;
+                } ssrParams = {
+                    viewMatrix(camera), ssrProjection.columns[0].x, ssrProjection.columns[1].y,
+                    scene.ssrStrength, scene.ssrMaxDistance, scene.ssrThickness, scene.environmentIntensity
+                };
+
+                MTL::RenderPassDescriptor* ssrRPD = MTL::RenderPassDescriptor::renderPassDescriptor();
+                auto ssrColor = ssrRPD->colorAttachments()->object(0);
+                ssrColor->setTexture(hdrColorTexture);
+                ssrColor->setLoadAction(MTL::LoadActionLoad);
+                ssrColor->setStoreAction(MTL::StoreActionStore);
+                MTL::RenderCommandEncoder* ssrEncoder = cmdBuffer->renderCommandEncoder(ssrRPD);
+                ssrEncoder->setRenderPipelineState(ssrPipelineState);
+                ssrEncoder->setFragmentTexture(depthTexture, 0);
+                ssrEncoder->setFragmentTexture(ssrNormalTexture, 1);
+                ssrEncoder->setFragmentTexture(ssrWeightTexture, 2);
+                ssrEncoder->setFragmentTexture(transmissionTexture, 3);
+                ssrEncoder->setFragmentTexture(environment.prefiltered, 4);
+                ssrEncoder->setFragmentSamplerState(screenSamplerState, 0);
+                ssrEncoder->setFragmentSamplerState(envSamplerState, 1);
+                ssrEncoder->setFragmentBytes(&ssrParams, sizeof(ssrParams), 0);
+                ssrEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, (NS::UInteger)3);
+                ssrEncoder->endEncoding();
             }
 
             // --- Selection mask pass: draws just the selected renderable's silhouette (if any)
@@ -1504,6 +1607,8 @@ int main() {
     aoNormalTexture->release();
     aoTextureA->release();
     aoTextureB->release();
+    ssrNormalTexture->release();
+    ssrWeightTexture->release();
     depthTexture->release();
     depthState->release();
     depthDesc->release();
@@ -1542,6 +1647,9 @@ int main() {
     aoBlurPipelineState->release();
     aoBlurPipeDesc->release();
     aoBlurFragFunc->release();
+    ssrPipelineState->release();
+    ssrPipeDesc->release();
+    ssrFragFunc->release();
     selectionMaskPipelineState->release();
     selectionMaskPipeDesc->release();
     selectionMaskFragFunc->release();

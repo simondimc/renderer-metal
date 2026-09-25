@@ -308,8 +308,18 @@ static float3 fresnelSchlickRoughness(float cosTheta, float3 F0, float roughness
     return F0 + (max(float3(1.0 - roughness), F0) - F0) * powr(saturate(1.0 - cosTheta), 5.0);
 }
 
+// The scene pass writes three targets: the lit HDR color, plus a small G-buffer the screen-space
+// reflection pass (see ssrFragmentMain) reads back - the shading normal with roughness, and how much
+// of the image-based specular light this pixel's reflection is worth (see the write at the end of
+// fragmentMain). Sky pixels and anything never drawn keep the cleared zeros, which SSR skips.
+struct SceneFragmentOut {
+    float4 color           [[color(0)]];
+    float4 normalRoughness [[color(1)]]; // xyz = world-space shading normal, w = roughness
+    float4 specularWeight  [[color(2)]]; // rgb = multiplier on the environment's specular radiance
+};
+
 // Fragment Shader
-fragment float4 fragmentMain(RasterData in [[stage_in]],
+fragment SceneFragmentOut fragmentMain(RasterData in [[stage_in]],
                              constant Uniforms& uniforms [[buffer(1)]],
                              texture2d<float> tex [[texture(0)]],
                              texture2d<float> normalMap [[texture(1)]],
@@ -540,7 +550,18 @@ fragment float4 fragmentMain(RasterData in [[stage_in]],
     // mapping, and gamma encoding all happen once, screen-space, in postProcessFragmentMain below,
     // rather than per-object here - see Main.cpp's HDR scene / post-process / overlay pass split.
     // Alpha only matters to the Blend pipeline (blending on); the opaque one ignores it.
-    return float4(litColor, alphaMode == ALPHA_MODE_BLEND ? alpha : 1.0);
+    SceneFragmentOut out;
+    out.color = float4(litColor, alphaMode == ALPHA_MODE_BLEND ? alpha : 1.0);
+
+    // G-buffer for screen-space reflections: everything the image-based specular term above was
+    // scaled by except the environment's own radiance and intensity (the SSR pass swaps that radiance
+    // for a ray-traced one and multiplies the same weight back in, so a traced reflection is shaded
+    // exactly like the environment reflection it replaces - Fresnel, roughness, occlusion). Glass
+    // and blended surfaces get zero: what is behind them isn't what the depth buffer describes.
+    bool reflective = transmission == 0.0 && alphaMode != ALPHA_MODE_BLEND;
+    out.normalRoughness = float4(normal, roughness);
+    out.specularWeight = float4(reflective ? (F_ibl * envBRDF.x + envBRDF.y) * specularAO * ao : float3(0.0), 0.0);
+    return out;
 }
 
 // --- Selection mask: renders just the Scene Editor's currently-selected object as flat white
@@ -848,6 +869,185 @@ fragment float aoBlurFragmentMain(PostProcessVertexOut in [[stage_in]],
         weightSum += w;
     }
     return sum / max(weightSum, 1e-4);
+}
+
+// --- Screen-space reflections. One full-screen pass after the whole scene (opaque, sky and glass) has
+// been drawn. The scene pass leaves a small G-buffer (see SceneFragmentOut): each pixel's shading
+// normal, roughness and a specular weight. For every reflective pixel this pass marches the mirror
+// direction through the depth buffer in screen space; where the ray finds a surface, the color there
+// (read from a mip-chained copy of the finished frame, blurrier for rougher surfaces) replaces the
+// environment-map reflection that fragmentMain already added, and where it finds nothing (the ray
+// leaves the screen, passes behind something, or hits a back face) the environment reflection
+// stands. The result is written additively into the HDR target as (traced - environment) * weight, so
+// the two blend without the scene pass having to know whether SSR will succeed.
+
+struct SSRParams {
+    float4x4 viewMatrix;      // world -> view
+    float projScaleX;         // the projection matrix's [0][0] and [1][1] - project/reconstruct view positions
+    float projScaleY;
+    float strength;           // Scene::ssrStrength
+    float maxDistance;        // Scene::ssrMaxDistance, world units
+    float thickness;          // Scene::ssrThickness, world units
+    float environmentIntensity;
+};
+
+#define SSR_MAX_STEPS 80          // depth-buffer taps per ray (the stride widens to cover long rays)
+#define SSR_REFINE_STEPS 6        // bisection steps that pin a hit down inside the coarse step that found it
+#define SSR_MAX_ROUGHNESS 0.75    // past this the lobe is far too wide for one ray: leave it to the environment map
+#define SSR_MAX_HIT_RADIANCE 32.0 // caps hot spots (a lamp seen in a mirror) so they can't sparkle at low mips
+
+// View-space point -> pixel position.
+static float2 ssrProject(float3 viewPos, float2 size, constant SSRParams& params) {
+    float2 ndc = float2(viewPos.x * params.projScaleX, viewPos.y * params.projScaleY) / -viewPos.z;
+    return float2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5) * size;
+}
+
+// View-space position of a pixel centre at the given hardware depth.
+static float3 ssrViewPosition(float2 pixelCenter, float rawDepth, float2 size, constant SSRParams& params) {
+    float2 ndc = float2(pixelCenter.x / size.x * 2.0 - 1.0, 1.0 - pixelCenter.y / size.y * 2.0);
+    float z = aoLinearDepth(rawDepth);
+    return float3(ndc.x * z / params.projScaleX, ndc.y * z / params.projScaleY, -z);
+}
+
+fragment float4 ssrFragmentMain(PostProcessVertexOut in [[stage_in]],
+                                depth2d<float> depthTexture [[texture(0)]],
+                                texture2d<float> normalRoughnessTexture [[texture(1)]],
+                                texture2d<float> specularWeightTexture [[texture(2)]],
+                                texture2d<float> sceneColor [[texture(3)]],
+                                texturecube<float> prefilterMap [[texture(4)]],
+                                constant SSRParams& params [[buffer(0)]],
+                                sampler colorSampler [[sampler(0)]],
+                                sampler envSampler [[sampler(1)]]) {
+    uint2 pixel = uint2(in.position.xy);
+    float rawDepth = depthTexture.read(pixel);
+    if (rawDepth >= 1.0) return float4(0.0); // sky
+
+    float3 weight = specularWeightTexture.read(pixel).rgb;
+    float4 normalRoughness = normalRoughnessTexture.read(pixel);
+    float roughness = normalRoughness.w;
+    float roughnessFade = 1.0 - smoothstep(SSR_MAX_ROUGHNESS - 0.3, SSR_MAX_ROUGHNESS, roughness);
+    if (max(weight.r, max(weight.g, weight.b)) < 0.002 || roughnessFade <= 0.0) return float4(0.0);
+
+    float2 size = float2(depthTexture.get_width(), depthTexture.get_height());
+    float3 P = ssrViewPosition(float2(pixel) + 0.5, rawDepth, size, params);
+    float3 V = normalize(-P);
+
+    // Shading normal in view space; a back face seen from inside is shaded as if it faced the camera.
+    float3x3 viewRotation = float3x3(params.viewMatrix[0].xyz, params.viewMatrix[1].xyz, params.viewMatrix[2].xyz);
+    float3 N = normalize(viewRotation * normalRoughness.xyz);
+    if (dot(N, V) < 0.0) N = -N;
+    float3 R = reflect(-V, N);
+    float3 worldR = transpose(viewRotation) * R; // a rotation's inverse is its transpose
+
+    // A mirror direction that points back at the camera can only hit things behind it, which the depth
+    // buffer never saw - fade those out (the environment map takes over).
+    float facing = 1.0 - smoothstep(0.1, 0.6, R.z);
+    if (facing <= 0.0) return float4(0.0);
+
+    // Segment to trace: from just off the surface along R, clipped to the near/far planes (a ray that
+    // crosses the camera plane has no projection) and then to the screen rectangle, so the step budget
+    // is spent on pixels that can actually be tested.
+    float3 P0 = P + N * (0.01 + 0.004 * -P.z);
+    float tMax = params.maxDistance;
+    if (R.z > 0.0) tMax = min(tMax, (-CAMERA_NEAR_PLANE * 1.05 - P0.z) / R.z);
+    if (R.z < 0.0) tMax = min(tMax, (-CAMERA_FAR_PLANE * 0.99 - P0.z) / R.z);
+    if (tMax <= 0.0) return float4(0.0);
+    float3 P1 = P0 + R * tMax;
+
+    float2 p0 = ssrProject(P0, size, params);
+    float2 p1 = ssrProject(P1, size, params);
+    float k0 = 1.0 / -P0.z; // 1/depth is linear across the screen, so it (not depth) is what gets stepped
+    float k1 = 1.0 / -P1.z;
+
+    float2 delta = p1 - p0;
+    float tClip = 1.0;
+    if (delta.x > 0.0) tClip = min(tClip, (size.x - 1.0 - p0.x) / delta.x);
+    else if (delta.x < 0.0) tClip = min(tClip, -p0.x / delta.x);
+    if (delta.y > 0.0) tClip = min(tClip, (size.y - 1.0 - p0.y) / delta.y);
+    else if (delta.y < 0.0) tClip = min(tClip, -p0.y / delta.y);
+    tClip = clamp(tClip, 0.0, 1.0);
+    p1 = p0 + delta * tClip;
+    k1 = mix(k0, k1, tClip);
+
+    float2 span = abs(p1 - p0);
+    float pixelLength = max(span.x, span.y);
+    if (pixelLength < 1.5) return float4(0.0);
+    int steps = int(min(float(SSR_MAX_STEPS), ceil(pixelLength)));
+
+    // Per-pixel offset of the sample positions, so the stride's banding turns into fine noise.
+    float jitter = fract(52.9829189 * fract(dot(float2(pixel), float2(0.06711056, 0.00583715))));
+
+    bool hit = false;
+    float hitT = 0.0;
+    float hitSceneZ = 0.0;
+    float prevT = 0.0;
+    for (int i = 0; i < steps; i++) {
+        float t = (float(i) + 1.0 + jitter) / (float(steps) + 1.0);
+        float2 pp = mix(p0, p1, t);
+        float rayZ = 1.0 / mix(k0, k1, t);
+        float rayZPrev = 1.0 / mix(k0, k1, prevT);
+
+        float sceneRaw = depthTexture.read(uint2(pp));
+        if (sceneRaw < 1.0) {
+            float sceneZ = aoLinearDepth(sceneRaw);
+            // The ray's depth span over this step overlaps the slab [surface, surface + thickness].
+            if (max(rayZ, rayZPrev) >= sceneZ && min(rayZ, rayZPrev) <= sceneZ + params.thickness) {
+                // Bisect inside the step to land on the crossing instead of its far end.
+                float lo = prevT, hi = t;
+                for (int r = 0; r < SSR_REFINE_STEPS; r++) {
+                    float mid = 0.5 * (lo + hi);
+                    float2 pm = mix(p0, p1, mid);
+                    float zm = 1.0 / mix(k0, k1, mid);
+                    float raw = depthTexture.read(uint2(pm));
+                    if (raw < 1.0 && zm >= aoLinearDepth(raw)) hi = mid; else lo = mid;
+                }
+                float2 ph = mix(p0, p1, hi);
+                float rawHit = depthTexture.read(uint2(ph));
+                if (rawHit < 1.0) {
+                    float zHit = aoLinearDepth(rawHit);
+                    if (1.0 / mix(k0, k1, hi) - zHit <= params.thickness) {
+                        hit = true;
+                        hitT = hi;
+                        hitSceneZ = zHit;
+                        break;
+                    }
+                }
+            }
+        }
+        prevT = t;
+    }
+    if (!hit) return float4(0.0);
+
+    float2 hitPixel = mix(p0, p1, hitT);
+    float2 hitUV = hitPixel / size;
+
+    // Confidence: fade out everything that makes a hit untrustworthy - close to the screen border (the
+    // ray is about to leave the known image), far away, a back face, a rough surface, a grazing mirror.
+    float2 edge = min(hitUV, 1.0 - hitUV);
+    float edgeFade = smoothstep(0.0, 0.1, min(edge.x, edge.y));
+    float3 hitView = ssrViewPosition(floor(hitPixel) + 0.5, depthTexture.read(uint2(hitPixel)), size, params);
+    float distanceFade = 1.0 - smoothstep(0.6 * params.maxDistance, params.maxDistance, length(hitView - P));
+    float3 hitNormal = normalRoughnessTexture.read(uint2(hitPixel)).xyz;
+    float backFade = 1.0 - smoothstep(0.0, 0.3, dot(hitNormal, worldR));
+    float confidence = params.strength * roughnessFade * facing * edgeFade * distanceFade * backFade;
+    if (confidence <= 0.0) return float4(0.0);
+
+    // Rougher reflections are blurrier, and blurrier the farther the reflected thing is: pick the mip
+    // whose texel spans the lobe's footprint at the hit.
+    float footprint = length(hitPixel - (float2(pixel) + 0.5)) * roughness * roughness * 0.6;
+    float lod = clamp(log2(max(footprint, 1.0)), 0.0, float(sceneColor.get_num_mip_levels() - 1));
+    float3 traced = min(sceneColor.sample(colorSampler, hitUV, level(lod)).rgb, SSR_MAX_HIT_RADIANCE);
+
+    // The environment radiance the scene pass already put into this pixel (same lookup as fragmentMain).
+    float envLod = roughness * float(prefilterMap.get_num_mip_levels() - 1);
+    float3 environment = prefilterMap.sample(envSampler, worldR, level(envLod)).rgb * params.environmentIntensity;
+
+    // Swap environment for traced, scaled like the environment term was. Never subtract more than is
+    // there (float rounding between this reconstruction and the scene pass could push a dark pixel
+    // slightly negative, which the tone mapper's pow() turns into NaN).
+    float3 correction = confidence * (traced - environment) * weight;
+    correction = max(correction, -sceneColor.read(pixel).rgb);
+    return float4(correction, 0.0);
 }
 
 struct PostProcessParams {

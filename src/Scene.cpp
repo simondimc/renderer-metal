@@ -141,6 +141,8 @@ simd::float3 objectUp(const SceneObject& obj) {
 //   lensflare <strength>    (global - see Scene::lensFlareStrength)
 //   ambientocclusion <strength> <radius> [gtao|ssao]   (global - see Scene::ambientOcclusionStrength/
 //                            Radius/Mode; the mode is optional, absent = gtao)
+//   ssr <strength> <maxDistance> <thickness>   (global - see Scene::ssrStrength/ssrMaxDistance/
+//                            ssrThickness)
 //   environment <intensity> <showSky 0|1>   (global - see Scene::environmentIntensity/showSky)
 //   environmentmap <name>   (global - .hdr file stem under environment/, see Scene::environment;
 //                            absent = kDefaultEnvironment, so old scene files load unchanged)
@@ -182,6 +184,7 @@ bool saveScene(const Scene& scene, const std::string& path) {
     out << "lensflare " << scene.lensFlareStrength << "\n";
     out << "ambientocclusion " << scene.ambientOcclusionStrength << " " << scene.ambientOcclusionRadius << " "
         << ambientOcclusionModeName(scene.ambientOcclusionMode) << "\n";
+    out << "ssr " << scene.ssrStrength << " " << scene.ssrMaxDistance << " " << scene.ssrThickness << "\n";
     out << "environment " << scene.environmentIntensity << " " << (scene.showSky ? 1 : 0) << "\n";
     out << "environmentmap " << scene.environment << "\n";
     for (const auto& obj : scene.objects) {
@@ -260,6 +263,8 @@ bool loadScene(Scene& scene, const std::string& path) {
             std::string modeName;
             ss >> loaded.ambientOcclusionStrength >> loaded.ambientOcclusionRadius >> modeName;
             loaded.ambientOcclusionMode = parseAmbientOcclusionMode(modeName);
+        } else if (keyword == "ssr") {
+            ss >> loaded.ssrStrength >> loaded.ssrMaxDistance >> loaded.ssrThickness;
         } else if (keyword == "environment") {
             int showSky = 1;
             ss >> loaded.environmentIntensity >> showSky;
