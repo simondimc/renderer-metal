@@ -74,6 +74,18 @@ int main() {
     id contentView = sendMsg((id)nativeWinPtr, sel_registerName("contentView"));
     CA::MetalLayer* cppMetalLayer = (CA::MetalLayer*)sendMsg(contentView, sel_registerName("layer"));
 
+    // A CAMetalLayer's drawableSize does NOT automatically track the layer's frame as the window
+    // resizes (unlike MTKView, which this app doesn't use) - it must be set explicitly, both here
+    // and again on every resize below, or nextDrawable() keeps handing back a texture at the old
+    // size forever. The window server then stretches that stale-sized surface to fit the window's
+    // actual (correctly resized) frame, which is what made the rendered content - and, since
+    // ImGui's cursor-to-widget mapping assumes the drawable matches the current window size, the
+    // mouse - visibly drift out of sync with the real window size after a resize.
+    // glfwGetFramebufferSize (not the width/height window was created with, which are in screen
+    // points) gives the real pixel size, matching what a Retina/HiDPI display actually needs.
+    glfwGetFramebufferSize(window, &width, &height);
+    cppMetalLayer->setDrawableSize(CGSizeMake(width, height));
+
     // Allocate Depth Buffer based on initial window framebuffer sizing
     MTL::TextureDescriptor* desc = MTL::TextureDescriptor::texture2DDescriptor(
         MTL::PixelFormatDepth32Float, (NS::UInteger)width, (NS::UInteger)height, false
@@ -272,27 +284,29 @@ int main() {
         // Create the frame memory pool
         NS::AutoreleasePool* framePool = NS::AutoreleasePool::alloc()->init();
 
+        // Resize before fetching the drawable below, so nextDrawable() hands back a texture
+        // already sized to match - the layer's drawableSize needs explicit updates on resize, see
+        // the comment where it's first set, above the render loop.
+        int liveWidth, liveHeight;
+        glfwGetFramebufferSize(window, &liveWidth, &liveHeight);
+        if (liveWidth != width || liveHeight != height) {
+            depthTexture->release();
+            width = liveWidth;
+            height = liveHeight;
+            cppMetalLayer->setDrawableSize(CGSizeMake(width, height));
+
+            MTL::TextureDescriptor* newDesc = MTL::TextureDescriptor::texture2DDescriptor(
+                MTL::PixelFormatDepth32Float, (NS::UInteger)width, (NS::UInteger)height, false
+            );
+            newDesc->setStorageMode(MTL::StorageModePrivate);
+            newDesc->setUsage(MTL::TextureUsageRenderTarget);
+            depthTexture = device->newTexture(newDesc);
+        }
+
         // Fetch the canvas
         CA::MetalDrawable* drawable = cppMetalLayer->nextDrawable();
 
         if (drawable) {
-            int liveWidth, liveHeight;
-            glfwGetFramebufferSize(window, &liveWidth, &liveHeight);
-
-            // Regenerate depth attachment allocations if user scaling structural size bounds shifts
-            if (liveWidth != width || liveHeight != height) {
-                depthTexture->release();
-                width = liveWidth;
-                height = liveHeight;
-
-                MTL::TextureDescriptor* newDesc = MTL::TextureDescriptor::texture2DDescriptor(
-                    MTL::PixelFormatDepth32Float, (NS::UInteger)width, (NS::UInteger)height, false
-                );
-                newDesc->setStorageMode(MTL::StorageModePrivate);
-                newDesc->setUsage(MTL::TextureUsageRenderTarget);
-                depthTexture = device->newTexture(newDesc);
-            }
-
             // Configure the render pass
             MTL::RenderPassDescriptor* rpd = MTL::RenderPassDescriptor::renderPassDescriptor();
             auto colorAttachment = rpd->colorAttachments()->object(0);
