@@ -55,6 +55,7 @@ struct Uniforms {
     float4 cameraPosition;
     float4 materialAlbedo;              // rgb = albedo tint
     float4 materialParams;              // x = metallic, y = roughness, z = ao, w = useTextures (0/1)
+    float4x4 viewProjMatrix;            // camera only, no model - projects refracted points for transmission
 };
 
 // Per-draw glTF material factors, bound at fragment buffer 2 - must match MaterialParams in
@@ -64,6 +65,8 @@ struct MaterialParams {
     float4 factors;        // x = metallic, y = roughness, z = occlusion strength
     float4 emissiveFactor; // rgb = emissive color * strength (HDR)
     float4 alphaParams;    // x = alpha mode (ALPHA_MODE_*), y = Mask cutoff
+    float4 transmissionParams; // x = transmission, y = thickness (mesh units), z = attenuation distance, w = IOR
+    float4 attenuationColor;   // rgb = volume absorption color
 };
 
 // Vertex Shader
@@ -318,11 +321,15 @@ fragment float4 fragmentMain(RasterData in [[stage_in]],
                              texture2d<float> brdfLUT [[texture(5 + 2 * MAX_LIGHTS)]],
                              texture2d<float> occlusionMap [[texture(6 + 2 * MAX_LIGHTS)]],
                              texture2d<float> emissiveMap [[texture(7 + 2 * MAX_LIGHTS)]],
+                             texture2d<float> transmissionMap [[texture(8 + 2 * MAX_LIGHTS)]],
+                             texture2d<float> thicknessMap [[texture(9 + 2 * MAX_LIGHTS)]],
+                             texture2d<float> transmissionSource [[texture(10 + 2 * MAX_LIGHTS)]],
                              constant MaterialParams& material [[buffer(2)]],
                              constant float& environmentIntensity [[buffer(3)]],
                              sampler smp [[sampler(0)]],
                              sampler shadowSampler [[sampler(1)]],
-                             sampler envSampler [[sampler(2)]]) {
+                             sampler envSampler [[sampler(2)]],
+                             sampler screenSampler [[sampler(3)]]) {
     bool useTextures = uniforms.materialParams.w > 0.5;
 
     float3 N = normalize(in.worldNormal);
@@ -363,8 +370,11 @@ fragment float4 fragmentMain(RasterData in [[stage_in]],
     // or blow out to a single pixel), so keep a small floor.
     roughness = clamp(roughness, 0.04, 1.0);
 
-    // Reflectance at normal incidence: ~4% for dielectrics, the albedo itself (tinted) for metals.
-    float3 F0 = mix(float3(0.04), albedo, metallic);
+    // Reflectance at normal incidence: from the index of refraction for dielectrics (1.5 -> ~4%),
+    // the albedo itself (tinted) for metals.
+    float ior = material.transmissionParams.w;
+    float dielectricF0 = pow((ior - 1.0) / (ior + 1.0), 2.0);
+    float3 F0 = mix(float3(dielectricF0), albedo, metallic);
     float NdotV = max(dot(normal, viewDir), 1e-4);
 
     // Image-based lighting (split-sum approximation): the environment is precomputed once (see
@@ -382,7 +392,42 @@ fragment float4 fragmentMain(RasterData in [[stage_in]],
     float2 envBRDF = brdfLUT.sample(envSampler, float2(NdotV, roughness)).rg;
     float3 specularIBL = prefiltered * (F_ibl * envBRDF.x + envBRDF.y);
 
-    float3 litColor = (kD_ibl * diffuseIBL + specularIBL) * ao * environmentIntensity;
+    // Transmission (KHR_materials_transmission/volume): a transmissive dielectric passes light
+    // through instead of scattering it diffusely, so that share of the diffuse term is replaced by
+    // what's behind the surface. "Behind" is transmissionSource, a copy of the opaque scene made
+    // before this pass (so glass never sees other glass, only opaque objects and the sky). The view
+    // ray is bent by the IOR and carried through the object's thickness, and that exit point's screen
+    // position is where the copy is read - so thick glass distorts, thickness 0 (thin-walled) doesn't.
+    // Roughness picks a blurrier mip (frosted glass), and the volume's absorption tints by how far
+    // the light travelled inside (Beer-Lambert).
+    float transmission = 0.0;
+    float3 transmitted = float3(0.0);
+    if (material.transmissionParams.x > 0.0) {
+        transmission = material.transmissionParams.x;
+        float thickness = material.transmissionParams.y;
+        if (useTextures) {
+            transmission *= transmissionMap.sample(smp, in.uv).r;
+            thickness *= thicknessMap.sample(smp, in.uv).g;
+        }
+        // Thickness is in mesh units; the model matrix's scale (assumed uniform) converts to world.
+        float thicknessWorld = thickness * length(uniforms.modelMatrix[0].xyz);
+        float3 refracted = refract(-viewDir, normal, 1.0 / ior);
+        float4 exitClip = uniforms.viewProjMatrix * float4(in.worldPosition + refracted * thicknessWorld, 1.0);
+        float2 exitUV = (exitClip.xy / exitClip.w) * float2(0.5, -0.5) + 0.5;
+        float lod = log2(float(transmissionSource.get_width())) * saturate(roughness * saturate(ior * 2.0 - 2.0));
+        float3 background = transmissionSource.sample(screenSampler, exitUV, level(lod)).rgb;
+
+        float attenuationDistance = material.transmissionParams.z;
+        float3 attenuation = float3(1.0);
+        if (attenuationDistance < 1e29) {
+            float3 coefficient = -log(max(material.attenuationColor.rgb, float3(1e-4))) / attenuationDistance;
+            attenuation = exp(-coefficient * thicknessWorld);
+        }
+        transmitted = background * albedo * attenuation;
+    }
+
+    float3 litColor = (kD_ibl * diffuseIBL * (1.0 - transmission) + specularIBL) * ao * environmentIntensity;
+    litColor += transmission * (1.0 - metallic) * (1.0 - F_ibl) * transmitted;
 
     int lightCount = uniforms.lightMeta.x;
     for (int i = 0; i < lightCount; i++) {
@@ -447,7 +492,7 @@ fragment float4 fragmentMain(RasterData in [[stage_in]],
         // Energy conservation: light reflected specularly (F) can't also be diffusely scattered, and
         // metals absorb whatever they don't reflect.
         float3 kD = (1.0 - F) * (1.0 - metallic);
-        float3 brdf = kD * albedo / PI + specular;
+        float3 brdf = kD * albedo / PI * (1.0 - transmission) + specular;
 
         // Point lights use the cube shadow maps (no single frustum covers all directions);
         // Directional/Spot use a single projected shadow map. Area lights don't cast shadows yet

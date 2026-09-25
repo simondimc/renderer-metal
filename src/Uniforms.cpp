@@ -34,6 +34,7 @@ Uniforms computeUniforms(const Camera& cam, const simd::float4x4& objectModel,
     simd::float4x4 viewProj = computeViewProj(cam, width, height);
     u.modelMatrix = objectModel;
     u.mvpMatrix = viewProj * objectModel;
+    u.viewProjMatrix = viewProj;
     u.cameraPosition = simd_make_float4(cam.position.x, cam.position.y, cam.position.z, 1.0f);
 
     int count = std::min(lightCount, (int)kMaxLights);

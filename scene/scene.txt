@@ -56,8 +56,8 @@ lighttype point
 color 1 1 1
 intensity 3
 object Mesh 3
-position 0 0 -3.5
-rotation 0 0 0
+position 3.95 -0.15 -9.6
+rotation 0 -28 0
 scale 1 1 1
 material 1 1 1 1 1 1 1
 texture metal_plate_4k
@@ -70,9 +70,37 @@ material 1 1 1 1 1 1 1
 texture metal_plate_4k
 meshpath ../model/DamagedHelmet.glb
 object Mesh 5
-position 13.7 6.1 0
+position 9.65 2.85 0
 rotation 0 -90 0
-scale 1 1 1
+scale 0.5 0.5 0.5
 material 1 1 1 1 1 1 1
 texture metal_plate_4k
 meshpath ../model/EmissiveStrengthTest.glb
+object Mesh 6
+position -11.2 2.65 -1.65
+rotation 0 66 0
+scale 0.3 0.3 0.3
+material 1 1 1 1 1 1 1
+texture metal_plate_4k
+meshpath ../model/AttenuationTest.glb
+object Mesh 7
+position -13.9 0.55 8
+rotation 0 121 0
+scale 1 1 1
+material 1 1 1 1 1 1 1
+texture metal_plate_4k
+meshpath ../model/DragonAttenuation.glb
+object Mesh 8
+position -0.6 1.45 16.6
+rotation 0 180 0
+scale 3 3 3
+material 1 1 1 1 1 1 1
+texture metal_plate_4k
+meshpath ../model/TransmissionRoughnessTest.glb
+object Mesh 9
+position -8.65 0.95 -11.75
+rotation 0 24 0
+scale 3 3 3
+material 1 1 1 1 1 1 1
+texture metal_plate_4k
+meshpath ../model/TransmissionTest.glb

@@ -5,9 +5,14 @@
 #include <vector>
 #include "Uniforms.hpp" // MaterialParams
 
+// Which of Main.cpp's HDR sub-passes draws a submesh: Opaque (incl. alpha Mask) in the first, then
+// Transmissive (glass - reads a copy of that first pass's result, see fragmentMain) and Blend
+// (sorted alpha blending) in the second. Only Opaque submeshes cast shadows.
+enum class DrawPass { Opaque, Transmissive, Blend };
+
 // One glTF material as the renderer understands it: metallic-roughness, emissive (incl.
-// KHR_materials_emissive_strength) and alphaMode (see AlphaMode). Other KHR_materials_* extensions
-// such as transmission are ignored, so e.g. glass without alphaMode BLEND renders opaque.
+// KHR_materials_emissive_strength), alphaMode (see AlphaMode) and KHR_materials_transmission/
+// volume/ior. Other KHR_materials_* extensions (clearcoat, sheen, iridescence, ...) are ignored.
 // A null texture means "the material has none": Main.cpp substitutes a neutral 1x1 stand-in.
 struct MeshMaterial {
     MaterialParams params;
@@ -16,7 +21,14 @@ struct MeshMaterial {
     MTL::Texture* orm = nullptr;       // glTF packing: G = roughness, B = metallic (R unused, see occlusion)
     MTL::Texture* occlusion = nullptr; // R = occlusion. Often the same image as orm, but glTF allows a separate one
     MTL::Texture* emissive = nullptr;  // sRGB
+    MTL::Texture* transmission = nullptr; // R = transmission amount
+    MTL::Texture* thickness = nullptr;    // G = thickness (times the thickness factor)
     AlphaMode alphaMode() const { return (AlphaMode)(int)params.alphaParams.x; }
+    bool isTransmissive() const { return params.transmissionParams.x > 0.0f; }
+    DrawPass drawPass() const {
+        if (isTransmissive()) return DrawPass::Transmissive; // transmission wins over alphaMode BLEND
+        return alphaMode() == AlphaMode::Blend ? DrawPass::Blend : DrawPass::Opaque;
+    }
 };
 
 // A contiguous run of the mesh's index buffer drawn with one material.
@@ -46,8 +58,8 @@ struct MeshData {
     // .obj, which is drawn in one call with the renderer's default texture set.
     std::vector<MeshMaterial> materials;
     std::vector<MeshSubmesh> submeshes;
-    // True if any submesh uses Mask or Blend - the shadow pass then has to go submesh by submesh
-    // (cutting out Mask, skipping Blend) instead of drawing the whole index buffer at once.
+    // True if any submesh uses Mask, Blend or transmission - the shadow pass then has to go submesh
+    // by submesh (cutting out Mask, skipping the rest) instead of drawing the whole index buffer.
     bool hasNonOpaqueSubmeshes = false;
 };
 

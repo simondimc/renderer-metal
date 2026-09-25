@@ -350,6 +350,27 @@ std::vector<MeshMaterial> loadGltfMaterials(MTL::Device* device, const cgltf_dat
             dst.emissive = loadGltfImage(device, data, src.emissive_texture.texture->image, true, gltfPath, cache);
         }
 
+        // KHR_materials_ior: also sets the dielectric's specular reflectance in the shader.
+        if (src.has_ior) dst.params.transmissionParams.w = src.ior.ior;
+        // KHR_materials_transmission: the share of light that passes through (refracted) instead of
+        // being diffusely scattered. KHR_materials_volume: how thick the object is and how strongly
+        // that thickness tints the light (Beer-Lambert absorption).
+        if (src.has_transmission) {
+            dst.params.transmissionParams.x = src.transmission.transmission_factor;
+            if (src.transmission.transmission_texture.texture) {
+                dst.transmission = loadGltfImage(device, data, src.transmission.transmission_texture.texture->image, false, gltfPath, cache);
+            }
+        }
+        if (src.has_volume) {
+            dst.params.transmissionParams.y = src.volume.thickness_factor;
+            dst.params.transmissionParams.z = src.volume.attenuation_distance; // FLT_MAX if the file names none
+            dst.params.attenuationColor = simd_make_float4(src.volume.attenuation_color[0], src.volume.attenuation_color[1],
+                                                            src.volume.attenuation_color[2], 0.0f);
+            if (src.volume.thickness_texture.texture) {
+                dst.thickness = loadGltfImage(device, data, src.volume.thickness_texture.texture->image, false, gltfPath, cache);
+            }
+        }
+
         switch (src.alpha_mode) {
             case cgltf_alpha_mode_mask:  dst.params.alphaParams.x = (float)AlphaMode::Mask; break;
             case cgltf_alpha_mode_blend: dst.params.alphaParams.x = (float)AlphaMode::Blend; break;
@@ -408,7 +429,8 @@ MeshData loadMeshGltf(MTL::Device* device, const std::string& path) {
             // Adjacent primitives with the same material share one submesh (one draw call) - except
             // Blend ones, which stay separate so each is depth-sorted against the others by its own
             // center (see MeshSubmesh::center) rather than as one big lump.
-            bool isBlend = prim.material && prim.material->alpha_mode == cgltf_alpha_mode_blend;
+            bool isBlend = prim.material && prim.material->alpha_mode == cgltf_alpha_mode_blend
+                           && !(prim.material->has_transmission && prim.material->transmission.transmission_factor > 0.0f);
             if (!isBlend && !submeshes.empty() && submeshes.back().materialIndex == materialIndex) {
                 submeshes.back().indexCount += added;
             } else {
@@ -441,7 +463,8 @@ MeshData loadMeshGltf(MTL::Device* device, const std::string& path) {
     mesh.materials = std::move(materials);
     mesh.submeshes = std::move(submeshes);
     for (const MeshSubmesh& sub : mesh.submeshes) {
-        if (mesh.materials[sub.materialIndex].alphaMode() != AlphaMode::Opaque) mesh.hasNonOpaqueSubmeshes = true;
+        const MeshMaterial& mat = mesh.materials[sub.materialIndex];
+        if (mat.alphaMode() != AlphaMode::Opaque || mat.drawPass() != DrawPass::Opaque) mesh.hasNonOpaqueSubmeshes = true;
     }
     return mesh;
 }

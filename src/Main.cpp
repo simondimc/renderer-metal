@@ -164,6 +164,18 @@ int main() {
     hdrDesc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
     MTL::Texture* hdrColorTexture = device->newTexture(hdrDesc);
 
+    // Transmission source: a mipmapped copy of hdrColorTexture taken between the opaque and the
+    // transmissive/blend sub-passes (see Pass A below). Glass can't sample the target it is drawing
+    // into, and the mip chain gives roughness-blurred (frosted) refraction for free. RenderTarget
+    // usage as well as ShaderRead since the blit's mip generation wants a renderable format.
+    auto makeTransmissionTexture = [&](NS::UInteger w, NS::UInteger h) {
+        MTL::TextureDescriptor* d = MTL::TextureDescriptor::texture2DDescriptor(MTL::PixelFormatRGBA16Float, w, h, true);
+        d->setStorageMode(MTL::StorageModePrivate);
+        d->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
+        return device->newTexture(d);
+    };
+    MTL::Texture* transmissionTexture = makeTransmissionTexture((NS::UInteger)width, (NS::UInteger)height);
+
     // Bloom ping-pong targets: bright-pass extract writes into A, then a horizontal blur reads A
     // and writes B, then a vertical blur reads B and writes back into A (see Main.cpp's bloom pass
     // chain and bloomExtractFragmentMain/blurFragmentMain in Shader.metal). Half the main HDR
@@ -461,6 +473,16 @@ int main() {
     envSamplerDesc->setRAddressMode(MTL::SamplerAddressModeClampToEdge);
     MTL::SamplerState* envSamplerState = device->newSamplerState(envSamplerDesc);
 
+    // Screen-space sampler for the transmission source: trilinear (roughness picks a mip), clamped so
+    // a refracted lookup that leaves the screen reuses the edge pixel instead of wrapping around.
+    MTL::SamplerDescriptor* screenSamplerDesc = MTL::SamplerDescriptor::alloc()->init();
+    screenSamplerDesc->setMinFilter(MTL::SamplerMinMagFilterLinear);
+    screenSamplerDesc->setMagFilter(MTL::SamplerMinMagFilterLinear);
+    screenSamplerDesc->setMipFilter(MTL::SamplerMipFilterLinear);
+    screenSamplerDesc->setSAddressMode(MTL::SamplerAddressModeClampToEdge);
+    screenSamplerDesc->setTAddressMode(MTL::SamplerAddressModeClampToEdge);
+    MTL::SamplerState* screenSamplerState = device->newSamplerState(screenSamplerDesc);
+
     // Shadow cube sampler: nearest + clamp, since linearly filtering raw (uncompared) distance
     // values would blend distances instead of blending shadow/lit results, giving wrong edges.
     MTL::SamplerDescriptor* shadowSamplerDesc = MTL::SamplerDescriptor::alloc()->init();
@@ -542,6 +564,7 @@ int main() {
         if (liveWidth != width || liveHeight != height) {
             depthTexture->release();
             hdrColorTexture->release();
+            transmissionTexture->release();
             bloomTextureA->release();
             bloomTextureB->release();
             selectionMaskTexture->release();
@@ -562,6 +585,7 @@ int main() {
             newHdrDesc->setStorageMode(MTL::StorageModePrivate);
             newHdrDesc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
             hdrColorTexture = device->newTexture(newHdrDesc);
+            transmissionTexture = makeTransmissionTexture((NS::UInteger)width, (NS::UInteger)height);
 
             NS::UInteger newBloomWidth = (NS::UInteger)width / 2;
             NS::UInteger newBloomHeight = (NS::UInteger)height / 2;
@@ -827,6 +851,9 @@ int main() {
             constexpr NS::UInteger kOrmTextureSlot = 2 + 2 * kMaxLights;
             constexpr NS::UInteger kOcclusionTextureSlot = 6 + 2 * kMaxLights;
             constexpr NS::UInteger kEmissiveTextureSlot = 7 + 2 * kMaxLights;
+            constexpr NS::UInteger kTransmissionTextureSlot = 8 + 2 * kMaxLights;
+            constexpr NS::UInteger kThicknessTextureSlot = 9 + 2 * kMaxLights;
+            constexpr NS::UInteger kTransmissionSourceSlot = 10 + 2 * kMaxLights;
             static const MaterialParams defaultParams;
 
             // Binds one glTF material's textures and factors (missing maps get the neutral stand-ins).
@@ -836,13 +863,15 @@ int main() {
                 encoder->setFragmentTexture(mat.orm ? mat.orm : whiteTexture, kOrmTextureSlot);
                 encoder->setFragmentTexture(mat.occlusion ? mat.occlusion : whiteTexture, kOcclusionTextureSlot);
                 encoder->setFragmentTexture(mat.emissive ? mat.emissive : whiteTexture, kEmissiveTextureSlot);
+                encoder->setFragmentTexture(mat.transmission ? mat.transmission : whiteTexture, kTransmissionTextureSlot);
+                encoder->setFragmentTexture(mat.thickness ? mat.thickness : whiteTexture, kThicknessTextureSlot);
                 encoder->setFragmentBytes(&mat.params, sizeof(MaterialParams), 2);
             };
 
             // Draws every renderable into a shadow map. Only the albedo alpha matters here (Mask
             // materials cut out their shadow, see cubeShadowFragmentMain), so a mesh with any
-            // Mask/Blend submesh goes submesh by submesh - skipping Blend, which casts no shadow -
-            // while everything else is still one draw over the whole index buffer.
+            // Mask/Blend/transmissive submesh goes submesh by submesh - skipping Blend and glass,
+            // which cast no shadow - while everything else is still one draw over the whole buffer.
             auto drawShadowCasters = [&](MTL::RenderCommandEncoder* encoder) {
                 encoder->setFragmentTexture(whiteTexture, 0);
                 encoder->setFragmentBytes(&defaultParams, sizeof(MaterialParams), 4);
@@ -853,7 +882,7 @@ int main() {
                     if (r.mesh && r.mesh->hasNonOpaqueSubmeshes) {
                         for (const MeshSubmesh& sub : r.mesh->submeshes) {
                             const MeshMaterial& mat = r.mesh->materials[sub.materialIndex];
-                            if (mat.alphaMode() == AlphaMode::Blend) continue;
+                            if (mat.drawPass() != DrawPass::Opaque) continue; // glass/blend cast no shadow
                             encoder->setFragmentTexture(mat.albedo ? mat.albedo : whiteTexture, 0);
                             encoder->setFragmentBytes(&mat.params, sizeof(MaterialParams), 4);
                             encoder->drawIndexedPrimitives(MTL::PrimitiveTypeTriangle, sub.indexCount, r.indexType,
@@ -931,7 +960,31 @@ int main() {
             // unclamped into hdrColorTexture (see fragmentMain's comment). depthAttachment uses
             // StoreActionStore (not DontCare, unlike every other depth-only pass here) because the
             // overlay pass below re-reads it to depth-test the gizmo/light markers against this
-            // geometry.
+            // geometry. Split in two encoders when the scene has glass or blended surfaces: A1 draws
+            // the opaque scene and the sky, then a copy of that result is made (glass refracts it,
+            // and can't read the target it is drawing into), then A2 draws the transmissive and
+            // blended submeshes on top of A1's output (Load, not Clear).
+            const Environment& environment = environmentLibrary.get(scene.environment);
+            // The per-frame state every scene draw shares: shadow maps, samplers, the IBL inputs and
+            // the transmission source (only sampled by glass - stale contents in A1 are never read).
+            auto bindSceneState = [&](MTL::RenderCommandEncoder* encoder) {
+                for (size_t i = 0; i < kMaxLights; i++) {
+                    encoder->setFragmentTexture(shadowCubeMaps[i], 2 + i);
+                }
+                for (size_t i = 0; i < kMaxLights; i++) {
+                    encoder->setFragmentTexture(shadow2DMaps[i], 2 + kMaxLights + i);
+                }
+                encoder->setFragmentSamplerState(samplerState, 0);
+                encoder->setFragmentSamplerState(shadowSamplerState, 1);
+                encoder->setFragmentSamplerState(envSamplerState, 2);
+                encoder->setFragmentSamplerState(screenSamplerState, 3);
+                encoder->setFragmentTexture(environment.irradiance, 3 + 2 * kMaxLights);
+                encoder->setFragmentTexture(environment.prefiltered, 4 + 2 * kMaxLights);
+                encoder->setFragmentTexture(environmentLibrary.brdfLUT(), 5 + 2 * kMaxLights);
+                encoder->setFragmentTexture(transmissionTexture, kTransmissionSourceSlot);
+                encoder->setFragmentBytes(&scene.environmentIntensity, sizeof(float), 3);
+            };
+
             MTL::RenderPassDescriptor* hdrRPD = MTL::RenderPassDescriptor::renderPassDescriptor();
             auto hdrColorAttachment = hdrRPD->colorAttachments()->object(0);
             hdrColorAttachment->setClearColor({(double)kBackgroundLinear, (double)kBackgroundLinear, (double)kBackgroundLinear, 1.0});
@@ -946,22 +999,15 @@ int main() {
             MTL::RenderCommandEncoder* hdrEncoder = cmdBuffer->renderCommandEncoder(hdrRPD);
             hdrEncoder->setDepthStencilState(depthState);
             hdrEncoder->setRenderPipelineState(pipelineState);
-            for (size_t i = 0; i < kMaxLights; i++) {
-                hdrEncoder->setFragmentTexture(shadowCubeMaps[i], 2 + i);
-            }
-            for (size_t i = 0; i < kMaxLights; i++) {
-                hdrEncoder->setFragmentTexture(shadow2DMaps[i], 2 + kMaxLights + i);
-            }
-            hdrEncoder->setFragmentSamplerState(samplerState, 0);
-            hdrEncoder->setFragmentSamplerState(shadowSamplerState, 1);
-            hdrEncoder->setFragmentSamplerState(envSamplerState, 2);
+            bindSceneState(hdrEncoder);
 
-            // Image-based lighting inputs (see fragmentMain): the same three textures for every draw.
-            const Environment& environment = environmentLibrary.get(scene.environment);
-            hdrEncoder->setFragmentTexture(environment.irradiance, 3 + 2 * kMaxLights);
-            hdrEncoder->setFragmentTexture(environment.prefiltered, 4 + 2 * kMaxLights);
-            hdrEncoder->setFragmentTexture(environmentLibrary.brdfLUT(), 5 + 2 * kMaxLights);
-            hdrEncoder->setFragmentBytes(&scene.environmentIntensity, sizeof(float), 3);
+            // Glass and blended submeshes, found up front: they wait for A2 below.
+            struct TransparentDraw {
+                NS::UInteger renderableIndex;
+                const MeshSubmesh* submesh;
+                float distanceSquared;
+            };
+            std::vector<TransparentDraw> transmissiveDraws, blendDraws;
 
             for (NS::UInteger i = 0; i < renderables.size(); i++) {
                 const auto& r = renderables[i];
@@ -972,10 +1018,17 @@ int main() {
 
                 if (r.mesh && !r.mesh->submeshes.empty()) {
                     // glTF: one draw per material run, each with the file's own textures/factors.
-                    // Blend submeshes wait for the transparent pass below.
+                    simd::float4x4 modelMatrix = objectModelMatrix(*r.obj);
                     for (const MeshSubmesh& sub : r.mesh->submeshes) {
                         const MeshMaterial& mat = r.mesh->materials[sub.materialIndex];
-                        if (mat.alphaMode() == AlphaMode::Blend) continue;
+                        DrawPass drawPass = mat.drawPass();
+                        if (drawPass != DrawPass::Opaque) {
+                            simd::float4 world = modelMatrix * simd_make_float4(sub.center.x, sub.center.y, sub.center.z, 1.0f);
+                            simd::float3 toCamera = simd_make_float3(world.x, world.y, world.z) - camera.position;
+                            (drawPass == DrawPass::Transmissive ? transmissiveDraws : blendDraws)
+                                .push_back({i, &sub, simd_length_squared(toCamera)});
+                            continue;
+                        }
                         bindMeshMaterial(hdrEncoder, mat);
                         hdrEncoder->drawIndexedPrimitives(
                             MTL::PrimitiveTypeTriangle, sub.indexCount, r.indexType, r.indexBuffer,
@@ -989,9 +1042,11 @@ int main() {
                     hdrEncoder->setFragmentTexture(set && set->albedo ? set->albedo : whiteTexture, 0);
                     hdrEncoder->setFragmentTexture(set && set->normal ? set->normal : flatNormalTexture, 1);
                     hdrEncoder->setFragmentTexture(set && set->orm ? set->orm : whiteTexture, kOrmTextureSlot);
-                    // The set's ORM texture also carries its occlusion (R); no emission.
+                    // The set's ORM texture also carries its occlusion (R); no emission, no transmission.
                     hdrEncoder->setFragmentTexture(set && set->orm ? set->orm : whiteTexture, kOcclusionTextureSlot);
                     hdrEncoder->setFragmentTexture(whiteTexture, kEmissiveTextureSlot);
+                    hdrEncoder->setFragmentTexture(whiteTexture, kTransmissionTextureSlot);
+                    hdrEncoder->setFragmentTexture(whiteTexture, kThicknessTextureSlot);
                     hdrEncoder->setFragmentBytes(set ? &set->params : &defaultParams, sizeof(MaterialParams), 2);
                     hdrEncoder->drawIndexedPrimitives(
                         MTL::PrimitiveTypeTriangle,
@@ -1021,47 +1076,63 @@ int main() {
                 hdrEncoder->setFragmentTexture(environment.sky, 0);
                 hdrEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, (NS::UInteger)3);
             }
+            hdrEncoder->endEncoding();
 
-            // Transparent pass: glTF alphaMode BLEND submeshes, after the sky (which only fills
-            // pixels no opaque geometry covered, so glass in front of the sky blends against it).
-            // Sorted farthest to nearest by each submesh's center - the usual approximation:
-            // correct between separate objects/submeshes, not for one submesh overlapping itself.
-            struct TransparentDraw {
-                NS::UInteger renderableIndex;
-                const MeshSubmesh* submesh;
-                float distanceSquared;
-            };
-            std::vector<TransparentDraw> transparentDraws;
-            for (NS::UInteger i = 0; i < renderables.size(); i++) {
-                const auto& r = renderables[i];
-                if (!r.mesh || !r.mesh->hasNonOpaqueSubmeshes) continue;
-                simd::float4x4 modelMatrix = objectModelMatrix(*r.obj);
-                for (const MeshSubmesh& sub : r.mesh->submeshes) {
-                    if (r.mesh->materials[sub.materialIndex].alphaMode() != AlphaMode::Blend) continue;
-                    simd::float4 world = modelMatrix * simd_make_float4(sub.center.x, sub.center.y, sub.center.z, 1.0f);
-                    simd::float3 toCamera = simd_make_float3(world.x, world.y, world.z) - camera.position;
-                    transparentDraws.push_back({i, &sub, simd_length_squared(toCamera)});
+            // Pass A2: glass, then blended surfaces - after the sky (which only fills pixels no
+            // opaque geometry covered), so both see it too.
+            if (!transmissiveDraws.empty() || !blendDraws.empty()) {
+                if (!transmissiveDraws.empty()) {
+                    // Copy the opaque scene + sky and build its mip chain (the blurrier levels are
+                    // what rough glass samples).
+                    MTL::BlitCommandEncoder* blit = cmdBuffer->blitCommandEncoder();
+                    blit->copyFromTexture(hdrColorTexture, 0, 0, MTL::Origin(0, 0, 0),
+                                          MTL::Size(hdrColorTexture->width(), hdrColorTexture->height(), 1),
+                                          transmissionTexture, 0, 0, MTL::Origin(0, 0, 0));
+                    blit->generateMipmaps(transmissionTexture);
+                    blit->endEncoding();
                 }
-            }
-            if (!transparentDraws.empty()) {
-                std::sort(transparentDraws.begin(), transparentDraws.end(),
-                          [](const TransparentDraw& a, const TransparentDraw& b) { return a.distanceSquared > b.distanceSquared; });
-                hdrEncoder->setDepthStencilState(blendDepthState);
-                hdrEncoder->setRenderPipelineState(blendPipelineState);
-                for (const TransparentDraw& draw : transparentDraws) {
+
+                MTL::RenderPassDescriptor* hdr2RPD = MTL::RenderPassDescriptor::renderPassDescriptor();
+                auto hdr2Color = hdr2RPD->colorAttachments()->object(0);
+                hdr2Color->setTexture(hdrColorTexture);
+                hdr2Color->setLoadAction(MTL::LoadActionLoad);
+                hdr2Color->setStoreAction(MTL::StoreActionStore);
+                hdr2RPD->depthAttachment()->setTexture(depthTexture);
+                hdr2RPD->depthAttachment()->setLoadAction(MTL::LoadActionLoad);
+                hdr2RPD->depthAttachment()->setStoreAction(MTL::StoreActionStore);
+                MTL::RenderCommandEncoder* transparentEncoder = cmdBuffer->renderCommandEncoder(hdr2RPD);
+                bindSceneState(transparentEncoder);
+
+                auto drawTransparent = [&](const TransparentDraw& draw) {
                     const auto& r = renderables[draw.renderableIndex];
                     NS::UInteger offset = draw.renderableIndex * kUniformStride;
-                    hdrEncoder->setVertexBuffer(r.vertexBuffer, 0, 0);
-                    hdrEncoder->setVertexBuffer(uniformBuffer, offset, 1);
-                    hdrEncoder->setFragmentBuffer(uniformBuffer, offset, 1);
-                    bindMeshMaterial(hdrEncoder, r.mesh->materials[draw.submesh->materialIndex]);
-                    hdrEncoder->drawIndexedPrimitives(
+                    transparentEncoder->setVertexBuffer(r.vertexBuffer, 0, 0);
+                    transparentEncoder->setVertexBuffer(uniformBuffer, offset, 1);
+                    transparentEncoder->setFragmentBuffer(uniformBuffer, offset, 1);
+                    bindMeshMaterial(transparentEncoder, r.mesh->materials[draw.submesh->materialIndex]);
+                    transparentEncoder->drawIndexedPrimitives(
                         MTL::PrimitiveTypeTriangle, draw.submesh->indexCount, r.indexType, r.indexBuffer,
                         draw.submesh->indexOffset * sizeof(uint32_t)
                     );
-                }
+                };
+
+                // Glass draws like opaque geometry (it already composites what's behind it, so no
+                // blending; depth-written, so a sphere's far side can't overdraw its near side) but
+                // reads the copy, so glass in front of other glass hides rather than refracts it.
+                transparentEncoder->setDepthStencilState(depthState);
+                transparentEncoder->setRenderPipelineState(pipelineState);
+                for (const TransparentDraw& draw : transmissiveDraws) drawTransparent(draw);
+
+                // Blended surfaces: farthest to nearest by each submesh's center - the usual
+                // approximation: correct between separate objects/submeshes, not within one that
+                // overlaps itself.
+                std::sort(blendDraws.begin(), blendDraws.end(),
+                          [](const TransparentDraw& a, const TransparentDraw& b) { return a.distanceSquared > b.distanceSquared; });
+                transparentEncoder->setDepthStencilState(blendDepthState);
+                transparentEncoder->setRenderPipelineState(blendPipelineState);
+                for (const TransparentDraw& draw : blendDraws) drawTransparent(draw);
+                transparentEncoder->endEncoding();
             }
-            hdrEncoder->endEncoding();
 
             // --- Selection mask pass: draws just the selected renderable's silhouette (if any)
             // into selectionMaskTexture, depth-tested against the scene depth Pass A just wrote
@@ -1289,6 +1360,8 @@ int main() {
     samplerState->release();
     samplerDesc->release();
     envSamplerState->release();
+    screenSamplerState->release();
+    screenSamplerDesc->release();
     envSamplerDesc->release();
     for (size_t i = 0; i < kMaxLights; i++) {
         shadowCubeMaps[i]->release();
@@ -1299,6 +1372,7 @@ int main() {
     shadowScratchDepth->release();
     shadow2DScratchDepth->release();
     hdrColorTexture->release();
+    transmissionTexture->release();
     bloomTextureA->release();
     bloomTextureB->release();
     selectionMaskTexture->release();

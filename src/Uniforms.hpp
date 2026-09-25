@@ -42,6 +42,7 @@ struct Uniforms {
     simd::float4 cameraPosition;
     simd::float4 materialAlbedo;              // rgb = albedo tint
     simd::float4 materialParams;              // x = metallic, y = roughness, z = ao, w = useTextures (0/1)
+    simd::float4x4 viewProjMatrix;            // camera only, no model - transmission projects refracted points to the screen
 };
 
 // glTF's alphaMode. Opaque ignores alpha entirely; Mask keeps or discards each pixel against a
@@ -57,6 +58,10 @@ struct MaterialParams {
     simd::float4 factors = {1.0f, 1.0f, 0.0f, 0.0f}; // x = metallic, y = roughness, z = occlusion strength
     simd::float4 emissiveFactor = {0.0f, 0.0f, 0.0f, 0.0f}; // rgb = emissive color * emissive strength (HDR, may exceed 1)
     simd::float4 alphaParams = {0.0f, 0.5f, 0.0f, 0.0f};    // x = AlphaMode, y = Mask cutoff
+    // KHR_materials_transmission / _volume / _ior. Transmission 0 = an ordinary surface. Thickness is
+    // in mesh units (scaled by the object's model matrix at draw time); 1e30 = no absorption.
+    simd::float4 transmissionParams = {0.0f, 0.0f, 1e30f, 1.5f}; // x = transmission, y = thickness, z = attenuation distance, w = IOR
+    simd::float4 attenuationColor = {1.0f, 1.0f, 1.0f, 0.0f};    // rgb = color the volume tints light toward over attenuation distance
 };
 
 // Camera-only view-projection (no object model matrix) - see its own comment in Uniforms.cpp.

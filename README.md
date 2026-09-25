@@ -44,7 +44,7 @@
 - Bump/Parallax Mapping
 - [x] Image-Based Lighting (IBL)
 - Anisotropic Shading
-- Transmission & Volume (glass)
+- [x] Transmission & Volume (glass)
 - [x] Emissive Materials
 - [x] Alpha Modes (Mask/Blend)
 - [x] Separate Ambient Occlusion Texture
