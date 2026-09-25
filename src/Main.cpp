@@ -111,14 +111,16 @@ int main() {
     MTL::Buffer* indexBuffer = device->newBuffer(CubeMesh::indices, sizeof(CubeMesh::indices), MTL::ResourceStorageModeShared);
     constexpr NS::UInteger indexCount = sizeof(CubeMesh::indices) / sizeof(CubeMesh::indices[0]);
 
-    // One Uniforms slot per scene object per frame, plus one for the axis gizmo and one per
-    // possible light marker. 384-byte stride is Metal's safe alignment for per-draw buffer
-    // offsets, rounded up from sizeof(Uniforms) (which now holds up to kMaxLights lights).
-    constexpr NS::UInteger kUniformStride = 384;
+    // One Uniforms slot per scene object per frame, plus one for the axis gizmo, one per possible
+    // light marker, and one per possible light direction ray. 640-byte stride is Metal's safe
+    // alignment for per-draw buffer offsets, rounded up from sizeof(Uniforms) (which now holds up
+    // to kMaxLights lights, each with type/direction/area-axis data on top of position/color).
+    constexpr NS::UInteger kUniformStride = 640;
     static_assert(sizeof(Uniforms) <= kUniformStride, "Uniforms grew past the reserved per-object stride");
     constexpr NS::UInteger kGizmoUniformOffset = kMaxSceneObjects * kUniformStride;
     constexpr NS::UInteger kLightMarkerUniformOffset = kGizmoUniformOffset + kUniformStride;
-    constexpr NS::UInteger kTotalUniformSlots = kMaxSceneObjects + 1 + kMaxLights;
+    constexpr NS::UInteger kLightRayUniformOffset = kLightMarkerUniformOffset + kMaxLights * kUniformStride;
+    constexpr NS::UInteger kTotalUniformSlots = kMaxSceneObjects + 1 + kMaxLights + kMaxLights;
     MTL::Buffer* uniformBuffer = device->newBuffer(kTotalUniformSlots * kUniformStride, MTL::ResourceStorageModeShared);
 
     // Compile the shader library
@@ -280,26 +282,44 @@ int main() {
                 drawSceneEditorPanel(scene, selectedObjectIndex);
             }
 
-            // Gather up to kMaxLights point lights from the scene. If there are none, fall back to
-            // a single default so the scene isn't unlit.
-            PointLight lights[kMaxLights];
+            // Gather up to kMaxLights lights (of any type) from the scene. lightObjects[i] keeps
+            // the originating SceneObject alongside lights[i] (same index) so the marker/ray pass
+            // below can read its rotation - only a nullptr for the synthetic fallback light.
+            // If there are no lights at all, fall back to a single default so the scene isn't unlit.
+            constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
+            SceneLight lights[kMaxLights];
+            const SceneObject* lightObjects[kMaxLights] = {};
             int lightCount = 0;
             for (const auto& obj : scene.objects) {
                 if (obj.type != SceneObjectType::Light) continue;
                 if (lightCount >= (int)kMaxLights) break;
-                lights[lightCount].position = simd_make_float3(obj.position[0], obj.position[1], obj.position[2]);
-                lights[lightCount].color = simd_make_float3(obj.color[0], obj.color[1], obj.color[2]);
-                lights[lightCount].intensity = obj.intensity;
+                SceneLight& light = lights[lightCount];
+                light.type = obj.lightType;
+                light.position = simd_make_float3(obj.position[0], obj.position[1], obj.position[2]);
+                light.direction = objectForward(obj);
+                light.right = objectRight(obj);
+                light.up = objectUp(obj);
+                light.color = simd_make_float3(obj.color[0], obj.color[1], obj.color[2]);
+                light.intensity = obj.intensity;
+                light.spotCosInner = cosf(obj.spotInnerDegrees * kDegToRad);
+                light.spotCosOuter = cosf(obj.spotOuterDegrees * kDegToRad);
+                light.areaHalfSize = simd_make_float2(obj.areaSize[0] * 0.5f, obj.areaSize[1] * 0.5f);
+                lightObjects[lightCount] = &obj;
                 lightCount++;
             }
             if (lightCount == 0) {
-                lights[0] = {simd_make_float3(2.0f, 4.0f, 2.0f), simd_make_float3(1.0f, 1.0f, 1.0f), 3.0f};
+                lights[0] = SceneLight{};
+                lights[0].position = simd_make_float3(2.0f, 4.0f, 2.0f);
+                lights[0].color = simd_make_float3(1.0f, 1.0f, 1.0f);
+                lights[0].intensity = 3.0f;
                 lightCount = 1;
             }
 
-            // Every active light gets its own 6-face cube shadow map (see Shadow.hpp).
+            // Every active Point light gets its own 6-face cube shadow map (see Shadow.hpp).
+            // Other light types don't cast shadows yet (see Shader.metal's fragmentMain).
             simd::float4x4 cubeFaceMatrices[kMaxLights][kCubeFaceCount];
             for (int i = 0; i < lightCount; i++) {
+                if (lights[i].type != LightType::Point) continue;
                 computeCubeShadowMatrices(lights[i].position, kShadowNearPlane, kShadowFarPlane, cubeFaceMatrices[i]);
             }
 
@@ -320,7 +340,9 @@ int main() {
                                                           liveWidth, liveHeight);
                 memcpy((uint8_t*)uniformBuffer->contents() + kGizmoUniformOffset, &gizmoUniforms, sizeof(Uniforms));
 
-                // Light markers: a small translate-only model matrix places the marker at each light
+                // Light markers: a small translate-only model matrix places the marker at each light.
+                // Non-Point lights also get a direction ray, built from the object's full rotation +
+                // translation so it points along the light's actual orientation.
                 for (int i = 0; i < lightCount; i++) {
                     simd::float4x4 markerModel = simd_matrix(
                         simd_make_float4(1.0f, 0.0f, 0.0f, 0.0f),
@@ -332,6 +354,13 @@ int main() {
                                                                liveWidth, liveHeight);
                     memcpy((uint8_t*)uniformBuffer->contents() + kLightMarkerUniformOffset + i * kUniformStride,
                            &markerUniforms, sizeof(Uniforms));
+
+                    if (lightObjects[i] && lights[i].type != LightType::Point) {
+                        Uniforms rayUniforms = computeUniforms(camera, objectModelMatrix(*lightObjects[i]),
+                                                                lights, lightCount, liveWidth, liveHeight);
+                        memcpy((uint8_t*)uniformBuffer->contents() + kLightRayUniformOffset + i * kUniformStride,
+                               &rayUniforms, sizeof(Uniforms));
+                    }
                 }
             }
 
@@ -344,6 +373,7 @@ int main() {
             // instanced/layered rendering for how a production renderer collapses this to one
             // encoder per light; this stays the simple, unoptimized version for now.
             for (int lightIndex = 0; lightIndex < lightCount; lightIndex++) {
+                if (lights[lightIndex].type != LightType::Point) continue;
                 for (int face = 0; face < kCubeFaceCount; face++) {
                     MTL::RenderPassDescriptor* shadowRPD = MTL::RenderPassDescriptor::renderPassDescriptor();
                     auto shadowColor = shadowRPD->colorAttachments()->object(0);
@@ -383,6 +413,9 @@ int main() {
                 drawAxisGizmo(axisGizmo, encoder, uniformBuffer, kGizmoUniformOffset);
                 for (int i = 0; i < lightCount; i++) {
                     drawLightMarker(lightMarker, encoder, uniformBuffer, kLightMarkerUniformOffset + i * kUniformStride);
+                    if (lightObjects[i] && lights[i].type != LightType::Point) {
+                        drawLightDirectionRay(lightMarker, encoder, uniformBuffer, kLightRayUniformOffset + i * kUniformStride);
+                    }
                 }
             }
 

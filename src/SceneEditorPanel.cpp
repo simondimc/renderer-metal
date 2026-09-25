@@ -80,8 +80,23 @@ void drawSceneEditorPanel(Scene& scene, int& selectedIndex) {
         ImGui::Text("%s - %s", obj.type == SceneObjectType::Light ? "Light" : "Transform", obj.name.c_str());
         ImGui::DragFloat3("Position", obj.position, 0.05f);
         if (obj.type == SceneObjectType::Light) {
+            static const char* kLightTypeNames[] = {"Point", "Directional", "Spot", "Area"};
+            int lightTypeIndex = (int)obj.lightType;
+            if (ImGui::Combo("Light Type", &lightTypeIndex, kLightTypeNames, IM_ARRAYSIZE(kLightTypeNames))) {
+                obj.lightType = (LightType)lightTypeIndex;
+            }
             ImGui::ColorEdit3("Color", obj.color);
             ImGui::DragFloat("Intensity", &obj.intensity, 0.1f, 0.0f, 50.0f);
+            if (obj.lightType != LightType::Point) {
+                ImGui::DragFloat3("Direction (rotation)", obj.rotationDegrees, 1.0f);
+            }
+            if (obj.lightType == LightType::Spot) {
+                ImGui::DragFloat("Inner Angle", &obj.spotInnerDegrees, 0.5f, 0.0f, obj.spotOuterDegrees);
+                ImGui::DragFloat("Outer Angle", &obj.spotOuterDegrees, 0.5f, obj.spotInnerDegrees, 89.0f);
+            }
+            if (obj.lightType == LightType::Area) {
+                ImGui::DragFloat2("Size", obj.areaSize, 0.05f, 0.01f, 20.0f);
+            }
         } else {
             ImGui::DragFloat3("Rotation", obj.rotationDegrees, 1.0f);
             ImGui::DragFloat3("Scale", obj.scale, 0.05f, 0.01f, 10.0f);

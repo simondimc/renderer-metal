@@ -3,7 +3,7 @@
 #include <cmath>
 
 Uniforms computeUniforms(const Camera& cam, const simd::float4x4& objectModel,
-                          const PointLight* lights, int lightCount,
+                          const SceneLight* lights, int lightCount,
                           int width, int height) {
     Uniforms u;
 
@@ -30,8 +30,15 @@ Uniforms computeUniforms(const Camera& cam, const simd::float4x4& objectModel,
 
     int count = std::min(lightCount, (int)kMaxLights);
     for (int i = 0; i < count; i++) {
-        u.lightPositions[i] = simd_make_float4(lights[i].position.x, lights[i].position.y, lights[i].position.z, 1.0f);
-        u.lightColors[i] = simd_make_float4(lights[i].color.x, lights[i].color.y, lights[i].color.z, lights[i].intensity);
+        const SceneLight& light = lights[i];
+        u.lightPositions[i] = simd_make_float4(light.position.x, light.position.y, light.position.z, 1.0f);
+        u.lightDirections[i] = simd_make_float4(light.direction.x, light.direction.y, light.direction.z, 0.0f);
+        u.lightRight[i] = simd_make_float4(light.right.x, light.right.y, light.right.z, 0.0f);
+        u.lightUp[i] = simd_make_float4(light.up.x, light.up.y, light.up.z, 0.0f);
+        u.lightColors[i] = simd_make_float4(light.color.x, light.color.y, light.color.z, light.intensity);
+        u.lightParams[i] = simd_make_float4(light.spotCosInner, light.spotCosOuter,
+                                             light.areaHalfSize.x, light.areaHalfSize.y);
+        u.lightTypes[i] = simd_make_int4((int)light.type, 0, 0, 0);
     }
     u.lightMeta = simd_make_int4(count, 0, 0, 0);
 

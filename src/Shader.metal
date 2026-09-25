@@ -3,6 +3,12 @@ using namespace metal;
 
 #define MAX_LIGHTS 4 // must match kMaxLights in Uniforms.hpp
 
+// Must match the LightType enum in Scene.hpp
+#define LIGHT_TYPE_POINT 0
+#define LIGHT_TYPE_DIRECTIONAL 1
+#define LIGHT_TYPE_SPOT 2
+#define LIGHT_TYPE_AREA 3
+
 struct VertexInput {
     float3 position [[attribute(0)]];
     float2 uv       [[attribute(1)]];
@@ -21,9 +27,14 @@ struct RasterData {
 struct Uniforms {
     float4x4 mvpMatrix;
     float4x4 modelMatrix;
-    float4 lightPositions[MAX_LIGHTS]; // world space, xyz used
-    float4 lightColors[MAX_LIGHTS];    // rgb = color, a = intensity
-    int4 lightMeta;                    // x = active light count
+    float4 lightPositions[MAX_LIGHTS];  // xyz = position (Point/Spot/Area)
+    float4 lightDirections[MAX_LIGHTS]; // xyz = normalized emission direction (Directional/Spot/Area)
+    float4 lightRight[MAX_LIGHTS];      // xyz = area light local right axis
+    float4 lightUp[MAX_LIGHTS];         // xyz = area light local up axis
+    float4 lightColors[MAX_LIGHTS];     // rgb = color, a = intensity
+    float4 lightParams[MAX_LIGHTS];     // x=spotCosInner, y=spotCosOuter, z=areaHalfWidth, w=areaHalfHeight
+    int4 lightTypes[MAX_LIGHTS];        // x = LightType of that light
+    int4 lightMeta;                     // x = active light count
     float4 cameraPosition;
 };
 
@@ -106,19 +117,62 @@ fragment float4 fragmentMain(RasterData in [[stage_in]],
 
     int lightCount = uniforms.lightMeta.x;
     for (int i = 0; i < lightCount; i++) {
-        float3 toLight = uniforms.lightPositions[i].xyz - in.worldPosition;
-        float lightDist = length(toLight);
-        float3 lightDir = toLight / max(lightDist, 1e-4);
-        float3 halfVector = normalize(lightDir + viewDir);
+        int lightType = uniforms.lightTypes[i].x;
+        float3 lightPos = uniforms.lightPositions[i].xyz;
+        float3 emitDir = uniforms.lightDirections[i].xyz; // direction the light travels outward
 
-        // Standard point-light attenuation (constant/linear/quadratic falloff)
-        float attenuation = 1.0 / (1.0 + 0.09 * lightDist + 0.032 * lightDist * lightDist);
+        float3 lightDir;  // surface -> light, normalized
+        float lightDist = 0.0;
+        float attenuation = 1.0;
+
+        if (lightType == LIGHT_TYPE_DIRECTIONAL) {
+            // No position/distance - the source is treated as infinitely far away.
+            lightDir = -emitDir;
+        } else if (lightType == LIGHT_TYPE_AREA) {
+            // Closest point on the rectangle to the shading point ("most representative point"),
+            // treated like a point light placed there. An approximation, not physically-based -
+            // it doesn't reproduce the soft penumbra a real area light would cast.
+            float3 right = uniforms.lightRight[i].xyz;
+            float3 up = uniforms.lightUp[i].xyz;
+            float2 halfSize = uniforms.lightParams[i].zw;
+            float3 toPoint = in.worldPosition - lightPos;
+            float2 local = clamp(float2(dot(toPoint, right), dot(toPoint, up)), -halfSize, halfSize);
+            float3 closest = lightPos + right * local.x + up * local.y;
+            float3 toLight = closest - in.worldPosition;
+            lightDist = length(toLight);
+            lightDir = toLight / max(lightDist, 1e-4);
+            // Only the front face of the rectangle emits light.
+            attenuation = max(dot(-lightDir, emitDir), 0.0);
+        } else {
+            // Point and Spot both radiate from a world-space position.
+            float3 toLight = lightPos - in.worldPosition;
+            lightDist = length(toLight);
+            lightDir = toLight / max(lightDist, 1e-4);
+            if (lightType == LIGHT_TYPE_SPOT) {
+                float cosAngle = dot(-lightDir, emitDir);
+                float cosInner = uniforms.lightParams[i].x;
+                float cosOuter = uniforms.lightParams[i].y;
+                attenuation = smoothstep(cosOuter, cosInner, cosAngle);
+            }
+        }
+
+        // Standard constant/linear/quadratic falloff - not applicable to a directional light,
+        // which has no distance to the (infinitely far away) source.
+        if (lightType != LIGHT_TYPE_DIRECTIONAL) {
+            attenuation *= 1.0 / (1.0 + 0.09 * lightDist + 0.032 * lightDist * lightDist);
+        }
+
+        float3 halfVector = normalize(lightDir + viewDir);
         float3 radiance = uniforms.lightColors[i].rgb * uniforms.lightColors[i].a * attenuation;
 
         float diffuse = max(dot(normal, lightDir), 0.0);
         float specular = powr(max(dot(normal, halfVector), 0.0), shininess) * specularStrength;
 
-        float shadow = sampleCubeShadow(in.worldPosition, uniforms.lightPositions[i].xyz, shadowCubes[i], shadowSampler);
+        // Only point lights currently cast shadows (see Main.cpp's shadow pass) - the other types
+        // read as always-lit.
+        float shadow = (lightType == LIGHT_TYPE_POINT)
+            ? sampleCubeShadow(in.worldPosition, lightPos, shadowCubes[i], shadowSampler)
+            : 1.0;
 
         litColor += shadow * (texColor.rgb * diffuse + specular) * radiance;
     }

@@ -14,12 +14,24 @@ constexpr float kMarkerVertices[] = {
     0.0f, 0.0f, -kRadius,   kR, kG, kB,
     0.0f, 0.0f,  kRadius,   kR, kG, kB,
 };
+
+constexpr float kRayLength = 1.5f;
+constexpr float kRayR = 1.0f, kRayG = 1.0f, kRayB = 1.0f; // white, distinct from the marker's yellow
+
+// A single segment from the light's position along its local -Z (forward, see objectForward) -
+// the direction Directional/Spot/Area lights emit toward.
+constexpr float kDirectionRayVertices[] = {
+    0.0f, 0.0f, 0.0f,          kRayR, kRayG, kRayB,
+    0.0f, 0.0f, -kRayLength,   kRayR, kRayG, kRayB,
+};
 } // namespace
 
 LightMarker createLightMarker(MTL::Device* device, MTL::Library* library) {
     LightMarker marker;
     marker.vertexCount = sizeof(kMarkerVertices) / (6 * sizeof(float));
     marker.vertexBuffer = device->newBuffer(kMarkerVertices, sizeof(kMarkerVertices), MTL::ResourceStorageModeShared);
+    marker.directionRayVertexCount = sizeof(kDirectionRayVertices) / (6 * sizeof(float));
+    marker.directionRayVertexBuffer = device->newBuffer(kDirectionRayVertices, sizeof(kDirectionRayVertices), MTL::ResourceStorageModeShared);
 
     MTL::Function* vertFunc = library->newFunction(NS::String::string("axisVertexMain", NS::UTF8StringEncoding));
     MTL::Function* fragFunc = library->newFunction(NS::String::string("axisFragmentMain", NS::UTF8StringEncoding));
@@ -58,7 +70,16 @@ void drawLightMarker(const LightMarker& marker, MTL::RenderCommandEncoder* encod
     encoder->drawPrimitives(MTL::PrimitiveTypeLine, (NS::UInteger)0, marker.vertexCount);
 }
 
+void drawLightDirectionRay(const LightMarker& marker, MTL::RenderCommandEncoder* encoder,
+                            MTL::Buffer* uniformBuffer, NS::UInteger uniformOffset) {
+    encoder->setRenderPipelineState(marker.pipelineState);
+    encoder->setVertexBuffer(marker.directionRayVertexBuffer, 0, 0);
+    encoder->setVertexBuffer(uniformBuffer, uniformOffset, 1);
+    encoder->drawPrimitives(MTL::PrimitiveTypeLine, (NS::UInteger)0, marker.directionRayVertexCount);
+}
+
 void releaseLightMarker(LightMarker& marker) {
     marker.vertexBuffer->release();
+    marker.directionRayVertexBuffer->release();
     marker.pipelineState->release();
 }

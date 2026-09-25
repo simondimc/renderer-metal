@@ -57,24 +57,62 @@ simd::float4x4 translationMatrix(simd::float3 t) {
     );
 }
 
+simd::float4x4 objectRotationMatrix(const SceneObject& obj) {
+    return rotationMatrixZ(obj.rotationDegrees[2] * kDegToRad)
+         * rotationMatrixY(obj.rotationDegrees[1] * kDegToRad)
+         * rotationMatrixX(obj.rotationDegrees[0] * kDegToRad);
+}
+
+const char* lightTypeName(LightType type) {
+    switch (type) {
+        case LightType::Directional: return "directional";
+        case LightType::Spot:        return "spot";
+        case LightType::Area:        return "area";
+        case LightType::Point:       default: return "point";
+    }
+}
+
+LightType parseLightType(const std::string& name) {
+    if (name == "directional") return LightType::Directional;
+    if (name == "spot")        return LightType::Spot;
+    if (name == "area")        return LightType::Area;
+    return LightType::Point;
+}
+
 } // namespace
 
 simd::float4x4 objectModelMatrix(const SceneObject& obj) {
-    simd::float4x4 rotation = rotationMatrixZ(obj.rotationDegrees[2] * kDegToRad)
-                             * rotationMatrixY(obj.rotationDegrees[1] * kDegToRad)
-                             * rotationMatrixX(obj.rotationDegrees[0] * kDegToRad);
+    simd::float4x4 rotation = objectRotationMatrix(obj);
     simd::float3 position = simd_make_float3(obj.position[0], obj.position[1], obj.position[2]);
     simd::float3 scale = simd_make_float3(obj.scale[0], obj.scale[1], obj.scale[2]);
     return translationMatrix(position) * rotation * scaleMatrix(scale);
 }
 
+simd::float3 objectForward(const SceneObject& obj) {
+    simd::float4 f = objectRotationMatrix(obj) * simd_make_float4(0.0f, 0.0f, -1.0f, 0.0f);
+    return simd_make_float3(f.x, f.y, f.z);
+}
+
+simd::float3 objectRight(const SceneObject& obj) {
+    simd::float4 r = objectRotationMatrix(obj) * simd_make_float4(1.0f, 0.0f, 0.0f, 0.0f);
+    return simd_make_float3(r.x, r.y, r.z);
+}
+
+simd::float3 objectUp(const SceneObject& obj) {
+    simd::float4 u = objectRotationMatrix(obj) * simd_make_float4(0.0f, 1.0f, 0.0f, 0.0f);
+    return simd_make_float3(u.x, u.y, u.z);
+}
+
 // File grammar - one block per object, in order:
-//   object <name>          (a Cube) or  light <name>          (a point Light)
+//   object <name>          (a Cube) or  light <name>          (a Light)
 //   position <x> <y> <z>
-//   rotation <x> <y> <z>    (degrees, Cube only)
+//   rotation <x> <y> <z>    (degrees; Cube always, Light only for Directional/Spot/Area)
 //   scale <x> <y> <z>       (Cube only)
+//   lighttype point|directional|spot|area   (Light only)
 //   color <r> <g> <b>       (Light only)
 //   intensity <v>           (Light only)
+//   spotangles <inner> <outer>              (Light, Spot only, degrees)
+//   areasize <width> <height>               (Light, Area only)
 // Lines starting with '#' and blank lines are ignored.
 bool saveScene(const Scene& scene, const std::string& path) {
     std::ofstream out(path);
@@ -88,8 +126,18 @@ bool saveScene(const Scene& scene, const std::string& path) {
         out << (obj.type == SceneObjectType::Light ? "light " : "object ") << obj.name << "\n";
         out << "position " << obj.position[0] << " " << obj.position[1] << " " << obj.position[2] << "\n";
         if (obj.type == SceneObjectType::Light) {
+            out << "lighttype " << lightTypeName(obj.lightType) << "\n";
             out << "color " << obj.color[0] << " " << obj.color[1] << " " << obj.color[2] << "\n";
             out << "intensity " << obj.intensity << "\n";
+            if (obj.lightType != LightType::Point) {
+                out << "rotation " << obj.rotationDegrees[0] << " " << obj.rotationDegrees[1] << " " << obj.rotationDegrees[2] << "\n";
+            }
+            if (obj.lightType == LightType::Spot) {
+                out << "spotangles " << obj.spotInnerDegrees << " " << obj.spotOuterDegrees << "\n";
+            }
+            if (obj.lightType == LightType::Area) {
+                out << "areasize " << obj.areaSize[0] << " " << obj.areaSize[1] << "\n";
+            }
         } else {
             out << "rotation " << obj.rotationDegrees[0] << " " << obj.rotationDegrees[1] << " " << obj.rotationDegrees[2] << "\n";
             out << "scale " << obj.scale[0] << " " << obj.scale[1] << " " << obj.scale[2] << "\n";
@@ -137,6 +185,15 @@ bool loadScene(Scene& scene, const std::string& path) {
             ss >> c[0] >> c[1] >> c[2];
         } else if (haveCurrent && keyword == "intensity") {
             ss >> loaded.objects.back().intensity;
+        } else if (haveCurrent && keyword == "lighttype") {
+            std::string typeName;
+            ss >> typeName;
+            loaded.objects.back().lightType = parseLightType(typeName);
+        } else if (haveCurrent && keyword == "spotangles") {
+            ss >> loaded.objects.back().spotInnerDegrees >> loaded.objects.back().spotOuterDegrees;
+        } else if (haveCurrent && keyword == "areasize") {
+            float* a = loaded.objects.back().areaSize;
+            ss >> a[0] >> a[1];
         }
     }
 

@@ -5,17 +5,30 @@
 
 enum class SceneObjectType { Cube, Light };
 
+// Point: position + color/intensity only, radiates equally in all directions.
+// Directional: no position (infinitely far away); direction only, no distance falloff - a sun.
+// Spot: position + direction + cone angles - a point light restricted to a cone.
+// Area: position + orientation + width/height - a rectangular emitter (soft-point approximation,
+// see sampleAreaLight in Shader.metal; not physically-based, no soft shadows).
+enum class LightType { Point, Directional, Spot, Area };
+
 // A single instance in the scene - either a cube (mesh/textures are shared, only the transform
-// differs) or a point light (position + color/intensity, no mesh).
+// differs) or a light (no mesh; see LightType for the supported kinds).
 // Plain float[3] (not simd::float3) so ImGui::DragFloat3 can take its address directly -
 // simd::float3 is a compiler vector-extension type and its lanes aren't addressable.
 struct SceneObject {
     SceneObjectType type = SceneObjectType::Cube;
     float position[3] = {0.0f, 0.0f, 0.0f};
-    float rotationDegrees[3] = {0.0f, 0.0f, 0.0f}; // Cube only
+    // Cube: mesh rotation. Light: orientation for Directional/Spot/Area, unused for Point - see
+    // objectForward/objectRight/objectUp (forward, i.e. 0,0,-1 rotated, is the emission direction).
+    float rotationDegrees[3] = {0.0f, 0.0f, 0.0f};
     float scale[3] = {1.0f, 1.0f, 1.0f};           // Cube only
     float color[3] = {1.0f, 1.0f, 1.0f};           // Light only
     float intensity = 3.0f;                        // Light only
+    LightType lightType = LightType::Point;        // Light only
+    float spotInnerDegrees = 15.0f;                 // Spot only: half-angle of the full-bright cone
+    float spotOuterDegrees = 25.0f;                 // Spot only: half-angle where light reaches zero
+    float areaSize[2] = {1.0f, 1.0f};               // Area only: width/height of the rectangle
     std::string name = "Cube";
 };
 
@@ -31,6 +44,12 @@ constexpr const char* kSceneFilePath = "../scene/scene.txt";
 
 // Builds a local-to-world model matrix (scale -> rotate -> translate) for one Cube object
 simd::float4x4 objectModelMatrix(const SceneObject& obj);
+
+// World-space local axes after applying obj.rotationDegrees only (no translation/scale) - used to
+// orient Directional/Spot/Area lights. Forward is -Z, matching Camera.hpp's convention.
+simd::float3 objectForward(const SceneObject& obj);
+simd::float3 objectRight(const SceneObject& obj);
+simd::float3 objectUp(const SceneObject& obj);
 
 // Simple line-based text format: one "object"/"light" block per line group, see Scene.cpp for the
 // exact grammar. Returns false (and logs to stderr) on failure; the scene is left unmodified in
