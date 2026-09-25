@@ -10,8 +10,10 @@
 // fragment work - the "stage boundary" sampling Apple GPUs support) through its pass descriptor. Once
 // the frame's command buffer has finished, the samples are read back, converted to milliseconds and
 // summed per label (so the six faces of a point light's shadow pass show up as one "Shadow" line).
-// Displayed values are smoothed over a few frames. The frame total comes straight from the command
-// buffer's own GPU start/end times, so it is available even where pass sampling is not.
+// Displayed values are smoothed over a few frames. The frame total is the time the GPU actually spent on
+// the frame: from when the previous frame let go of it (frames overlap when the GPU is the bottleneck)
+// to this frame's last pass. Without pass sampling it falls back to the command buffer's own GPU
+// start/end times, which also count any time spent waiting behind the previous frame.
 //
 // Apple GPUs are tile-based and overlap passes (one pass's vertex work starts long before the previous
 // pass's fragment work ends), so a pass's own start-to-end span says little. Each pass is instead charged
@@ -67,6 +69,9 @@ private:
     std::vector<MTL::CounterSampleBuffer*> sampleBuffers_; // one per frame in flight
     std::vector<std::vector<PassRecord>> passes_;          // likewise
     int currentSlot_ = 0;
+
+    // The last GPU timestamp of the previous frame, in ticks - when this frame really got the GPU (0 = none yet).
+    uint64_t previousFrameEndTick_ = 0;
 
     mutable std::mutex resultsMutex_;
     std::vector<Entry> smoothedPasses_;

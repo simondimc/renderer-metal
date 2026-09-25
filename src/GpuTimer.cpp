@@ -85,6 +85,7 @@ MTL::BlitPassDescriptor* GpuTimer::blitDescriptor(const char* label) {
 
 void GpuTimer::endFrame(int slot, MTL::CommandBuffer* commandBuffer) {
     float totalMilliseconds = (float)((commandBuffer->GPUEndTime() - commandBuffer->GPUStartTime()) * 1000.0);
+    float shownTotalMilliseconds = totalMilliseconds; // replaced by the frame's busy time below, when measurable
 
     std::vector<Entry> frame;
     const auto& records = passes_[slot];
@@ -107,12 +108,26 @@ void GpuTimer::endFrame(int slot, MTL::CommandBuffer* commandBuffer) {
             }
             double millisecondsPerTick = lastTick > firstTick ? (double)totalMilliseconds / (double)(lastTick - firstTick) : 0.0;
 
+            // Consecutive frames share render targets (the depth buffer, the HDR image, the AO buffers ...),
+            // so when the GPU is the bottleneck this frame's first pass can begin - its first sample is
+            // taken - and then sit waiting for the previous frame to finish reading or writing them. That
+            // wait is the previous frame's time, not this one's, but it would land on the first pass (and
+            // on the command buffer's own start-to-end time). Command buffers finish in order on one
+            // queue, so the previous frame's last sample says when this frame really got the GPU: count
+            // from there. (Only when it falls inside this frame's span; otherwise there was no overlap.)
+            uint64_t busyStart = firstTick;
+            if (previousFrameEndTick_ > firstTick && previousFrameEndTick_ < lastTick) busyStart = previousFrameEndTick_;
+            if (lastTick > firstTick) {
+                shownTotalMilliseconds = (float)((double)(lastTick - busyStart) * millisecondsPerTick);
+                previousFrameEndTick_ = lastTick;
+            }
+
             // A pass's own start-to-end is not its cost: on a tile-based GPU its vertex work starts early,
             // long before the previous pass's fragment work is done, so those spans overlap heavily (their
             // sum can be several times the frame). Passes finish in the order they were encoded, though,
             // so each one is charged for the time from when the GPU was free (the previous pass's end, or
             // its own start if it was idle in between) to its own end - which adds up to the frame's span.
-            uint64_t previousEnd = 0;
+            uint64_t previousEnd = busyStart;
             for (const PassRecord& record : records) {
                 uint64_t start = stamps[record.firstSample].timestamp;
                 uint64_t end = stamps[record.firstSample + 1].timestamp;
@@ -135,7 +150,7 @@ void GpuTimer::endFrame(int slot, MTL::CommandBuffer* commandBuffer) {
     }
 
     std::lock_guard<std::mutex> lock(resultsMutex_);
-    smoothedTotal_ += (totalMilliseconds - smoothedTotal_) * kSmoothing;
+    smoothedTotal_ += (shownTotalMilliseconds - smoothedTotal_) * kSmoothing;
     // Labels missing from this frame (a disabled effect) fade toward zero instead of holding a stale value.
     for (Entry& shown : smoothedPasses_) {
         float target = 0.0f;
