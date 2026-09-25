@@ -14,6 +14,7 @@
 #include "Camera.hpp"
 #include "CubeMesh.hpp"
 #include "Environment.hpp"
+#include "Frustum.hpp"
 #include "GpuTimer.hpp"
 #include "LightMarker.hpp"
 #include "MeshLoader.hpp"
@@ -928,17 +929,22 @@ int main() {
                 NS::UInteger indexCount;
                 MTL::IndexType indexType;
                 const MeshData* mesh; // null for Cube; only used for glTF's per-material submeshes
+                WorldBounds bounds;   // world-space box around the whole object, for frustum culling
             };
             std::vector<RenderableObject> renderables;
             for (const auto& obj : scene.objects) {
                 if (renderables.size() >= kMaxSceneObjects) break;
                 if (obj.type == SceneObjectType::Cube) {
-                    renderables.push_back({&obj, vertexBuffer, indexBuffer, indexCount, MTL::IndexTypeUInt16, nullptr});
+                    // The cube mesh spans -0.5..0.5 on every axis (see CubeMesh.hpp).
+                    renderables.push_back({&obj, vertexBuffer, indexBuffer, indexCount, MTL::IndexTypeUInt16, nullptr,
+                                           transformBounds(simd_make_float3(-0.5f, -0.5f, -0.5f), simd_make_float3(0.5f, 0.5f, 0.5f),
+                                                           objectModelMatrix(obj))});
                 } else if (obj.type == SceneObjectType::Mesh && !obj.meshPath.empty()) {
                     auto it = meshCache.find(obj.meshPath);
                     if (it != meshCache.end() && it->second.indexCount > 0) {
                         const MeshData& m = it->second;
-                        renderables.push_back({&obj, m.vertexBuffer, m.indexBuffer, m.indexCount, m.indexType, &m});
+                        renderables.push_back({&obj, m.vertexBuffer, m.indexBuffer, m.indexCount, m.indexType, &m,
+                                               transformBounds(m.localMin, m.localMax, objectModelMatrix(obj))});
                     }
                 }
             }
@@ -1084,11 +1090,22 @@ int main() {
             // materials cut out their shadow, see cubeShadowFragmentMain), so a mesh with any
             // Mask/Blend/transmissive submesh goes submesh by submesh - skipping Blend and glass,
             // which cast no shadow - while everything else is still one draw over the whole buffer.
-            auto drawShadowCasters = [&](MTL::RenderCommandEncoder* encoder) {
+            //
+            // Frustum culling: every geometry pass skips the objects whose bounding box lies entirely outside
+            // its own view volume - a shadow map's is the light's, the camera passes' the camera's (jittered
+            // exactly like the geometry they draw, see the TAA jitter above). A shadow caster is judged by the
+            // light's frustum only: something off-screen can still cast its shadow into view.
+            constexpr bool kFrustumCulling = true;
+            const Frustum cameraFrustum = frustumFromViewProj(computeViewProj(camera, liveWidth, liveHeight, jitterNDC));
+            auto isVisible = [&](const auto& renderable, const Frustum& frustum) {
+                return !kFrustumCulling || frustumIntersects(frustum, renderable.bounds);
+            };
+            auto drawShadowCasters = [&](MTL::RenderCommandEncoder* encoder, const Frustum& frustum) {
                 encoder->setFragmentTexture(whiteTexture, 0);
                 encoder->setFragmentBytes(&defaultParams, sizeof(MaterialParams), 4);
                 for (NS::UInteger i = 0; i < renderables.size(); i++) {
                     const auto& r = renderables[i];
+                    if (!isVisible(r, frustum)) continue;
                     encoder->setVertexBuffer(r.vertexBuffer, 0, 0);
                     encoder->setVertexBuffer(uniformBuffer, i * kUniformStride, 1);
                     if (r.mesh && r.mesh->hasNonOpaqueSubmeshes) {
@@ -1169,7 +1186,7 @@ int main() {
                         shadowEncoder->setRenderPipelineState(shadowPipelineState);
                         shadowEncoder->setVertexBytes(&cubeFaceMatrices[lightIndex][face], sizeof(simd::float4x4), 2);
                         shadowEncoder->setFragmentBytes(&lights[lightIndex].position, sizeof(simd::float3), 3);
-                        drawShadowCasters(shadowEncoder);
+                        drawShadowCasters(shadowEncoder, frustumFromViewProj(cubeFaceMatrices[lightIndex][face]));
                         shadowEncoder->endEncoding();
                     }
                 } else if (lightType == LightType::Directional || lightType == LightType::Spot) {
@@ -1196,7 +1213,7 @@ int main() {
                     shadow2DEncoder->setRenderPipelineState(shadowPipelineState);
                     shadow2DEncoder->setVertexBytes(&lights[lightIndex].shadowViewProj, sizeof(simd::float4x4), 2);
                     shadow2DEncoder->setFragmentBytes(&shadowEye, sizeof(simd::float3), 3);
-                    drawShadowCasters(shadow2DEncoder);
+                    drawShadowCasters(shadow2DEncoder, frustumFromViewProj(lights[lightIndex].shadowViewProj));
                     shadow2DEncoder->endEncoding();
                 }
             }
@@ -1224,7 +1241,7 @@ int main() {
                 MTL::RenderCommandEncoder* aoPrepassEncoder = beginRenderPass(aoPrepassRPD, "AO prepass");
                 aoPrepassEncoder->setDepthStencilState(depthState);
                 aoPrepassEncoder->setRenderPipelineState(aoPrepassPipelineState);
-                drawShadowCasters(aoPrepassEncoder); // same geometry selection: opaque + Mask, no glass/blend
+                drawShadowCasters(aoPrepassEncoder, cameraFrustum); // same geometry selection: opaque + Mask, no glass/blend
                 aoPrepassEncoder->endEncoding();
 
                 simd::float4x4 projection = computeProjection(liveWidth, liveHeight);
@@ -1355,6 +1372,7 @@ int main() {
 
             for (NS::UInteger i = 0; i < renderables.size(); i++) {
                 const auto& r = renderables[i];
+                if (!isVisible(r, cameraFrustum)) continue; // also keeps its glass/blend submeshes out of A2
                 NS::UInteger offset = i * kUniformStride;
                 hdrEncoder->setVertexBuffer(r.vertexBuffer, 0, 0);
                 hdrEncoder->setVertexBuffer(uniformBuffer, offset, 1);
