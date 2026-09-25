@@ -128,6 +128,11 @@ fragment float cubeShadowFragmentMain(CubeShadowRasterData in [[stage_in]],
 // pattern turns into fine, unobtrusive noise instead of visible banding.
 #define PCF_SAMPLES 16
 #define PCF_RADIUS_TEXELS 2.0
+// Only the first PCF_PROBE_SAMPLES taps are read up front: if they all agree (all lit or all shadowed) the
+// pixel is well inside a lit or a shadowed region and the other taps could only repeat that answer, so
+// they are skipped. Only pixels near a shadow edge, where the probe disagrees, pay for the full 16.
+// The first four Poisson-disk taps are spread around the disk, so the probe sees an edge from any side.
+#define PCF_PROBE_SAMPLES 4
 
 constant float2 kPoissonDisk[PCF_SAMPLES] = {
     float2(-0.94201624, -0.39906216), float2( 0.94558609, -0.76890725),
@@ -140,6 +145,8 @@ constant float2 kPoissonDisk[PCF_SAMPLES] = {
     float2( 0.19984126,  0.78641367), float2( 0.14383161, -0.14100790)
 };
 
+// The per-pixel rotation of the tap pattern (interleaved gradient noise). One per pixel - shared by every
+// light - so fragmentMain computes it once and hands it to the sampling functions.
 static float2x2 pcfRotation(float2 pixel) {
     float noise = fract(52.9829189 * fract(dot(pixel, float2(0.06711056, 0.00583715))));
     float angle = noise * 6.2831853;
@@ -152,7 +159,7 @@ static float2x2 pcfRotation(float2 pixel) {
 // to special-case, unlike a single-frustum shadow map.
 static float sampleCubeShadow(float3 worldPosition, float3 lightPosition,
                               texturecube<float> shadowCube, sampler shadowSampler,
-                              float bias, float2 pixel) {
+                              float bias, float2x2 rot) {
     float3 fragToLight = worldPosition - lightPosition;
     float currentDistance = length(fragToLight);
     float3 dir = fragToLight / max(currentDistance, 1e-4);
@@ -164,9 +171,14 @@ static float sampleCubeShadow(float3 worldPosition, float3 lightPosition,
     float3 bitangent = cross(dir, tangent);
     float radius = PCF_RADIUS_TEXELS * (2.0 / float(shadowCube.get_width()));
 
-    float2x2 rot = pcfRotation(pixel);
     float lit = 0.0;
-    for (int k = 0; k < PCF_SAMPLES; k++) {
+    for (int k = 0; k < PCF_PROBE_SAMPLES; k++) {
+        float2 o = rot * kPoissonDisk[k] * radius;
+        float closestDistance = shadowCube.sample(shadowSampler, dir + tangent * o.x + bitangent * o.y).r;
+        lit += (currentDistance - bias > closestDistance) ? 0.0 : 1.0;
+    }
+    if (lit == 0.0 || lit == float(PCF_PROBE_SAMPLES)) return lit / float(PCF_PROBE_SAMPLES); // agreed: not near an edge
+    for (int k = PCF_PROBE_SAMPLES; k < PCF_SAMPLES; k++) {
         float2 o = rot * kPoissonDisk[k] * radius;
         float closestDistance = shadowCube.sample(shadowSampler, dir + tangent * o.x + bitangent * o.y).r;
         lit += (currentDistance - bias > closestDistance) ? 0.0 : 1.0;
@@ -196,7 +208,7 @@ static float sampleCubeShadow(float3 worldPosition, float3 lightPosition,
 // there to compare against.
 static float sampleProjectedShadow(float3 worldPosition, float3 shadowEye, float4x4 lightViewProj,
                                    texture2d<float> shadowMap, sampler shadowSampler,
-                                   float bias, float2 pixel) {
+                                   float bias, float2x2 rot) {
     float4 lightSpace = lightViewProj * float4(worldPosition, 1.0);
     if (lightSpace.w <= 0.0) return 1.0;
     float3 ndc = lightSpace.xyz / lightSpace.w;
@@ -206,9 +218,14 @@ static float sampleProjectedShadow(float3 worldPosition, float3 shadowEye, float
     float currentDistance = length(worldPosition - shadowEye);
     float2 texel = 1.0 / float2(shadowMap.get_width(), shadowMap.get_height());
 
-    float2x2 rot = pcfRotation(pixel);
     float lit = 0.0;
-    for (int k = 0; k < PCF_SAMPLES; k++) {
+    for (int k = 0; k < PCF_PROBE_SAMPLES; k++) {
+        float2 o = rot * kPoissonDisk[k] * (PCF_RADIUS_TEXELS * texel);
+        float closestDistance = shadowMap.sample(shadowSampler, uv + o).r;
+        lit += (currentDistance - bias > closestDistance) ? 0.0 : 1.0;
+    }
+    if (lit == 0.0 || lit == float(PCF_PROBE_SAMPLES)) return lit / float(PCF_PROBE_SAMPLES); // agreed: not near an edge
+    for (int k = PCF_PROBE_SAMPLES; k < PCF_SAMPLES; k++) {
         float2 o = rot * kPoissonDisk[k] * (PCF_RADIUS_TEXELS * texel);
         float closestDistance = shadowMap.sample(shadowSampler, uv + o).r;
         lit += (currentDistance - bias > closestDistance) ? 0.0 : 1.0;
@@ -456,6 +473,7 @@ fragment SceneFragmentOut fragmentMain(RasterData in [[stage_in]],
     litColor += transmission * (1.0 - metallic) * (1.0 - F_ibl) * transmitted;
 
     int lightCount = uniforms.lightMeta.x;
+    float2x2 pcfRot = pcfRotation(in.position.xy);
     for (int i = 0; i < lightCount; i++) {
         int lightType = uniforms.lightTypes[i].x;
         float3 lightPos = uniforms.lightPositions[i].xyz;
@@ -502,12 +520,17 @@ fragment SceneFragmentOut fragmentMain(RasterData in [[stage_in]],
             attenuation *= 1.0 / (1.0 + 0.09 * lightDist + 0.032 * lightDist * lightDist);
         }
 
+        // A surface turned away from the light, or a light that has faded to nothing, gets nothing from it: every
+        // term below is scaled by NdotL and the attenuation, so skipping now (before the shadow lookups, the most
+        // expensive part of the loop) changes no result.
+        float NdotL = max(dot(normal, lightDir), 0.0);
+        if (NdotL <= 0.0 || attenuation <= 0.0) continue;
+
         float3 halfVector = normalize(lightDir + viewDir);
         // Multiplied by PI to cancel the Lambert BRDF's albedo/PI below, so light intensities keep
         // the pre-PBR meaning: intensity 1 = a white diffuse surface facing the light returns 1.0.
         float3 radiance = uniforms.lightColors[i].rgb * uniforms.lightColors[i].a * attenuation * PI;
 
-        float NdotL = max(dot(normal, lightDir), 0.0);
         float NdotH = max(dot(normal, halfVector), 0.0);
         float VdotH = max(dot(viewDir, halfVector), 0.0);
 
@@ -528,12 +551,12 @@ fragment SceneFragmentOut fragmentMain(RasterData in [[stage_in]],
         float shadowBias = 0.05 + 0.1 * (1.0 - NdotL);
         float shadow = 1.0;
         if (lightType == LIGHT_TYPE_POINT) {
-            shadow = sampleCubeShadow(in.worldPosition, lightPos, shadowCubes[i], shadowSampler, shadowBias, in.position.xy);
+            shadow = sampleCubeShadow(in.worldPosition, lightPos, shadowCubes[i], shadowSampler, shadowBias, pcfRot);
         } else if (lightType == LIGHT_TYPE_SPOT) {
-            shadow = sampleProjectedShadow(in.worldPosition, lightPos, uniforms.lightViewProj[i], shadow2DMaps[i], shadowSampler, shadowBias, in.position.xy);
+            shadow = sampleProjectedShadow(in.worldPosition, lightPos, uniforms.lightViewProj[i], shadow2DMaps[i], shadowSampler, shadowBias, pcfRot);
         } else if (lightType == LIGHT_TYPE_DIRECTIONAL) {
             float3 shadowEye = lightPos - emitDir * DIRECTIONAL_SHADOW_DISTANCE;
-            shadow = sampleProjectedShadow(in.worldPosition, shadowEye, uniforms.lightViewProj[i], shadow2DMaps[i], shadowSampler, shadowBias, in.position.xy);
+            shadow = sampleProjectedShadow(in.worldPosition, shadowEye, uniforms.lightViewProj[i], shadow2DMaps[i], shadowSampler, shadowBias, pcfRot);
         }
 
         litColor += shadow * brdf * radiance * NdotL;
