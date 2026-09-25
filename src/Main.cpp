@@ -347,6 +347,13 @@ int main() {
     float lastFrameTime = (float)glfwGetTime();
     bool toggleKeyWasPressed = false;
 
+    // Last frame's camera view-projection, for motion blur's reprojection (see postParams below).
+    // Initialized to this frame's own VP on first use (a few lines into the loop) rather than
+    // identity, so frame 1 - before anything has "last frame" data yet - reprojects to a no-op
+    // instead of a huge bogus jump.
+    simd::float4x4 previousViewProj = matrix_identity_float4x4;
+    bool havePreviousViewProj = false;
+
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
@@ -429,6 +436,19 @@ int main() {
             // Released by this frame's command buffer completion handler, below.
             dispatch_semaphore_wait(frameBoundarySemaphore, DISPATCH_TIME_FOREVER);
             MTL::Buffer* uniformBuffer = uniformBuffers[frameIndex];
+
+            // Motion blur's reprojection matrix (see postParams below): computed from this frame's
+            // and last frame's bare camera view-projections (no per-object model matrix - see
+            // computeViewProj in Uniforms.cpp), before previousViewProj is overwritten for next
+            // frame. On the very first frame there's no real "last frame" yet, so it's seeded to
+            // this frame's own VP - reprojecting to itself is a no-op rather than a bogus jump.
+            simd::float4x4 currentViewProj = computeViewProj(camera, liveWidth, liveHeight);
+            if (!havePreviousViewProj) {
+                previousViewProj = currentViewProj;
+                havePreviousViewProj = true;
+            }
+            simd::float4x4 reprojectionMatrix = previousViewProj * simd_inverse(currentViewProj);
+            previousViewProj = currentViewProj;
 
             // Overlay pass descriptor (gizmo/light markers/rays + ImGui - see the pass split
             // below): drawn on top of the already-resolved drawable, after the HDR scene pass and
@@ -767,8 +787,11 @@ int main() {
             // why Depth of Field can't linearly filter raw depth.
             postEncoder->setFragmentSamplerState(shadowSamplerState, 1);
             // Field order/count must match PostProcessParams in Shader.metal exactly - this is a
-            // raw byte copy, not a described/reflected layout.
+            // raw byte copy, not a described/reflected layout. reprojectionMatrix goes first since
+            // it's the one field wider than a float (16-byte aligned), so it can't drift out of
+            // sync through mismatched padding the way a scalar in the middle could.
             struct {
+                simd::float4x4 reprojectionMatrix;
                 float exposure;
                 float toneMapOperator;
                 float vignetteStrength;
@@ -781,14 +804,17 @@ int main() {
                 float dofFocusDistance;
                 float dofFocusRange;
                 float dofStrength;
+                float motionBlurStrength;
                 float time;
             } postParams = {
+                reprojectionMatrix,
                 scene.exposure, (float)(int)scene.toneMapOperator,
                 scene.vignetteStrength, scene.chromaticAberrationStrength,
                 scene.filmGrainStrength, scene.sharpenStrength,
                 scene.colorGradingSaturation, scene.colorGradingContrast,
                 scene.bloomIntensity,
                 scene.dofFocusDistance, scene.dofFocusRange, scene.dofStrength,
+                scene.motionBlurStrength,
                 currentTime
             };
             postEncoder->setFragmentBytes(&postParams, sizeof(postParams), 0);

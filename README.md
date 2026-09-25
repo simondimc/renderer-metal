@@ -32,7 +32,7 @@
 - [x] Film Grain
 - [x] Color Grading (Saturation/Contrast - not LUT-based yet)
 - [x] Depth of Field
-- Motion Blur
+- [x] Motion Blur
 - [x] Sharpening
 - Lens Flare
 - Outline / Edge Detection

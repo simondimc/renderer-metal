@@ -352,6 +352,11 @@ fragment float4 blurFragmentMain(PostProcessVertexOut in [[stage_in]],
 }
 
 struct PostProcessParams {
+    // previousFrameViewProj * inverse(currentFrameViewProj) - reprojects a current-frame clip-space
+    // position straight into where it was on screen last frame, for motion blur below. Kept first
+    // in the struct (float4x4 wants 16-byte alignment) so its layout can't drift out of sync with
+    // Main.cpp's mirrored C++ struct through mismatched padding around it - see its comment.
+    float4x4 reprojectionMatrix;
     float exposure;
     float toneMapOperator;            // cast to int - see ToneMapOperator in Scene.hpp
     float vignetteStrength;           // 0 = off
@@ -364,8 +369,22 @@ struct PostProcessParams {
     float dofFocusDistance;           // world-space distance from the camera that stays sharp
     float dofFocusRange;              // distance either side of dofFocusDistance that stays sharp
     float dofStrength;                // 0 = off - max blend-in amount of the out-of-focus blur
+    float motionBlurStrength;         // 0 = off - how far (in UV space) the smear reaches
     float time;                       // seconds - animates the film grain so it doesn't look static
 };
+
+// Base HDR scene color plus bloom, at one UV - used everywhere below that averages several taps of
+// the scene (Depth of Field's disk blur, Motion Blur's directional smear), so their multi-tap
+// average doesn't dilute bloom down to 1/sampleCount of its set intensity by mixing in taps that
+// skip it (which is what made bloom look like it vanished whenever motion blur was active).
+static float3 sampleSceneColor(float2 uv, texture2d<float> hdrTexture, texture2d<float> bloomTexture,
+                               sampler smp, constant PostProcessParams& params) {
+    float3 color = hdrTexture.sample(smp, uv).rgb;
+    if (params.bloomIntensity > 0.0) {
+        color += bloomTexture.sample(smp, uv).rgb * params.bloomIntensity;
+    }
+    return color;
+}
 
 // Exposure -> tone map -> saturation/contrast grading -> gamma encode, applied to one HDR sample.
 // Pulled out of postProcessFragmentMain so the sharpen pass below can run it on each of its
@@ -438,9 +457,35 @@ fragment float4 postProcessFragmentMain(PostProcessVertexOut in [[stage_in]],
             float2 blurRadius = texelSize * coc * 8.0; // *8 so a moderate dofStrength reads as a visible blur, not a faint softening
             float3 blurSum = float3(0.0);
             for (int i = 0; i < 8; i++) {
-                blurSum += hdrTexture.sample(smp, uv + diskOffsets[i] * blurRadius).rgb;
+                blurSum += sampleSceneColor(uv + diskOffsets[i] * blurRadius, hdrTexture, bloomTexture, smp, params);
             }
             hdrColor = mix(hdrColor, blurSum / 8.0, coc);
+        }
+    }
+
+    // Motion Blur: reconstructs this pixel's current-frame clip position from screen UV + raw
+    // depth, reprojects it with reprojectionMatrix to find where it was on screen last frame, and
+    // smears the HDR color backward along that path. Camera motion only - there's no per-object
+    // velocity data, so a moving object against a static camera won't blur, only camera pans/
+    // rotations/moves will (see Main.cpp's reprojectionMatrix comment).
+    if (params.motionBlurStrength > 0.0) {
+        float rawDepth = depthTexture.sample(depthSampler, uv);
+        // uv -> NDC: x flips [0,1]->[-1,1] directly; y also flips sign because uv=0 is the screen
+        // top but NDC+1 is also "up" - matching postProcessVertexMain's own uv/position mapping.
+        float3 ndc = float3(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, rawDepth);
+        float4 previousClip = params.reprojectionMatrix * float4(ndc, 1.0);
+        if (previousClip.w > 0.0) {
+            float2 previousNDC = previousClip.xy / previousClip.w;
+            float2 previousUV = previousNDC * float2(0.5, -0.5) + float2(0.5, 0.5);
+            float2 motionVector = (uv - previousUV) * params.motionBlurStrength;
+
+            constexpr int sampleCount = 8;
+            float3 blurSum = hdrColor;
+            for (int i = 1; i < sampleCount; i++) {
+                float2 sampleUV = uv - motionVector * (float(i) / float(sampleCount - 1));
+                blurSum += sampleSceneColor(sampleUV, hdrTexture, bloomTexture, smp, params);
+            }
+            hdrColor = blurSum / float(sampleCount);
         }
     }
 

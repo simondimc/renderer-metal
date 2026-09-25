@@ -2,11 +2,11 @@
 #include <algorithm>
 #include <cmath>
 
-Uniforms computeUniforms(const Camera& cam, const simd::float4x4& objectModel,
-                          const SceneLight* lights, int lightCount,
-                          int width, int height) {
-    Uniforms u;
-
+// Pulled out of computeUniforms so Main.cpp can also get the bare camera view-projection (no
+// per-object model matrix) for motion blur's frame-to-frame reprojection, without duplicating the
+// projection setup (and risking it drifting out of sync with near/far here - see
+// CAMERA_NEAR_PLANE/FAR_PLANE's comment in Shader.metal, which must match these).
+simd::float4x4 computeViewProj(const Camera& cam, int width, int height) {
     float fov = 60.0f * (M_PI / 180.0f);
     float aspect = (float)width / (float)height;
     float nearPlane = 0.1f;
@@ -23,9 +23,17 @@ Uniforms computeUniforms(const Camera& cam, const simd::float4x4& objectModel,
         simd_make_float4(0.0f,       0.0f,  -(farPlane * nearPlane) / zRange, 0.0f)   // Col 3
     );
 
-    simd::float4x4 view = viewMatrix(cam);
+    return proj * viewMatrix(cam);
+}
+
+Uniforms computeUniforms(const Camera& cam, const simd::float4x4& objectModel,
+                          const SceneLight* lights, int lightCount,
+                          int width, int height) {
+    Uniforms u;
+
+    simd::float4x4 viewProj = computeViewProj(cam, width, height);
     u.modelMatrix = objectModel;
-    u.mvpMatrix = proj * view * objectModel;
+    u.mvpMatrix = viewProj * objectModel;
     u.cameraPosition = simd_make_float4(cam.position.x, cam.position.y, cam.position.z, 1.0f);
 
     int count = std::min(lightCount, (int)kMaxLights);

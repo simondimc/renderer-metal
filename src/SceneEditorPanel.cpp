@@ -38,6 +38,7 @@ void drawSceneEditorPanel(Scene& scene, int& selectedIndex) {
         ImGui::DragFloat("DoF Focus Distance", &scene.dofFocusDistance, 0.1f, 0.0f, 100.0f);
         ImGui::DragFloat("DoF Focus Range", &scene.dofFocusRange, 0.1f, 0.01f, 50.0f);
         ImGui::DragFloat("DoF Strength", &scene.dofStrength, 0.01f, 0.0f, 1.0f);
+        ImGui::DragFloat("Motion Blur", &scene.motionBlurStrength, 0.01f, 0.0f, 4.0f);
         ImGui::TreePop();
     }
     ImGui::Separator();

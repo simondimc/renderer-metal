@@ -42,6 +42,10 @@ struct Uniforms {
     simd::float4 cameraPosition;
 };
 
+// Camera-only view-projection (no object model matrix) - see its own comment in Uniforms.cpp.
+// Main.cpp uses this directly for motion blur's frame-to-frame reprojection.
+simd::float4x4 computeViewProj(const Camera& cam, int width, int height);
+
 // Builds the per-object Uniforms: projects/views objectModel through the camera, lit by up to
 // kMaxLights lights of any type (extras beyond that are ignored). Call once per object per frame
 // (objectModel = objectModelMatrix(obj)). Per-light shadow-map matrices are handled separately in
