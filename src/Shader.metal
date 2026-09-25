@@ -43,7 +43,6 @@ struct Uniforms {
     int4 lightTypes[MAX_LIGHTS];        // x = LightType of that light
     int4 lightMeta;                     // x = active light count
     float4 cameraPosition;
-    float4 renderParams;                // x = exposure (see fragmentMain's tone mapping)
 };
 
 // Vertex Shader
@@ -285,13 +284,47 @@ fragment float4 fragmentMain(RasterData in [[stage_in]],
     }
 
     // litColor is unbounded linear HDR radiance (bright/overlapping lights can push it well past
-    // 1.0) - exposure scales it, then the selected curve compresses it into [0, 1], softening the
-    // highlight rolloff instead of the harsh clipping a plain saturate() would give. The display
-    // expects gamma-encoded (sRGB) values, so that's applied last, after tone mapping.
-    float3 exposed = litColor * uniforms.renderParams.x;
-    float3 toneMapped = toneMap(exposed, int(uniforms.renderParams.y));
+    // 1.0) - written straight into the offscreen HDR color target, untouched. Exposure, tone
+    // mapping, and gamma encoding all happen once, screen-space, in postProcessFragmentMain below,
+    // rather than per-object here - see Main.cpp's HDR scene / post-process / overlay pass split.
+    return float4(litColor, texColor.a);
+}
+
+// --- Post-process: full-screen pass that resolves the offscreen HDR buffer to the display ---
+
+struct PostProcessVertexOut {
+    float4 position [[position]];
+    float2 uv;
+};
+
+// No vertex buffer: a single oversized triangle covering the whole screen, built purely from
+// vertex_id (0, 1, 2). Standard trick to avoid a full-screen quad's extra vertices/index buffer -
+// the part outside the viewport is simply clipped by the rasterizer.
+vertex PostProcessVertexOut postProcessVertexMain(uint vertexID [[vertex_id]]) {
+    PostProcessVertexOut out;
+    float2 uv = float2((vertexID << 1) & 2, vertexID & 2);
+    out.uv = uv;
+    // Flip Y in the position (not the uv) so uv=(0,0) lands at the top-left of both the screen and
+    // the source texture (Metal's texture-sample and viewport-row conventions already agree on
+    // that), matching how the HDR scene pass itself was rasterized.
+    out.position = float4(uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
+    return out;
+}
+
+struct PostProcessParams {
+    float exposure;
+    float toneMapOperator; // cast to int - see ToneMapOperator in Scene.hpp
+};
+
+fragment float4 postProcessFragmentMain(PostProcessVertexOut in [[stage_in]],
+                                        texture2d<float> hdrTexture [[texture(0)]],
+                                        constant PostProcessParams& params [[buffer(0)]],
+                                        sampler smp [[sampler(0)]]) {
+    float3 hdrColor = hdrTexture.sample(smp, in.uv).rgb;
+    float3 exposed = hdrColor * params.exposure;
+    float3 toneMapped = toneMap(exposed, int(params.toneMapOperator));
     float3 gammaEncoded = pow(toneMapped, 1.0 / 2.2);
-    return float4(gammaEncoded, texColor.a);
+    return float4(gammaEncoded, 1.0);
 }
 
 // --- Axis gizmo: flat-colored lines, no lighting/texturing ---

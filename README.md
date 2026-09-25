@@ -13,7 +13,7 @@
 - [x] Frame-Resource Synchronization
 - [x] Loading Assets
 - [x] Scene Editor
-- Offscreen Rendering & Post-Processing
+- [x] Offscreen Rendering & Post-Processing
 - Entity Component System (ECS)
 - Job System / Task-Based Parallelism
 - Hot Reloading (Shaders/Assets)
