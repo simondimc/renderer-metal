@@ -14,11 +14,9 @@ constexpr float kAxisVertices[] = {
 };
 } // namespace
 
-AxisGizmo createAxisGizmo(MTL::Device* device, MTL::Library* library) {
-    AxisGizmo gizmo;
-    gizmo.vertexCount = sizeof(kAxisVertices) / (6 * sizeof(float));
-    gizmo.vertexBuffer = device->newBuffer(kAxisVertices, sizeof(kAxisVertices), MTL::ResourceStorageModeShared);
-
+namespace {
+// The unlit position+color pipeline (axisVertexMain/axisFragmentMain); null if the shaders don't build.
+MTL::RenderPipelineState* makePipeline(MTL::Device* device, MTL::Library* library) {
     MTL::Function* vertFunc = library->newFunction(NS::String::string("axisVertexMain", NS::UTF8StringEncoding));
     MTL::Function* fragFunc = library->newFunction(NS::String::string("axisFragmentMain", NS::UTF8StringEncoding));
 
@@ -39,11 +37,22 @@ AxisGizmo createAxisGizmo(MTL::Device* device, MTL::Library* library) {
     pipeDesc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
 
     NS::Error* error = nullptr;
-    gizmo.pipelineState = device->newRenderPipelineState(pipeDesc, &error);
+    MTL::RenderPipelineState* pipeline = device->newRenderPipelineState(pipeDesc, &error);
 
-    vertFunc->release();
-    fragFunc->release();
+    if (vertFunc) vertFunc->release();
+    if (fragFunc) fragFunc->release();
     pipeDesc->release();
+
+    return pipeline;
+}
+} // namespace
+
+AxisGizmo createAxisGizmo(MTL::Device* device, MTL::Library* library) {
+    AxisGizmo gizmo;
+    gizmo.vertexCount = sizeof(kAxisVertices) / (6 * sizeof(float));
+    gizmo.vertexBuffer = device->newBuffer(kAxisVertices, sizeof(kAxisVertices), MTL::ResourceStorageModeShared);
+
+    gizmo.pipelineState = makePipeline(device, library);
 
     return gizmo;
 }
@@ -59,4 +68,12 @@ void drawAxisGizmo(const AxisGizmo& gizmo, MTL::RenderCommandEncoder* encoder,
 void releaseAxisGizmo(AxisGizmo& gizmo) {
     gizmo.vertexBuffer->release();
     gizmo.pipelineState->release();
+}
+
+bool reloadAxisGizmoPipeline(AxisGizmo& gizmo, MTL::Device* device, MTL::Library* library) {
+    MTL::RenderPipelineState* pipeline = makePipeline(device, library);
+    if (!pipeline) return false;
+    gizmo.pipelineState->release();
+    gizmo.pipelineState = pipeline;
+    return true;
 }

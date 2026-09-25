@@ -33,12 +33,25 @@ float lightCullRadius(const SceneLight& light) {
     return peak > 0.0f ? radiusForPeak(peak) : 0.0f;
 }
 
-LightCuller::LightCuller(MTL::Device* device, MTL::Library* library, int framesInFlight) : device_(device) {
+MTL::ComputePipelineState* LightCuller::makeCullPipeline(MTL::Library* library) {
     MTL::Function* function = library->newFunction(NS::String::string("lightCullKernel", NS::UTF8StringEncoding));
     NS::Error* error = nullptr;
-    cullPipeline_ = device_->newComputePipelineState(function, &error);
-    if (!cullPipeline_) fprintf(stderr, "Failed to create the light culling pipeline\n");
-    function->release();
+    MTL::ComputePipelineState* pipeline = function ? device_->newComputePipelineState(function, &error) : nullptr;
+    if (!pipeline) fprintf(stderr, "Failed to create the light culling pipeline\n");
+    if (function) function->release();
+    return pipeline;
+}
+
+bool LightCuller::reload(MTL::Library* library) {
+    MTL::ComputePipelineState* pipeline = makeCullPipeline(library);
+    if (!pipeline) return false;
+    cullPipeline_->release();
+    cullPipeline_ = pipeline;
+    return true;
+}
+
+LightCuller::LightCuller(MTL::Device* device, MTL::Library* library, int framesInFlight) : device_(device) {
+    cullPipeline_ = makeCullPipeline(library);
 
     for (int i = 0; i < framesInFlight; i++) {
         lightBuffers_.push_back(device_->newBuffer(kMaxClusteredLights * sizeof(GPULight), MTL::ResourceStorageModeShared));

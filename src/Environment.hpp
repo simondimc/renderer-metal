@@ -20,6 +20,11 @@ struct Environment {
 class EnvironmentLibrary {
 public:
     EnvironmentLibrary(MTL::Device* device, MTL::Library* library, std::string rootDir);
+
+    // Rebuilds the baking kernels from a freshly compiled library (shader hot reloading). Environments already
+    // baked are kept as they are; the new kernels apply to those baked from now on. Returns false, keeping the
+    // current kernels, if one does not build.
+    bool reloadPipelines(MTL::Library* library);
     ~EnvironmentLibrary();
     EnvironmentLibrary(const EnvironmentLibrary&) = delete;
     EnvironmentLibrary& operator=(const EnvironmentLibrary&) = delete;

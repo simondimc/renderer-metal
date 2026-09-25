@@ -21,6 +21,7 @@
 #include "MeshLoader.hpp"
 #include "Scene.hpp"
 #include "SceneEditorPanel.hpp"
+#include "ShaderReloader.hpp"
 #include "Shadow.hpp"
 #include <memory>
 #include "Texture.hpp"
@@ -30,6 +31,7 @@
 #include "imgui.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <map>
 #include <tuple>
@@ -81,6 +83,44 @@ static bool rayAABBIntersect(simd::float3 origin, simd::float3 dir, simd::float3
     outT = tMin;
     return true;
 }
+
+// Every render pipeline state main() draws with.
+struct Pipelines {
+    MTL::RenderPipelineState* scene = nullptr;         // the lit PBR scene pass
+    MTL::RenderPipelineState* blend = nullptr;         // the same, alpha-blended (glTF BLEND)
+    MTL::RenderPipelineState* selectionMask = nullptr;
+    MTL::RenderPipelineState* sky = nullptr;
+    MTL::RenderPipelineState* postProcess = nullptr;
+    MTL::RenderPipelineState* bloomExtract = nullptr;
+    MTL::RenderPipelineState* blur = nullptr;
+    MTL::RenderPipelineState* aoPrepass = nullptr;
+    MTL::RenderPipelineState* ao = nullptr;
+    MTL::RenderPipelineState* aoBlur = nullptr;
+    MTL::RenderPipelineState* aoUpsample = nullptr;
+    MTL::RenderPipelineState* ssr = nullptr;
+    MTL::RenderPipelineState* ssrTrace = nullptr;
+    MTL::RenderPipelineState* taa = nullptr;
+    MTL::RenderPipelineState* shadow = nullptr;        // shadow maps: cube faces and the single-frustum ones
+
+    std::array<MTL::RenderPipelineState**, 15> members() {
+        return {&scene, &blend, &selectionMask, &sky, &postProcess, &bloomExtract, &blur, &aoPrepass,
+                &ao, &aoBlur, &aoUpsample, &ssr, &ssrTrace, &taa, &shadow};
+    }
+    bool complete() {
+        for (MTL::RenderPipelineState** member : members()) if (!*member) return false;
+        return true;
+    }
+};
+
+static void releasePipelines(Pipelines& pipelines) {
+    for (MTL::RenderPipelineState** member : pipelines.members()) {
+        if (*member) (*member)->release();
+        *member = nullptr;
+    }
+}
+
+// The shader source hot reloading watches - relative to build/, where run.sh launches the binary from.
+constexpr const char* kShaderSourcePath = "../src/Shader.metal";
 
 int main() {
     if (!glfwInit()) return -1;
@@ -366,195 +406,222 @@ int main() {
     auto lightCullerPtr = std::make_unique<LightCuller>(device, library, kMaxFramesInFlight);
     LightCuller& lightCuller = *lightCullerPtr;
 
-    MTL::Function* vertFunc = library->newFunction(NS::String::string("vertexMain", NS::UTF8StringEncoding));
-    MTL::Function* fragFunc = library->newFunction(NS::String::string("fragmentMain", NS::UTF8StringEncoding));
+    // Every render pipeline state the frame loop draws with is built here from one shader library, so that hot
+    // reloading (see ShaderReloader.hpp) can build a complete new set and swap it in only once all of it works.
+    // Returns false, with nothing left allocated in `pipelines`, if any of them fails to build.
+    auto buildPipelines = [&](MTL::Library* lib, Pipelines& pipelines) -> bool {
+        NS::Error* error = nullptr;
+        // The shader functions and pipeline descriptors: needed only while the pipelines are built.
+        std::vector<NS::Object*> temporaries;
+        auto own = [&](auto* object) {
+            if (object) temporaries.push_back(object);
+            return object;
+        };
 
-    // Create the Vertex Descriptor layout
-    MTL::VertexDescriptor* vertexDesc = MTL::VertexDescriptor::vertexDescriptor();
-    // Position attribute (Float3 for X, Y, Z layout)
-    vertexDesc->attributes()->object(0)->setFormat(MTL::VertexFormatFloat3);
-    vertexDesc->attributes()->object(0)->setOffset(0);
-    vertexDesc->attributes()->object(0)->setBufferIndex(0);
-    // UV attribute (Offset matches 3 floats of position data)
-    vertexDesc->attributes()->object(1)->setFormat(MTL::VertexFormatFloat2);
-    vertexDesc->attributes()->object(1)->setOffset(3 * sizeof(float));
-    vertexDesc->attributes()->object(1)->setBufferIndex(0);
-    // Normal attribute (Offset matches 3 floats of position + 2 floats of UV)
-    vertexDesc->attributes()->object(2)->setFormat(MTL::VertexFormatFloat3);
-    vertexDesc->attributes()->object(2)->setOffset(5 * sizeof(float));
-    vertexDesc->attributes()->object(2)->setBufferIndex(0);
-    // Tangent attribute (Offset matches 3 Position + 2 UV + 3 Normal floats); xyz = tangent, w = handedness
-    vertexDesc->attributes()->object(3)->setFormat(MTL::VertexFormatFloat4);
-    vertexDesc->attributes()->object(3)->setOffset(8 * sizeof(float));
-    vertexDesc->attributes()->object(3)->setBufferIndex(0);
-    vertexDesc->layouts()->object(0)->setStride(CubeMesh::vertexStrideFloats * sizeof(float));
+        MTL::Function* vertFunc = own(lib->newFunction(NS::String::string("vertexMain", NS::UTF8StringEncoding)));
+        MTL::Function* fragFunc = own(lib->newFunction(NS::String::string("fragmentMain", NS::UTF8StringEncoding)));
 
-    // Build the Pipeline State Object (PSO). Targets the offscreen HDR buffer (RGBA16Float), not
-    // the drawable directly - see fragmentMain's comment and the postProcess PSO below.
-    MTL::RenderPipelineDescriptor* pipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
-    pipeDesc->setVertexFunction(vertFunc);
-    pipeDesc->setFragmentFunction(fragFunc);
-    pipeDesc->setVertexDescriptor(vertexDesc);
-    pipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatRGBA16Float);
-    // Attachments 1 and 2: the SSR G-buffer (normal + roughness, specular weight) - see SceneFragmentOut.
-    pipeDesc->colorAttachments()->object(1)->setPixelFormat(MTL::PixelFormatRGBA16Float);
-    pipeDesc->colorAttachments()->object(2)->setPixelFormat(MTL::PixelFormatRGBA16Float);
-    pipeDesc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
+        // Create the Vertex Descriptor layout
+        MTL::VertexDescriptor* vertexDesc = MTL::VertexDescriptor::vertexDescriptor();
+        // Position attribute (Float3 for X, Y, Z layout)
+        vertexDesc->attributes()->object(0)->setFormat(MTL::VertexFormatFloat3);
+        vertexDesc->attributes()->object(0)->setOffset(0);
+        vertexDesc->attributes()->object(0)->setBufferIndex(0);
+        // UV attribute (Offset matches 3 floats of position data)
+        vertexDesc->attributes()->object(1)->setFormat(MTL::VertexFormatFloat2);
+        vertexDesc->attributes()->object(1)->setOffset(3 * sizeof(float));
+        vertexDesc->attributes()->object(1)->setBufferIndex(0);
+        // Normal attribute (Offset matches 3 floats of position + 2 floats of UV)
+        vertexDesc->attributes()->object(2)->setFormat(MTL::VertexFormatFloat3);
+        vertexDesc->attributes()->object(2)->setOffset(5 * sizeof(float));
+        vertexDesc->attributes()->object(2)->setBufferIndex(0);
+        // Tangent attribute (Offset matches 3 Position + 2 UV + 3 Normal floats); xyz = tangent, w = handedness
+        vertexDesc->attributes()->object(3)->setFormat(MTL::VertexFormatFloat4);
+        vertexDesc->attributes()->object(3)->setOffset(8 * sizeof(float));
+        vertexDesc->attributes()->object(3)->setBufferIndex(0);
+        vertexDesc->layouts()->object(0)->setStride(CubeMesh::vertexStrideFloats * sizeof(float));
 
-    MTL::RenderPipelineState* pipelineState = device->newRenderPipelineState(pipeDesc, &error);
+        // Build the Pipeline State Object (PSO). Targets the offscreen HDR buffer (RGBA16Float), not
+        // the drawable directly - see fragmentMain's comment and the postProcess PSO below.
+        MTL::RenderPipelineDescriptor* pipeDesc = own(MTL::RenderPipelineDescriptor::alloc()->init());
+        pipeDesc->setVertexFunction(vertFunc);
+        pipeDesc->setFragmentFunction(fragFunc);
+        pipeDesc->setVertexDescriptor(vertexDesc);
+        pipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatRGBA16Float);
+        // Attachments 1 and 2: the SSR G-buffer (normal + roughness, specular weight) - see SceneFragmentOut.
+        pipeDesc->colorAttachments()->object(1)->setPixelFormat(MTL::PixelFormatRGBA16Float);
+        pipeDesc->colorAttachments()->object(2)->setPixelFormat(MTL::PixelFormatRGBA16Float);
+        pipeDesc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
 
-    // Blend PSO: same shaders and targets, but glTF alphaMode BLEND surfaces are mixed over what's
-    // already in the HDR buffer by the alpha fragmentMain returns (see the transparent pass below).
-    // Created from the same descriptor, changed only in the blend factors, after the opaque PSO.
-    auto blendColorAttachment = pipeDesc->colorAttachments()->object(0);
-    blendColorAttachment->setBlendingEnabled(true);
-    blendColorAttachment->setSourceRGBBlendFactor(MTL::BlendFactorSourceAlpha);
-    blendColorAttachment->setDestinationRGBBlendFactor(MTL::BlendFactorOneMinusSourceAlpha);
-    blendColorAttachment->setSourceAlphaBlendFactor(MTL::BlendFactorOne);
-    blendColorAttachment->setDestinationAlphaBlendFactor(MTL::BlendFactorOneMinusSourceAlpha);
-    MTL::RenderPipelineState* blendPipelineState = device->newRenderPipelineState(pipeDesc, &error);
+        pipelines.scene = device->newRenderPipelineState(pipeDesc, &error);
 
-    // Selection mask PSO: reuses vertFunc/vertexDesc unchanged (same mvpMatrix as the main HDR
-    // pass) but a trivial fragment function (selectionMaskFragmentMain) that just writes flat
-    // white - see the mask pass in the render loop below and Shader.metal's comment.
-    MTL::Function* selectionMaskFragFunc = library->newFunction(NS::String::string("selectionMaskFragmentMain", NS::UTF8StringEncoding));
-    MTL::RenderPipelineDescriptor* selectionMaskPipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
-    selectionMaskPipeDesc->setVertexFunction(vertFunc);
-    selectionMaskPipeDesc->setFragmentFunction(selectionMaskFragFunc);
-    selectionMaskPipeDesc->setVertexDescriptor(vertexDesc);
-    selectionMaskPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatR8Unorm);
-    selectionMaskPipeDesc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
-    MTL::RenderPipelineState* selectionMaskPipelineState = device->newRenderPipelineState(selectionMaskPipeDesc, &error);
+        // Blend PSO: same shaders and targets, but glTF alphaMode BLEND surfaces are mixed over what's
+        // already in the HDR buffer by the alpha fragmentMain returns (see the transparent pass below).
+        // Created from the same descriptor, changed only in the blend factors, after the opaque PSO.
+        auto blendColorAttachment = pipeDesc->colorAttachments()->object(0);
+        blendColorAttachment->setBlendingEnabled(true);
+        blendColorAttachment->setSourceRGBBlendFactor(MTL::BlendFactorSourceAlpha);
+        blendColorAttachment->setDestinationRGBBlendFactor(MTL::BlendFactorOneMinusSourceAlpha);
+        blendColorAttachment->setSourceAlphaBlendFactor(MTL::BlendFactorOne);
+        blendColorAttachment->setDestinationAlphaBlendFactor(MTL::BlendFactorOneMinusSourceAlpha);
+        pipelines.blend = device->newRenderPipelineState(pipeDesc, &error);
 
-    // Sky PSO: full-screen triangle at the far plane, drawn into the same HDR + depth targets as the
-    // scene (see skyVertexMain/skyFragmentMain in Shader.metal and the sky draw in Pass A below).
-    MTL::Function* skyVertFunc = library->newFunction(NS::String::string("skyVertexMain", NS::UTF8StringEncoding));
-    MTL::Function* skyFragFunc = library->newFunction(NS::String::string("skyFragmentMain", NS::UTF8StringEncoding));
-    MTL::RenderPipelineDescriptor* skyPipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
-    skyPipeDesc->setVertexFunction(skyVertFunc);
-    skyPipeDesc->setFragmentFunction(skyFragFunc);
-    skyPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatRGBA16Float);
-    // The sky is drawn inside the scene pass, so it has to declare the G-buffer attachments too - but
-    // writes nothing to them: sky pixels keep the cleared zero weight, which SSR skips.
-    for (NS::UInteger gbufferSlot = 1; gbufferSlot <= 2; gbufferSlot++) {
-        skyPipeDesc->colorAttachments()->object(gbufferSlot)->setPixelFormat(MTL::PixelFormatRGBA16Float);
-        skyPipeDesc->colorAttachments()->object(gbufferSlot)->setWriteMask(MTL::ColorWriteMaskNone);
+        // Selection mask PSO: reuses vertFunc/vertexDesc unchanged (same mvpMatrix as the main HDR
+        // pass) but a trivial fragment function (selectionMaskFragmentMain) that just writes flat
+        // white - see the mask pass in the render loop below and Shader.metal's comment.
+        MTL::Function* selectionMaskFragFunc = own(lib->newFunction(NS::String::string("selectionMaskFragmentMain", NS::UTF8StringEncoding)));
+        MTL::RenderPipelineDescriptor* selectionMaskPipeDesc = own(MTL::RenderPipelineDescriptor::alloc()->init());
+        selectionMaskPipeDesc->setVertexFunction(vertFunc);
+        selectionMaskPipeDesc->setFragmentFunction(selectionMaskFragFunc);
+        selectionMaskPipeDesc->setVertexDescriptor(vertexDesc);
+        selectionMaskPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatR8Unorm);
+        selectionMaskPipeDesc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
+        pipelines.selectionMask = device->newRenderPipelineState(selectionMaskPipeDesc, &error);
+
+        // Sky PSO: full-screen triangle at the far plane, drawn into the same HDR + depth targets as the
+        // scene (see skyVertexMain/skyFragmentMain in Shader.metal and the sky draw in Pass A below).
+        MTL::Function* skyVertFunc = own(lib->newFunction(NS::String::string("skyVertexMain", NS::UTF8StringEncoding)));
+        MTL::Function* skyFragFunc = own(lib->newFunction(NS::String::string("skyFragmentMain", NS::UTF8StringEncoding)));
+        MTL::RenderPipelineDescriptor* skyPipeDesc = own(MTL::RenderPipelineDescriptor::alloc()->init());
+        skyPipeDesc->setVertexFunction(skyVertFunc);
+        skyPipeDesc->setFragmentFunction(skyFragFunc);
+        skyPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatRGBA16Float);
+        // The sky is drawn inside the scene pass, so it has to declare the G-buffer attachments too - but
+        // writes nothing to them: sky pixels keep the cleared zero weight, which SSR skips.
+        for (NS::UInteger gbufferSlot = 1; gbufferSlot <= 2; gbufferSlot++) {
+            skyPipeDesc->colorAttachments()->object(gbufferSlot)->setPixelFormat(MTL::PixelFormatRGBA16Float);
+            skyPipeDesc->colorAttachments()->object(gbufferSlot)->setWriteMask(MTL::ColorWriteMaskNone);
+        }
+        skyPipeDesc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
+        pipelines.sky = device->newRenderPipelineState(skyPipeDesc, &error);
+
+        // Post-process PSO: full-screen pass that resolves hdrColorTexture down to the drawable (see
+        // postProcessVertexMain/postProcessFragmentMain in Shader.metal). No vertex descriptor (the
+        // vertex function takes no [[stage_in]] input - see its comment) and no depth attachment (it
+        // doesn't test/write depth).
+        MTL::Function* postProcessVertFunc = own(lib->newFunction(NS::String::string("postProcessVertexMain", NS::UTF8StringEncoding)));
+        MTL::Function* postProcessFragFunc = own(lib->newFunction(NS::String::string("postProcessFragmentMain", NS::UTF8StringEncoding)));
+        MTL::RenderPipelineDescriptor* postProcessPipeDesc = own(MTL::RenderPipelineDescriptor::alloc()->init());
+        postProcessPipeDesc->setVertexFunction(postProcessVertFunc);
+        postProcessPipeDesc->setFragmentFunction(postProcessFragFunc);
+        postProcessPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
+        pipelines.postProcess = device->newRenderPipelineState(postProcessPipeDesc, &error);
+
+        // Bloom PSOs: both reuse postProcessVertexMain's full-screen triangle, and both target
+        // bloomTextureA/B (RGBA16Float, not the drawable) - see bloomExtractFragmentMain/
+        // blurFragmentMain in Shader.metal and the 3-pass bloom chain in the render loop below.
+        MTL::Function* bloomExtractFragFunc = own(lib->newFunction(NS::String::string("bloomExtractFragmentMain", NS::UTF8StringEncoding)));
+        MTL::RenderPipelineDescriptor* bloomExtractPipeDesc = own(MTL::RenderPipelineDescriptor::alloc()->init());
+        bloomExtractPipeDesc->setVertexFunction(postProcessVertFunc);
+        bloomExtractPipeDesc->setFragmentFunction(bloomExtractFragFunc);
+        bloomExtractPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatRGBA16Float);
+        pipelines.bloomExtract = device->newRenderPipelineState(bloomExtractPipeDesc, &error);
+
+        MTL::Function* blurFragFunc = own(lib->newFunction(NS::String::string("blurFragmentMain", NS::UTF8StringEncoding)));
+        MTL::RenderPipelineDescriptor* blurPipeDesc = own(MTL::RenderPipelineDescriptor::alloc()->init());
+        blurPipeDesc->setVertexFunction(postProcessVertFunc);
+        blurPipeDesc->setFragmentFunction(blurFragFunc);
+        blurPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatRGBA16Float);
+        pipelines.blur = device->newRenderPipelineState(blurPipeDesc, &error);
+
+        // Ambient occlusion PSOs: the depth + normal prepass (same vertex layout as the scene, writes
+        // the normal as color and depth as usual), then the GTAO estimate and its bilateral blur, both
+        // full-screen passes into R16Float - see the AO section of Shader.metal.
+        MTL::Function* aoPrepassVertFunc = own(lib->newFunction(NS::String::string("aoPrepassVertexMain", NS::UTF8StringEncoding)));
+        MTL::Function* aoPrepassFragFunc = own(lib->newFunction(NS::String::string("aoPrepassFragmentMain", NS::UTF8StringEncoding)));
+        MTL::RenderPipelineDescriptor* aoPrepassPipeDesc = own(MTL::RenderPipelineDescriptor::alloc()->init());
+        aoPrepassPipeDesc->setVertexFunction(aoPrepassVertFunc);
+        aoPrepassPipeDesc->setFragmentFunction(aoPrepassFragFunc);
+        aoPrepassPipeDesc->setVertexDescriptor(vertexDesc);
+        aoPrepassPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatRGBA16Float);
+        aoPrepassPipeDesc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
+        pipelines.aoPrepass = device->newRenderPipelineState(aoPrepassPipeDesc, &error);
+
+        MTL::Function* aoFragFunc = own(lib->newFunction(NS::String::string("aoFragmentMain", NS::UTF8StringEncoding)));
+        MTL::RenderPipelineDescriptor* aoPipeDesc = own(MTL::RenderPipelineDescriptor::alloc()->init());
+        aoPipeDesc->setVertexFunction(postProcessVertFunc);
+        aoPipeDesc->setFragmentFunction(aoFragFunc);
+        aoPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatR16Float);
+        pipelines.ao = device->newRenderPipelineState(aoPipeDesc, &error);
+
+        MTL::Function* aoBlurFragFunc = own(lib->newFunction(NS::String::string("aoBlurFragmentMain", NS::UTF8StringEncoding)));
+        MTL::RenderPipelineDescriptor* aoBlurPipeDesc = own(MTL::RenderPipelineDescriptor::alloc()->init());
+        aoBlurPipeDesc->setVertexFunction(postProcessVertFunc);
+        aoBlurPipeDesc->setFragmentFunction(aoBlurFragFunc);
+        aoBlurPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatR16Float);
+        pipelines.aoBlur = device->newRenderPipelineState(aoBlurPipeDesc, &error);
+
+        // AO upsample: the blurred (reduced-resolution) AO to a full-resolution R16Float.
+        MTL::Function* aoUpsampleFragFunc = own(lib->newFunction(NS::String::string("aoUpsampleFragmentMain", NS::UTF8StringEncoding)));
+        MTL::RenderPipelineDescriptor* aoUpsamplePipeDesc = own(MTL::RenderPipelineDescriptor::alloc()->init());
+        aoUpsamplePipeDesc->setVertexFunction(postProcessVertFunc);
+        aoUpsamplePipeDesc->setFragmentFunction(aoUpsampleFragFunc);
+        aoUpsamplePipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatR16Float);
+        pipelines.aoUpsample = device->newRenderPipelineState(aoUpsamplePipeDesc, &error);
+
+        // Screen-space reflection PSO: full-screen pass drawn straight into the HDR target, adding its
+        // correction ((traced - environment) * weight, negative where the traced color is darker) onto
+        // what the scene pass left there. Alpha is left as it was.
+        MTL::Function* ssrFragFunc = own(lib->newFunction(NS::String::string("ssrCompositeFragmentMain", NS::UTF8StringEncoding)));
+        MTL::RenderPipelineDescriptor* ssrPipeDesc = own(MTL::RenderPipelineDescriptor::alloc()->init());
+        ssrPipeDesc->setVertexFunction(postProcessVertFunc);
+        ssrPipeDesc->setFragmentFunction(ssrFragFunc);
+        auto ssrColorAttachment = ssrPipeDesc->colorAttachments()->object(0);
+        ssrColorAttachment->setPixelFormat(MTL::PixelFormatRGBA16Float);
+        ssrColorAttachment->setBlendingEnabled(true);
+        ssrColorAttachment->setSourceRGBBlendFactor(MTL::BlendFactorOne);
+        ssrColorAttachment->setDestinationRGBBlendFactor(MTL::BlendFactorOne);
+        ssrColorAttachment->setSourceAlphaBlendFactor(MTL::BlendFactorZero);
+        ssrColorAttachment->setDestinationAlphaBlendFactor(MTL::BlendFactorOne);
+        pipelines.ssr = device->newRenderPipelineState(ssrPipeDesc, &error);
+
+        // The trace pass in front of it writes (color, confidence) into ssrTraceTexture: no blending.
+        MTL::Function* ssrTraceFragFunc = own(lib->newFunction(NS::String::string("ssrTraceFragmentMain", NS::UTF8StringEncoding)));
+        MTL::RenderPipelineDescriptor* ssrTracePipeDesc = own(MTL::RenderPipelineDescriptor::alloc()->init());
+        ssrTracePipeDesc->setVertexFunction(postProcessVertFunc);
+        ssrTracePipeDesc->setFragmentFunction(ssrTraceFragFunc);
+        ssrTracePipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatRGBA16Float);
+        pipelines.ssrTrace = device->newRenderPipelineState(ssrTracePipeDesc, &error);
+
+        // Temporal anti-aliasing PSO: full-screen resolve of the current HDR frame against the history into
+        // one of the taaTextures (see taaFragmentMain in Shader.metal).
+        MTL::Function* taaFragFunc = own(lib->newFunction(NS::String::string("taaFragmentMain", NS::UTF8StringEncoding)));
+        MTL::RenderPipelineDescriptor* taaPipeDesc = own(MTL::RenderPipelineDescriptor::alloc()->init());
+        taaPipeDesc->setVertexFunction(postProcessVertFunc);
+        taaPipeDesc->setFragmentFunction(taaFragFunc);
+        taaPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatRGBA16Float);
+        pipelines.taa = device->newRenderPipelineState(taaPipeDesc, &error);
+
+        // Cube shadow pass PSO: outputs world-space distance-to-light as a color value (see
+        // Shader.metal's cubeShadowFragmentMain) plus a scratch depth attachment for hidden-surface
+        // removal within the pass.
+        MTL::Function* cubeShadowVertFunc = own(lib->newFunction(NS::String::string("cubeShadowVertexMain", NS::UTF8StringEncoding)));
+        MTL::Function* cubeShadowFragFunc = own(lib->newFunction(NS::String::string("cubeShadowFragmentMain", NS::UTF8StringEncoding)));
+        MTL::RenderPipelineDescriptor* shadowPipeDesc = own(MTL::RenderPipelineDescriptor::alloc()->init());
+        shadowPipeDesc->setVertexFunction(cubeShadowVertFunc);
+        shadowPipeDesc->setFragmentFunction(cubeShadowFragFunc);
+        shadowPipeDesc->setVertexDescriptor(vertexDesc);
+        shadowPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatR32Float);
+        shadowPipeDesc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
+        pipelines.shadow = device->newRenderPipelineState(shadowPipeDesc, &error);
+        // Directional/Spot lights' single-frustum shadow pass reuses this same PSO (cubeShadowVertexMain/
+        // cubeShadowFragmentMain don't care whether the target is one cube face or a plain 2D texture -
+        // see Shader.metal's comment on sampleProjectedShadow for why it stays a distance encoding).
+
+        for (NS::Object* temporary : temporaries) temporary->release();
+        if (!pipelines.complete()) {
+            releasePipelines(pipelines);
+            return false;
+        }
+        return true;
+    };
+
+    Pipelines pipelines;
+    if (!buildPipelines(library, pipelines)) {
+        fprintf(stderr, "Failed to build the render pipelines\n");
+        return -1;
     }
-    skyPipeDesc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
-    MTL::RenderPipelineState* skyPipelineState = device->newRenderPipelineState(skyPipeDesc, &error);
-
-    // Post-process PSO: full-screen pass that resolves hdrColorTexture down to the drawable (see
-    // postProcessVertexMain/postProcessFragmentMain in Shader.metal). No vertex descriptor (the
-    // vertex function takes no [[stage_in]] input - see its comment) and no depth attachment (it
-    // doesn't test/write depth).
-    MTL::Function* postProcessVertFunc = library->newFunction(NS::String::string("postProcessVertexMain", NS::UTF8StringEncoding));
-    MTL::Function* postProcessFragFunc = library->newFunction(NS::String::string("postProcessFragmentMain", NS::UTF8StringEncoding));
-    MTL::RenderPipelineDescriptor* postProcessPipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
-    postProcessPipeDesc->setVertexFunction(postProcessVertFunc);
-    postProcessPipeDesc->setFragmentFunction(postProcessFragFunc);
-    postProcessPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
-    MTL::RenderPipelineState* postProcessPipelineState = device->newRenderPipelineState(postProcessPipeDesc, &error);
-
-    // Bloom PSOs: both reuse postProcessVertexMain's full-screen triangle, and both target
-    // bloomTextureA/B (RGBA16Float, not the drawable) - see bloomExtractFragmentMain/
-    // blurFragmentMain in Shader.metal and the 3-pass bloom chain in the render loop below.
-    MTL::Function* bloomExtractFragFunc = library->newFunction(NS::String::string("bloomExtractFragmentMain", NS::UTF8StringEncoding));
-    MTL::RenderPipelineDescriptor* bloomExtractPipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
-    bloomExtractPipeDesc->setVertexFunction(postProcessVertFunc);
-    bloomExtractPipeDesc->setFragmentFunction(bloomExtractFragFunc);
-    bloomExtractPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatRGBA16Float);
-    MTL::RenderPipelineState* bloomExtractPipelineState = device->newRenderPipelineState(bloomExtractPipeDesc, &error);
-
-    MTL::Function* blurFragFunc = library->newFunction(NS::String::string("blurFragmentMain", NS::UTF8StringEncoding));
-    MTL::RenderPipelineDescriptor* blurPipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
-    blurPipeDesc->setVertexFunction(postProcessVertFunc);
-    blurPipeDesc->setFragmentFunction(blurFragFunc);
-    blurPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatRGBA16Float);
-    MTL::RenderPipelineState* blurPipelineState = device->newRenderPipelineState(blurPipeDesc, &error);
-
-    // Ambient occlusion PSOs: the depth + normal prepass (same vertex layout as the scene, writes
-    // the normal as color and depth as usual), then the GTAO estimate and its bilateral blur, both
-    // full-screen passes into R16Float - see the AO section of Shader.metal.
-    MTL::Function* aoPrepassVertFunc = library->newFunction(NS::String::string("aoPrepassVertexMain", NS::UTF8StringEncoding));
-    MTL::Function* aoPrepassFragFunc = library->newFunction(NS::String::string("aoPrepassFragmentMain", NS::UTF8StringEncoding));
-    MTL::RenderPipelineDescriptor* aoPrepassPipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
-    aoPrepassPipeDesc->setVertexFunction(aoPrepassVertFunc);
-    aoPrepassPipeDesc->setFragmentFunction(aoPrepassFragFunc);
-    aoPrepassPipeDesc->setVertexDescriptor(vertexDesc);
-    aoPrepassPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatRGBA16Float);
-    aoPrepassPipeDesc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
-    MTL::RenderPipelineState* aoPrepassPipelineState = device->newRenderPipelineState(aoPrepassPipeDesc, &error);
-
-    MTL::Function* aoFragFunc = library->newFunction(NS::String::string("aoFragmentMain", NS::UTF8StringEncoding));
-    MTL::RenderPipelineDescriptor* aoPipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
-    aoPipeDesc->setVertexFunction(postProcessVertFunc);
-    aoPipeDesc->setFragmentFunction(aoFragFunc);
-    aoPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatR16Float);
-    MTL::RenderPipelineState* aoPipelineState = device->newRenderPipelineState(aoPipeDesc, &error);
-
-    MTL::Function* aoBlurFragFunc = library->newFunction(NS::String::string("aoBlurFragmentMain", NS::UTF8StringEncoding));
-    MTL::RenderPipelineDescriptor* aoBlurPipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
-    aoBlurPipeDesc->setVertexFunction(postProcessVertFunc);
-    aoBlurPipeDesc->setFragmentFunction(aoBlurFragFunc);
-    aoBlurPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatR16Float);
-    MTL::RenderPipelineState* aoBlurPipelineState = device->newRenderPipelineState(aoBlurPipeDesc, &error);
-
-    // AO upsample: the blurred (reduced-resolution) AO to a full-resolution R16Float.
-    MTL::Function* aoUpsampleFragFunc = library->newFunction(NS::String::string("aoUpsampleFragmentMain", NS::UTF8StringEncoding));
-    MTL::RenderPipelineDescriptor* aoUpsamplePipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
-    aoUpsamplePipeDesc->setVertexFunction(postProcessVertFunc);
-    aoUpsamplePipeDesc->setFragmentFunction(aoUpsampleFragFunc);
-    aoUpsamplePipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatR16Float);
-    MTL::RenderPipelineState* aoUpsamplePipelineState = device->newRenderPipelineState(aoUpsamplePipeDesc, &error);
-
-    // Screen-space reflection PSO: full-screen pass drawn straight into the HDR target, adding its
-    // correction ((traced - environment) * weight, negative where the traced color is darker) onto
-    // what the scene pass left there. Alpha is left as it was.
-    MTL::Function* ssrFragFunc = library->newFunction(NS::String::string("ssrCompositeFragmentMain", NS::UTF8StringEncoding));
-    MTL::RenderPipelineDescriptor* ssrPipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
-    ssrPipeDesc->setVertexFunction(postProcessVertFunc);
-    ssrPipeDesc->setFragmentFunction(ssrFragFunc);
-    auto ssrColorAttachment = ssrPipeDesc->colorAttachments()->object(0);
-    ssrColorAttachment->setPixelFormat(MTL::PixelFormatRGBA16Float);
-    ssrColorAttachment->setBlendingEnabled(true);
-    ssrColorAttachment->setSourceRGBBlendFactor(MTL::BlendFactorOne);
-    ssrColorAttachment->setDestinationRGBBlendFactor(MTL::BlendFactorOne);
-    ssrColorAttachment->setSourceAlphaBlendFactor(MTL::BlendFactorZero);
-    ssrColorAttachment->setDestinationAlphaBlendFactor(MTL::BlendFactorOne);
-    MTL::RenderPipelineState* ssrPipelineState = device->newRenderPipelineState(ssrPipeDesc, &error);
-
-    // The trace pass in front of it writes (color, confidence) into ssrTraceTexture: no blending.
-    MTL::Function* ssrTraceFragFunc = library->newFunction(NS::String::string("ssrTraceFragmentMain", NS::UTF8StringEncoding));
-    MTL::RenderPipelineDescriptor* ssrTracePipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
-    ssrTracePipeDesc->setVertexFunction(postProcessVertFunc);
-    ssrTracePipeDesc->setFragmentFunction(ssrTraceFragFunc);
-    ssrTracePipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatRGBA16Float);
-    MTL::RenderPipelineState* ssrTracePipelineState = device->newRenderPipelineState(ssrTracePipeDesc, &error);
-
-    // Temporal anti-aliasing PSO: full-screen resolve of the current HDR frame against the history into
-    // one of the taaTextures (see taaFragmentMain in Shader.metal).
-    MTL::Function* taaFragFunc = library->newFunction(NS::String::string("taaFragmentMain", NS::UTF8StringEncoding));
-    MTL::RenderPipelineDescriptor* taaPipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
-    taaPipeDesc->setVertexFunction(postProcessVertFunc);
-    taaPipeDesc->setFragmentFunction(taaFragFunc);
-    taaPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatRGBA16Float);
-    MTL::RenderPipelineState* taaPipelineState = device->newRenderPipelineState(taaPipeDesc, &error);
-
-    // Cube shadow pass PSO: outputs world-space distance-to-light as a color value (see
-    // Shader.metal's cubeShadowFragmentMain) plus a scratch depth attachment for hidden-surface
-    // removal within the pass.
-    MTL::Function* cubeShadowVertFunc = library->newFunction(NS::String::string("cubeShadowVertexMain", NS::UTF8StringEncoding));
-    MTL::Function* cubeShadowFragFunc = library->newFunction(NS::String::string("cubeShadowFragmentMain", NS::UTF8StringEncoding));
-    MTL::RenderPipelineDescriptor* shadowPipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
-    shadowPipeDesc->setVertexFunction(cubeShadowVertFunc);
-    shadowPipeDesc->setFragmentFunction(cubeShadowFragFunc);
-    shadowPipeDesc->setVertexDescriptor(vertexDesc);
-    shadowPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatR32Float);
-    shadowPipeDesc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
-    MTL::RenderPipelineState* shadowPipelineState = device->newRenderPipelineState(shadowPipeDesc, &error);
-    // Directional/Spot lights' single-frustum shadow pass reuses this same PSO (cubeShadowVertexMain/
-    // cubeShadowFragmentMain don't care whether the target is one cube face or a plain 2D texture -
-    // see Shader.metal's comment on sampleProjectedShadow for why it stays a distance encoding).
+    ShaderReloader shaderReloader(device, kShaderSourcePath);
 
     AxisGizmo axisGizmo = createAxisGizmo(device, library);
     LightMarker lightMarker = createLightMarker(device, library);
@@ -693,6 +760,44 @@ int main() {
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+
+        // Shader hot reloading: a saved Shader.metal is compiled in the background; once that has finished, the
+        // pipelines are rebuilt from it here, between frames, and swapped in only if every one of them built.
+        // The GPU may still be drawing earlier frames with the old ones - the command buffers hold their own
+        // references to whatever they use, so releasing them here is safe.
+        {
+            MTL::Library* freshLibrary = nullptr;
+            std::string compileMessage;
+            ShaderReloader::Status reloadStatus = shaderReloader.poll(freshLibrary, compileMessage);
+            if (reloadStatus == ShaderReloader::Status::Failed) {
+                fprintf(stderr, "Shader compile failed:\n%s\n", compileMessage.c_str());
+                showShaderReloadResult(false, compileMessage);
+            } else if (reloadStatus == ShaderReloader::Status::Compiled) {
+                double reloadStart = glfwGetTime();
+                Pipelines fresh;
+                bool ok = buildPipelines(freshLibrary, fresh);
+                if (ok) {
+                    releasePipelines(pipelines);
+                    pipelines = fresh;
+                    // The auxiliary pipelines keep their own copies; one that fails leaves its current version.
+                    ok = lightCuller.reload(freshLibrary) && ok;
+                    ok = reloadAxisGizmoPipeline(axisGizmo, device, freshLibrary) && ok;
+                    ok = reloadLightMarkerPipeline(lightMarker, device, freshLibrary) && ok;
+                    ok = environmentLibrary.reloadPipelines(freshLibrary) && ok;
+                    library->release();
+                    library = freshLibrary;
+                } else {
+                    freshLibrary->release();
+                }
+                if (ok) {
+                    fprintf(stderr, "Shaders reloaded (%.0f ms)\n", (glfwGetTime() - reloadStart) * 1000.0);
+                    showShaderReloadResult(true, "");
+                } else {
+                    fprintf(stderr, "Shader reload failed: a pipeline did not build\n");
+                    showShaderReloadResult(false, "a pipeline did not build - see the terminal");
+                }
+            }
+        }
 
         float currentTime = (float)glfwGetTime();
         float deltaTime = currentTime - lastFrameTime;
@@ -1278,7 +1383,7 @@ int main() {
 
                         MTL::RenderCommandEncoder* shadowEncoder = beginRenderPass(shadowRPD, "Shadow (point)");
                         shadowEncoder->setDepthStencilState(depthState);
-                        shadowEncoder->setRenderPipelineState(shadowPipelineState);
+                        shadowEncoder->setRenderPipelineState(pipelines.shadow);
                         shadowEncoder->setVertexBytes(&cubeFaceMatrices[lightIndex][face], sizeof(simd::float4x4), 2);
                         shadowEncoder->setFragmentBytes(&lights[lightIndex].position, sizeof(simd::float3), 3);
                         drawShadowCasters(shadowEncoder, frustumFromViewProj(cubeFaceMatrices[lightIndex][face]));
@@ -1305,7 +1410,7 @@ int main() {
 
                     MTL::RenderCommandEncoder* shadow2DEncoder = beginRenderPass(shadow2DRPD, "Shadow (spot/directional)");
                     shadow2DEncoder->setDepthStencilState(depthState);
-                    shadow2DEncoder->setRenderPipelineState(shadowPipelineState);
+                    shadow2DEncoder->setRenderPipelineState(pipelines.shadow);
                     shadow2DEncoder->setVertexBytes(&lights[lightIndex].shadowViewProj, sizeof(simd::float4x4), 2);
                     shadow2DEncoder->setFragmentBytes(&shadowEye, sizeof(simd::float3), 3);
                     drawShadowCasters(shadow2DEncoder, frustumFromViewProj(lights[lightIndex].shadowViewProj));
@@ -1338,7 +1443,7 @@ int main() {
 
                 MTL::RenderCommandEncoder* aoPrepassEncoder = beginRenderPass(aoPrepassRPD, "AO prepass");
                 aoPrepassEncoder->setDepthStencilState(depthState);
-                aoPrepassEncoder->setRenderPipelineState(aoPrepassPipelineState);
+                aoPrepassEncoder->setRenderPipelineState(pipelines.aoPrepass);
                 drawShadowCasters(aoPrepassEncoder, cameraFrustum); // same geometry selection: opaque + Mask, no glass/blend
                 aoPrepassEncoder->endEncoding();
 
@@ -1364,7 +1469,7 @@ int main() {
                 aoColor->setLoadAction(MTL::LoadActionDontCare);
                 aoColor->setStoreAction(MTL::StoreActionStore);
                 MTL::RenderCommandEncoder* aoEncoder = beginRenderPass(aoRPD, "AO");
-                aoEncoder->setRenderPipelineState(aoPipelineState);
+                aoEncoder->setRenderPipelineState(pipelines.ao);
                 aoEncoder->setFragmentTexture(depthTexture, 0);
                 aoEncoder->setFragmentTexture(aoNormalTexture, 1);
                 aoEncoder->setFragmentBytes(&aoParams, sizeof(aoParams), 0);
@@ -1380,7 +1485,7 @@ int main() {
                     aoBlurColor->setLoadAction(MTL::LoadActionDontCare);
                     aoBlurColor->setStoreAction(MTL::StoreActionStore);
                     MTL::RenderCommandEncoder* aoBlurEncoder = beginRenderPass(aoBlurRPD, "AO blur");
-                    aoBlurEncoder->setRenderPipelineState(aoBlurPipelineState);
+                    aoBlurEncoder->setRenderPipelineState(pipelines.aoBlur);
                     aoBlurEncoder->setFragmentTexture(blurSources[pass], 0);
                     aoBlurEncoder->setFragmentTexture(depthTexture, 1);
                     aoBlurEncoder->setFragmentBytes(&blurDirections[pass], sizeof(simd::float2), 0);
@@ -1395,7 +1500,7 @@ int main() {
                 aoUpsampleColor->setLoadAction(MTL::LoadActionDontCare);
                 aoUpsampleColor->setStoreAction(MTL::StoreActionStore);
                 MTL::RenderCommandEncoder* aoUpsampleEncoder = beginRenderPass(aoUpsampleRPD, "AO upsample");
-                aoUpsampleEncoder->setRenderPipelineState(aoUpsamplePipelineState);
+                aoUpsampleEncoder->setRenderPipelineState(pipelines.aoUpsample);
                 aoUpsampleEncoder->setFragmentTexture(aoTextureA, 0);
                 aoUpsampleEncoder->setFragmentTexture(depthTexture, 1);
                 aoUpsampleEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, (NS::UInteger)3);
@@ -1461,7 +1566,7 @@ int main() {
 
             MTL::RenderCommandEncoder* hdrEncoder = beginRenderPass(hdrRPD, "Scene");
             hdrEncoder->setDepthStencilState(depthState);
-            hdrEncoder->setRenderPipelineState(pipelineState);
+            hdrEncoder->setRenderPipelineState(pipelines.scene);
             bindSceneState(hdrEncoder, aoActive ? aoUpsampledTexture : whiteTexture);
 
             // Glass and blended submeshes, found up front: they wait for A2 below.
@@ -1537,7 +1642,7 @@ int main() {
                     scene.environmentIntensity
                 };
                 hdrEncoder->setDepthStencilState(skyDepthState);
-                hdrEncoder->setRenderPipelineState(skyPipelineState);
+                hdrEncoder->setRenderPipelineState(pipelines.sky);
                 hdrEncoder->setFragmentBytes(&skyParams, sizeof(skyParams), 0);
                 hdrEncoder->setFragmentTexture(environment.sky, 0);
                 hdrEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, (NS::UInteger)3);
@@ -1595,7 +1700,7 @@ int main() {
                 // blending; depth-written, so a sphere's far side can't overdraw its near side) but
                 // reads the copy, so glass in front of other glass hides rather than refracts it.
                 transparentEncoder->setDepthStencilState(depthState);
-                transparentEncoder->setRenderPipelineState(pipelineState);
+                transparentEncoder->setRenderPipelineState(pipelines.scene);
                 for (const TransparentDraw& draw : transmissiveDraws) drawTransparent(draw);
 
                 // Blended surfaces: farthest to nearest by each submesh's center - the usual
@@ -1604,7 +1709,7 @@ int main() {
                 std::sort(blendDraws.begin(), blendDraws.end(),
                           [](const TransparentDraw& a, const TransparentDraw& b) { return a.distanceSquared > b.distanceSquared; });
                 transparentEncoder->setDepthStencilState(blendDepthState);
-                transparentEncoder->setRenderPipelineState(blendPipelineState);
+                transparentEncoder->setRenderPipelineState(pipelines.blend);
                 for (const TransparentDraw& draw : blendDraws) drawTransparent(draw);
                 transparentEncoder->endEncoding();
             }
@@ -1649,7 +1754,7 @@ int main() {
                 ssrTraceColor->setLoadAction(MTL::LoadActionDontCare);
                 ssrTraceColor->setStoreAction(MTL::StoreActionStore);
                 MTL::RenderCommandEncoder* ssrTraceEncoder = beginRenderPass(ssrTraceRPD, "SSR trace");
-                ssrTraceEncoder->setRenderPipelineState(ssrTracePipelineState);
+                ssrTraceEncoder->setRenderPipelineState(pipelines.ssrTrace);
                 ssrTraceEncoder->setFragmentTexture(depthTexture, 0);
                 ssrTraceEncoder->setFragmentTexture(ssrNormalTexture, 1);
                 ssrTraceEncoder->setFragmentTexture(ssrWeightTexture, 2);
@@ -1667,7 +1772,7 @@ int main() {
                 ssrColor->setLoadAction(MTL::LoadActionLoad);
                 ssrColor->setStoreAction(MTL::StoreActionStore);
                 MTL::RenderCommandEncoder* ssrEncoder = beginRenderPass(ssrRPD, "SSR composite");
-                ssrEncoder->setRenderPipelineState(ssrPipelineState);
+                ssrEncoder->setRenderPipelineState(pipelines.ssr);
                 ssrEncoder->setFragmentTexture(depthTexture, 0);
                 ssrEncoder->setFragmentTexture(ssrNormalTexture, 1);
                 ssrEncoder->setFragmentTexture(ssrWeightTexture, 2);
@@ -1703,7 +1808,7 @@ int main() {
                 taaColor->setLoadAction(MTL::LoadActionDontCare);
                 taaColor->setStoreAction(MTL::StoreActionStore);
                 MTL::RenderCommandEncoder* taaEncoder = beginRenderPass(taaRPD, "TAA");
-                taaEncoder->setRenderPipelineState(taaPipelineState);
+                taaEncoder->setRenderPipelineState(pipelines.taa);
                 taaEncoder->setFragmentTexture(hdrColorTexture, 0);
                 taaEncoder->setFragmentTexture(taaHistory, 1);
                 taaEncoder->setFragmentTexture(depthTexture, 2);
@@ -1739,7 +1844,7 @@ int main() {
                     if (renderables[i].obj != selectedObj) continue;
                     const auto& r = renderables[i];
                     selectionMaskEncoder->setDepthStencilState(maskDepthState);
-                    selectionMaskEncoder->setRenderPipelineState(selectionMaskPipelineState);
+                    selectionMaskEncoder->setRenderPipelineState(pipelines.selectionMask);
                     InstanceRun run = emitSingle(i);
                     if (run.count == 0) break;
                     bindInstanceBuffers(selectionMaskEncoder);
@@ -1766,7 +1871,7 @@ int main() {
                 bloomExtractColor->setTexture(bloomTextureA);
 
                 MTL::RenderCommandEncoder* bloomExtractEncoder = beginRenderPass(bloomExtractRPD, "Bloom");
-                bloomExtractEncoder->setRenderPipelineState(bloomExtractPipelineState);
+                bloomExtractEncoder->setRenderPipelineState(pipelines.bloomExtract);
                 bloomExtractEncoder->setFragmentTexture(finalSceneColor, 0);
                 bloomExtractEncoder->setFragmentSamplerState(postProcessSamplerState, 0);
                 bloomExtractEncoder->setFragmentBytes(&scene.bloomThreshold, sizeof(float), 0);
@@ -1780,7 +1885,7 @@ int main() {
                 blurHColor->setTexture(bloomTextureB);
 
                 MTL::RenderCommandEncoder* blurHEncoder = beginRenderPass(blurHRPD, "Bloom");
-                blurHEncoder->setRenderPipelineState(blurPipelineState);
+                blurHEncoder->setRenderPipelineState(pipelines.blur);
                 blurHEncoder->setFragmentTexture(bloomTextureA, 0);
                 blurHEncoder->setFragmentSamplerState(postProcessSamplerState, 0);
                 simd::float2 horizontalDirection = simd_make_float2(1.0f, 0.0f);
@@ -1795,7 +1900,7 @@ int main() {
                 blurVColor->setTexture(bloomTextureA);
 
                 MTL::RenderCommandEncoder* blurVEncoder = beginRenderPass(blurVRPD, "Bloom");
-                blurVEncoder->setRenderPipelineState(blurPipelineState);
+                blurVEncoder->setRenderPipelineState(pipelines.blur);
                 blurVEncoder->setFragmentTexture(bloomTextureB, 0);
                 blurVEncoder->setFragmentSamplerState(postProcessSamplerState, 0);
                 simd::float2 verticalDirection = simd_make_float2(0.0f, 1.0f);
@@ -1814,7 +1919,7 @@ int main() {
             postColorAttachment->setTexture(drawable->texture());
 
             MTL::RenderCommandEncoder* postEncoder = beginRenderPass(postRPD, "Post-process");
-            postEncoder->setRenderPipelineState(postProcessPipelineState);
+            postEncoder->setRenderPipelineState(pipelines.postProcess);
             postEncoder->setFragmentTexture(finalSceneColor, 0);
             postEncoder->setFragmentTexture(bloomTextureA, 1);
             postEncoder->setFragmentTexture(depthTexture, 2);
@@ -1983,54 +2088,7 @@ int main() {
     skyDepthDesc->release();
     blendDepthState->release();
     blendDepthDesc->release();
-    blendPipelineState->release();
-    skyPipelineState->release();
-    skyPipeDesc->release();
-    skyVertFunc->release();
-    skyFragFunc->release();
-    shadowPipelineState->release();
-    shadowPipeDesc->release();
-    cubeShadowVertFunc->release();
-    cubeShadowFragFunc->release();
-    postProcessPipelineState->release();
-    postProcessPipeDesc->release();
-    postProcessVertFunc->release();
-    postProcessFragFunc->release();
-    bloomExtractPipelineState->release();
-    bloomExtractPipeDesc->release();
-    bloomExtractFragFunc->release();
-    blurPipelineState->release();
-    blurPipeDesc->release();
-    blurFragFunc->release();
-    aoPrepassPipelineState->release();
-    aoPrepassPipeDesc->release();
-    aoPrepassVertFunc->release();
-    aoPrepassFragFunc->release();
-    aoPipelineState->release();
-    aoPipeDesc->release();
-    aoFragFunc->release();
-    aoBlurPipelineState->release();
-    aoBlurPipeDesc->release();
-    aoBlurFragFunc->release();
-    ssrPipelineState->release();
-    ssrPipeDesc->release();
-    ssrFragFunc->release();
-    ssrTracePipelineState->release();
-    ssrTracePipeDesc->release();
-    ssrTraceFragFunc->release();
-    aoUpsamplePipelineState->release();
-    aoUpsamplePipeDesc->release();
-    aoUpsampleFragFunc->release();
-    taaPipelineState->release();
-    taaPipeDesc->release();
-    taaFragFunc->release();
-    selectionMaskPipelineState->release();
-    selectionMaskPipeDesc->release();
-    selectionMaskFragFunc->release();
-    pipelineState->release();
-    pipeDesc->release();
-    vertFunc->release();
-    fragFunc->release();
+    releasePipelines(pipelines);
     library->release();
     vertexBuffer->release();
     indexBuffer->release();

@@ -18,4 +18,8 @@ AxisGizmo createAxisGizmo(MTL::Device* device, MTL::Library* library);
 void drawAxisGizmo(const AxisGizmo& gizmo, MTL::RenderCommandEncoder* encoder,
                     MTL::Buffer* uniformBuffer, NS::UInteger uniformOffset);
 
+// Builds the pipeline again from a freshly compiled library (shader hot reloading). On failure returns false and
+// keeps the current pipeline.
+bool reloadAxisGizmoPipeline(AxisGizmo& gizmo, MTL::Device* device, MTL::Library* library);
+
 void releaseAxisGizmo(AxisGizmo& gizmo);

@@ -53,6 +53,10 @@ public:
     LightCuller(const LightCuller&) = delete;
     LightCuller& operator=(const LightCuller&) = delete;
 
+    // Rebuilds the culling kernel from a freshly compiled library (shader hot reloading). Returns false, keeping
+    // the current kernel, if it does not build.
+    bool reload(MTL::Library* library);
+
     // Uploads this frame's lights (in scene order; the first kMaxLights are the ones with shadow maps) into the
     // frame slot's buffer and works out the grid for the camera. Call once per frame before encodeCulling.
     void prepare(int slot, const SceneLight* lights, int lightCount, const Camera& camera, int width, int height);
@@ -69,6 +73,8 @@ public:
 
 private:
     void ensureClusterBuffers(uint32_t clusters);
+
+    MTL::ComputePipelineState* makeCullPipeline(MTL::Library* library);
 
     MTL::Device* device_;
     MTL::ComputePipelineState* cullPipeline_ = nullptr;

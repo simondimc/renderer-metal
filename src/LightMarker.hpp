@@ -27,4 +27,8 @@ void drawLightMarker(const LightMarker& marker, MTL::RenderCommandEncoder* encod
 void drawLightDirectionRay(const LightMarker& marker, MTL::RenderCommandEncoder* encoder,
                             MTL::Buffer* uniformBuffer, NS::UInteger uniformOffset);
 
+// Builds the pipeline again from a freshly compiled library (shader hot reloading). On failure returns false and
+// keeps the current pipeline.
+bool reloadLightMarkerPipeline(LightMarker& marker, MTL::Device* device, MTL::Library* library);
+
 void releaseLightMarker(LightMarker& marker);

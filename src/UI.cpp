@@ -28,6 +28,23 @@ void beginUIFrame(MTL::RenderPassDescriptor* renderPassDescriptor) {
     ImGui::NewFrame();
 }
 
+namespace {
+bool shaderReloadShown = false;
+bool shaderReloadSucceeded = false;
+double shaderReloadTime = 0.0;
+std::string shaderReloadLine;
+constexpr double kShaderReloadSuccessSeconds = 2.5;
+} // namespace
+
+void showShaderReloadResult(bool succeeded, const std::string& message) {
+    shaderReloadShown = true;
+    shaderReloadSucceeded = succeeded;
+    shaderReloadTime = ImGui::GetTime();
+    // The compiler's output starts with a line like "program_source:12:5: error: ..." - that one says enough.
+    shaderReloadLine = message.substr(0, message.find('\n'));
+    if (shaderReloadLine.size() > 90) shaderReloadLine.resize(90);
+}
+
 void drawPerformanceOverlay(float deltaTime, const GpuTimer& gpuTimer, bool showPassBreakdown) {
     // Averaged over a window (rather than shown per frame) so the numbers stay readable: the text
     // only changes every kRefreshSeconds, from the frames and time accumulated since the last change.
@@ -60,6 +77,17 @@ void drawPerformanceOverlay(float deltaTime, const GpuTimer& gpuTimer, bool show
     float gpuMilliseconds = 0.0f;
     gpuTimer.snapshot(passes, gpuMilliseconds);
     ImGui::Text("GPU %.2f ms", gpuMilliseconds);
+
+    if (shaderReloadShown) {
+        if (!shaderReloadSucceeded) {
+            ImGui::Separator();
+            ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.3f, 1.0f), "Shader error (terminal has the full text):");
+            ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.3f, 1.0f), "%s", shaderReloadLine.c_str());
+        } else if (ImGui::GetTime() - shaderReloadTime < kShaderReloadSuccessSeconds) {
+            ImGui::Separator();
+            ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.5f, 1.0f), "Shaders reloaded");
+        }
+    }
 
     if (showPassBreakdown) {
         if (!gpuTimer.passTimingSupported()) {

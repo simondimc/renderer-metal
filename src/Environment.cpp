@@ -110,10 +110,32 @@ void dispatchCube(MTL::ComputeCommandEncoder* encoder, NS::UInteger size) {
 MTL::ComputePipelineState* EnvironmentLibrary::makePipeline(MTL::Library* library, const char* functionName) {
     MTL::Function* function = library->newFunction(NS::String::string(functionName, NS::UTF8StringEncoding));
     NS::Error* error = nullptr;
-    MTL::ComputePipelineState* pipeline = device_->newComputePipelineState(function, &error);
+    MTL::ComputePipelineState* pipeline = function ? device_->newComputePipelineState(function, &error) : nullptr;
     if (!pipeline) fprintf(stderr, "Failed to create compute pipeline %s\n", functionName);
-    function->release();
+    if (function) function->release();
     return pipeline;
+}
+
+bool EnvironmentLibrary::reloadPipelines(MTL::Library* library) {
+    MTL::ComputePipelineState** slots[] = {&proceduralSkyPipeline_, &equirectPipeline_, &irradiancePipeline_,
+                                           &prefilterPipeline_, &brdfPipeline_};
+    const char* names[] = {"proceduralSkyToCubeKernel", "equirectToCubeKernel", "irradianceKernel",
+                           "prefilterKernel", "brdfLUTKernel"};
+    MTL::ComputePipelineState* fresh[5] = {};
+    bool ok = true;
+    for (int i = 0; i < 5; i++) {
+        fresh[i] = makePipeline(library, names[i]);
+        ok = ok && fresh[i];
+    }
+    for (int i = 0; i < 5; i++) {
+        if (ok) {
+            (*slots[i])->release();
+            *slots[i] = fresh[i];
+        } else if (fresh[i]) {
+            fresh[i]->release();
+        }
+    }
+    return ok;
 }
 
 EnvironmentLibrary::EnvironmentLibrary(MTL::Device* device, MTL::Library* library, std::string rootDir)

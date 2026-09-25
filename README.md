@@ -16,7 +16,8 @@
 - [x] Offscreen Rendering & Post-Processing
 - Entity Component System (ECS)
 - Job System / Task-Based Parallelism
-- Hot Reloading (Shaders/Assets)
+- [x] Hot Reloading (Shaders)
+- Hot Reloading (Assets)
 - Multithreaded Command Buffer Recording
 
 ### Rendering Pipeline

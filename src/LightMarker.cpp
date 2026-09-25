@@ -26,13 +26,9 @@ constexpr float kDirectionRayVertices[] = {
 };
 } // namespace
 
-LightMarker createLightMarker(MTL::Device* device, MTL::Library* library) {
-    LightMarker marker;
-    marker.vertexCount = sizeof(kMarkerVertices) / (6 * sizeof(float));
-    marker.vertexBuffer = device->newBuffer(kMarkerVertices, sizeof(kMarkerVertices), MTL::ResourceStorageModeShared);
-    marker.directionRayVertexCount = sizeof(kDirectionRayVertices) / (6 * sizeof(float));
-    marker.directionRayVertexBuffer = device->newBuffer(kDirectionRayVertices, sizeof(kDirectionRayVertices), MTL::ResourceStorageModeShared);
-
+namespace {
+// The unlit position+color pipeline (axisVertexMain/axisFragmentMain); null if the shaders don't build.
+MTL::RenderPipelineState* makePipeline(MTL::Device* device, MTL::Library* library) {
     MTL::Function* vertFunc = library->newFunction(NS::String::string("axisVertexMain", NS::UTF8StringEncoding));
     MTL::Function* fragFunc = library->newFunction(NS::String::string("axisFragmentMain", NS::UTF8StringEncoding));
 
@@ -53,11 +49,24 @@ LightMarker createLightMarker(MTL::Device* device, MTL::Library* library) {
     pipeDesc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
 
     NS::Error* error = nullptr;
-    marker.pipelineState = device->newRenderPipelineState(pipeDesc, &error);
+    MTL::RenderPipelineState* pipeline = device->newRenderPipelineState(pipeDesc, &error);
 
-    vertFunc->release();
-    fragFunc->release();
+    if (vertFunc) vertFunc->release();
+    if (fragFunc) fragFunc->release();
     pipeDesc->release();
+
+    return pipeline;
+}
+} // namespace
+
+LightMarker createLightMarker(MTL::Device* device, MTL::Library* library) {
+    LightMarker marker;
+    marker.vertexCount = sizeof(kMarkerVertices) / (6 * sizeof(float));
+    marker.vertexBuffer = device->newBuffer(kMarkerVertices, sizeof(kMarkerVertices), MTL::ResourceStorageModeShared);
+    marker.directionRayVertexCount = sizeof(kDirectionRayVertices) / (6 * sizeof(float));
+    marker.directionRayVertexBuffer = device->newBuffer(kDirectionRayVertices, sizeof(kDirectionRayVertices), MTL::ResourceStorageModeShared);
+
+    marker.pipelineState = makePipeline(device, library);
 
     return marker;
 }
@@ -82,4 +91,12 @@ void releaseLightMarker(LightMarker& marker) {
     marker.vertexBuffer->release();
     marker.directionRayVertexBuffer->release();
     marker.pipelineState->release();
+}
+
+bool reloadLightMarkerPipeline(LightMarker& marker, MTL::Device* device, MTL::Library* library) {
+    MTL::RenderPipelineState* pipeline = makePipeline(device, library);
+    if (!pipeline) return false;
+    marker.pipelineState->release();
+    marker.pipelineState = pipeline;
+    return true;
 }
