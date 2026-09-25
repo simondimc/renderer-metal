@@ -110,6 +110,14 @@ int main() {
         defaultLight.position[2] = 2.0f;
         scene.objects.push_back(defaultLight);
     }
+    // Start from the camera pose saved with the scene (see Scene::hasCameraPose); the defaults if it has none.
+    if (scene.hasCameraPose && std::isfinite(scene.cameraPosition[0]) && std::isfinite(scene.cameraPosition[1])
+        && std::isfinite(scene.cameraPosition[2]) && std::isfinite(scene.cameraYaw) && std::isfinite(scene.cameraPitch)) {
+        constexpr float kMaxPitch = 1.5533f; // the limit mouseCallback enforces, ~89 degrees
+        camera.position = simd_make_float3(scene.cameraPosition[0], scene.cameraPosition[1], scene.cameraPosition[2]);
+        camera.yaw = scene.cameraYaw;
+        camera.pitch = fmaxf(-kMaxPitch, fminf(kMaxPitch, scene.cameraPitch));
+    }
     int selectedObjectIndex = 0;
 
     NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
@@ -813,6 +821,13 @@ int main() {
             overlayRPD->depthAttachment()->setStoreAction(MTL::StoreActionDontCare);
 
             beginUIFrame(overlayRPD);
+            // Saving the scene from the editor writes these, so keep them equal to where the camera is now.
+            scene.hasCameraPose = true;
+            scene.cameraPosition[0] = camera.position.x;
+            scene.cameraPosition[1] = camera.position.y;
+            scene.cameraPosition[2] = camera.position.z;
+            scene.cameraYaw = camera.yaw;
+            scene.cameraPitch = camera.pitch;
             drawPerformanceOverlay(deltaTime, gpuTimer, showGpuBreakdown);
             if (camera.uiMode) {
                 drawSceneEditorPanel(scene, selectedObjectIndex, textureLibrary, environmentLibrary);

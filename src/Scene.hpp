@@ -72,6 +72,14 @@ struct SceneObject {
 
 struct Scene {
     std::vector<SceneObject> objects;
+    // The viewer's camera, saved with the scene so a reopened scene starts from the same spot (see the
+    // "camera" line in Scene.cpp's file format). Main.cpp keeps these equal to the live camera every
+    // frame, so Save writes wherever the camera is at that moment; hasCameraPose is false for a scene
+    // file with no camera line, which leaves the camera at its default.
+    bool hasCameraPose = false;
+    float cameraPosition[3] = {0.0f, 0.0f, 2.5f};
+    float cameraYaw = 0.0f;   // radians, as Camera::yaw
+    float cameraPitch = 0.0f; // radians, as Camera::pitch
     // Global HDR exposure multiplier applied before tone mapping (see fragmentMain in
     // Shader.metal) - scales linear scene radiance up/down before the curve compresses it into
     // displayable range, the same role a camera's exposure setting plays.

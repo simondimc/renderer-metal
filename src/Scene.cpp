@@ -144,6 +144,7 @@ simd::float3 objectUp(const SceneObject& obj) {
 //   ssr <strength> <maxDistance> <thickness>   (global - see Scene::ssrStrength/ssrMaxDistance/
 //                            ssrThickness)
 //   taa <feedback>   (global - see Scene::taaFeedback)
+//   camera <x> <y> <z> <yaw> <pitch>   (global - see Scene::cameraPosition/Yaw/Pitch; radians)
 //   environment <intensity> <showSky 0|1>   (global - see Scene::environmentIntensity/showSky)
 //   environmentmap <name>   (global - .hdr file stem under environment/, see Scene::environment;
 //                            absent = kDefaultEnvironment, so old scene files load unchanged)
@@ -172,6 +173,10 @@ bool saveScene(const Scene& scene, const std::string& path) {
     }
 
     out << "# renderer-metal scene file v1\n";
+    if (scene.hasCameraPose) {
+        out << "camera " << scene.cameraPosition[0] << " " << scene.cameraPosition[1] << " " << scene.cameraPosition[2]
+            << " " << scene.cameraYaw << " " << scene.cameraPitch << "\n";
+    }
     out << "exposure " << scene.exposure << "\n";
     out << "tonemap " << toneMapOperatorName(scene.toneMapOperator) << "\n";
     out << "vignette " << scene.vignetteStrength << "\n";
@@ -265,6 +270,16 @@ bool loadScene(Scene& scene, const std::string& path) {
             std::string modeName;
             ss >> loaded.ambientOcclusionStrength >> loaded.ambientOcclusionRadius >> modeName;
             loaded.ambientOcclusionMode = parseAmbientOcclusionMode(modeName);
+        } else if (keyword == "camera") {
+            float x, y, z, yaw, pitch;
+            if (ss >> x >> y >> z >> yaw >> pitch) {
+                loaded.hasCameraPose = true;
+                loaded.cameraPosition[0] = x;
+                loaded.cameraPosition[1] = y;
+                loaded.cameraPosition[2] = z;
+                loaded.cameraYaw = yaw;
+                loaded.cameraPitch = pitch;
+            }
         } else if (keyword == "ssr") {
             ss >> loaded.ssrStrength >> loaded.ssrMaxDistance >> loaded.ssrThickness;
         } else if (keyword == "taa") {
