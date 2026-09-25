@@ -2,7 +2,7 @@
 #include <simd/simd.h>
 
 // Cube shadow map face resolution (per face, so total memory per light is 6x this squared).
-constexpr int kShadowMapSize = 1024;
+constexpr int kShadowMapSize = 2048;
 
 constexpr float kShadowNearPlane = 0.05f;
 constexpr float kShadowFarPlane = 50.0f;
@@ -11,7 +11,7 @@ constexpr int kCubeFaceCount = 6;
 
 // Single-frustum shadow map resolution for Directional/Spot lights (one 2D depth texture each,
 // unlike the point light's 6-face cube).
-constexpr int kShadow2DMapSize = 2048;
+constexpr int kShadow2DMapSize = 4096;
 
 // A directional light has no true position, so its shadow volume is centered on the light
 // object's `position` field instead (reused in the editor as a movable anchor - see
