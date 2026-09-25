@@ -295,6 +295,15 @@ fragment float4 fragmentMain(RasterData in [[stage_in]],
     return float4(litColor, texColor.a);
 }
 
+// --- Selection mask: renders just the Scene Editor's currently-selected object as flat white
+// (see Main.cpp's mask pass) into a small single-channel buffer, depth-tested against the scene
+// so it's correctly occluded by anything in front of it. Reuses vertexMain unchanged - the
+// outline only needs mvpMatrix, none of the lighting data.
+
+fragment float selectionMaskFragmentMain(RasterData in [[stage_in]]) {
+    return 1.0;
+}
+
 // --- Post-process: full-screen pass that resolves the offscreen HDR buffer to the display ---
 
 struct PostProcessVertexOut {
@@ -424,6 +433,7 @@ fragment float4 postProcessFragmentMain(PostProcessVertexOut in [[stage_in]],
                                         texture2d<float> hdrTexture [[texture(0)]],
                                         texture2d<float> bloomTexture [[texture(1)]],
                                         depth2d<float> depthTexture [[texture(2)]],
+                                        texture2d<float> selectionMaskTexture [[texture(3)]],
                                         constant PostProcessParams& params [[buffer(0)]],
                                         constant LensFlareLight* lensFlareLights [[buffer(1)]],
                                         sampler smp [[sampler(0)]],
@@ -566,6 +576,23 @@ fragment float4 postProcessFragmentMain(PostProcessVertexOut in [[stage_in]],
     float2 texSize = 1.0 / texelSize;
     float noise = fract(sin(dot(uv * texSize + params.time, float2(12.9898, 78.233))) * 43758.5453);
     color += (noise - 0.5) * params.filmGrainStrength;
+
+    // Scene Editor selection outline: edge-detects selectionMaskTexture (a binary silhouette of
+    // whatever object is currently selected - see Main.cpp's mask pass, which clears it to 0 every
+    // frame and only draws into it while in edit mode) and draws a bright ring wherever the mask
+    // transitions between "inside" and "outside". Nearest sampling (depthSampler, reused) since the
+    // mask is a hard 0/1 edge - bilinear filtering would blur it into a soft false gradient instead
+    // of a clean boundary. Naturally a no-op when nothing is selected: an all-zero mask has no
+    // transitions, so no explicit on/off flag is needed here.
+    float2 outlineTexel = texelSize * 2.0; // ~2px thick line
+    float maskCenter = selectionMaskTexture.sample(depthSampler, uv).r;
+    float maskUp    = selectionMaskTexture.sample(depthSampler, uv + float2(0.0, -outlineTexel.y)).r;
+    float maskDown  = selectionMaskTexture.sample(depthSampler, uv + float2(0.0, outlineTexel.y)).r;
+    float maskLeft  = selectionMaskTexture.sample(depthSampler, uv + float2(-outlineTexel.x, 0.0)).r;
+    float maskRight = selectionMaskTexture.sample(depthSampler, uv + float2(outlineTexel.x, 0.0)).r;
+    float maskEdge = max(max(abs(maskCenter - maskUp), abs(maskCenter - maskDown)),
+                          max(abs(maskCenter - maskLeft), abs(maskCenter - maskRight)));
+    color = mix(color, float3(1.0, 0.6, 0.1), saturate(maskEdge));
 
     return float4(saturate(color), 1.0);
 }

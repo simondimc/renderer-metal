@@ -35,7 +35,7 @@
 - [x] Motion Blur
 - [x] Sharpening
 - [x] Lens Flare
-- Outline / Edge Detection
+- [x] Outline / Edge Detection
 
 ### Materials & Shading
 - [x] Linear Color Space & Gamma Correction

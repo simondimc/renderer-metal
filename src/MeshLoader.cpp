@@ -52,6 +52,16 @@ MeshData uploadMesh(MTL::Device* device, const std::vector<float>& vertexData,
                                           MTL::ResourceStorageModeShared);
     mesh.indexCount = (NS::UInteger)indexData.size();
     mesh.indexType = MTL::IndexTypeUInt32;
+
+    if (!vertexData.empty()) {
+        simd::float3 pos0 = simd_make_float3(vertexData[0], vertexData[1], vertexData[2]);
+        mesh.localMin = mesh.localMax = pos0;
+        for (size_t i = kVertexStrideFloats; i + 2 < vertexData.size(); i += kVertexStrideFloats) {
+            simd::float3 p = simd_make_float3(vertexData[i], vertexData[i + 1], vertexData[i + 2]);
+            mesh.localMin = simd_min(mesh.localMin, p);
+            mesh.localMax = simd_max(mesh.localMax, p);
+        }
+    }
     return mesh;
 }
 

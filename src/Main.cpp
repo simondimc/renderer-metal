@@ -21,10 +21,58 @@
 #include "Texture.hpp"
 #include "UI.hpp"
 #include "Uniforms.hpp"
+#include "imgui.h"
 
+#include <algorithm>
+#include <cmath>
 #include <dispatch/dispatch.h>
 #include <unordered_map>
 #include <vector>
+
+// Slab-method ray/AABB intersection, used by the Scene Editor's click-to-select (see main()'s
+// picking block). origin/dir are in the same (local) space as boxMin/boxMax - dir need not be
+// normalized, since outT is only ever used to reconstruct a hit point (origin + dir*outT), not
+// compared against other objects' t values directly. Returns false (outT untouched) on a miss.
+static bool rayAABBIntersect(simd::float3 origin, simd::float3 dir, simd::float3 boxMin, simd::float3 boxMax, float& outT) {
+    float tMin = 0.0f;
+    float tMax = INFINITY;
+
+    if (fabsf(dir.x) < 1e-8f) {
+        if (origin.x < boxMin.x || origin.x > boxMax.x) return false;
+    } else {
+        float t1 = (boxMin.x - origin.x) / dir.x;
+        float t2 = (boxMax.x - origin.x) / dir.x;
+        if (t1 > t2) std::swap(t1, t2);
+        tMin = fmaxf(tMin, t1);
+        tMax = fminf(tMax, t2);
+        if (tMin > tMax) return false;
+    }
+
+    if (fabsf(dir.y) < 1e-8f) {
+        if (origin.y < boxMin.y || origin.y > boxMax.y) return false;
+    } else {
+        float t1 = (boxMin.y - origin.y) / dir.y;
+        float t2 = (boxMax.y - origin.y) / dir.y;
+        if (t1 > t2) std::swap(t1, t2);
+        tMin = fmaxf(tMin, t1);
+        tMax = fminf(tMax, t2);
+        if (tMin > tMax) return false;
+    }
+
+    if (fabsf(dir.z) < 1e-8f) {
+        if (origin.z < boxMin.z || origin.z > boxMax.z) return false;
+    } else {
+        float t1 = (boxMin.z - origin.z) / dir.z;
+        float t2 = (boxMax.z - origin.z) / dir.z;
+        if (t1 > t2) std::swap(t1, t2);
+        tMin = fmaxf(tMin, t1);
+        tMax = fminf(tMax, t2);
+        if (tMin > tMax) return false;
+    }
+
+    outT = tMin;
+    return true;
+}
 
 int main() {
     if (!glfwInit()) return -1;
@@ -127,6 +175,16 @@ int main() {
     bloomDesc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
     MTL::Texture* bloomTextureA = device->newTexture(bloomDesc);
     MTL::Texture* bloomTextureB = device->newTexture(bloomDesc);
+
+    // Selection outline mask: flat-white silhouette of the Scene Editor's currently-selected
+    // object (see the selection mask pass and selectionMaskFragmentMain in Shader.metal), edge-
+    // detected in the post-process pass to draw an outline. Single-channel, full HDR resolution.
+    MTL::TextureDescriptor* selectionMaskDesc = MTL::TextureDescriptor::texture2DDescriptor(
+        MTL::PixelFormatR8Unorm, (NS::UInteger)width, (NS::UInteger)height, false
+    );
+    selectionMaskDesc->setStorageMode(MTL::StorageModePrivate);
+    selectionMaskDesc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
+    MTL::Texture* selectionMaskTexture = device->newTexture(selectionMaskDesc);
 
     // Shadow cube maps: one 6-face cube texture per light slot, storing that light's distance to
     // the nearest occluder in every direction (see Shader.metal's cubeShadowFragmentMain). All
@@ -252,6 +310,18 @@ int main() {
 
     MTL::RenderPipelineState* pipelineState = device->newRenderPipelineState(pipeDesc, &error);
 
+    // Selection mask PSO: reuses vertFunc/vertexDesc unchanged (same mvpMatrix as the main HDR
+    // pass) but a trivial fragment function (selectionMaskFragmentMain) that just writes flat
+    // white - see the mask pass in the render loop below and Shader.metal's comment.
+    MTL::Function* selectionMaskFragFunc = library->newFunction(NS::String::string("selectionMaskFragmentMain", NS::UTF8StringEncoding));
+    MTL::RenderPipelineDescriptor* selectionMaskPipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
+    selectionMaskPipeDesc->setVertexFunction(vertFunc);
+    selectionMaskPipeDesc->setFragmentFunction(selectionMaskFragFunc);
+    selectionMaskPipeDesc->setVertexDescriptor(vertexDesc);
+    selectionMaskPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatR8Unorm);
+    selectionMaskPipeDesc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
+    MTL::RenderPipelineState* selectionMaskPipelineState = device->newRenderPipelineState(selectionMaskPipeDesc, &error);
+
     // Post-process PSO: full-screen pass that resolves hdrColorTexture down to the drawable (see
     // postProcessVertexMain/postProcessFragmentMain in Shader.metal). No vertex descriptor (the
     // vertex function takes no [[stage_in]] input - see its comment) and no depth attachment (it
@@ -305,6 +375,19 @@ int main() {
     depthDesc->setDepthWriteEnabled(true);
     MTL::DepthStencilState* depthState = device->newDepthStencilState(depthDesc);
 
+    // Selection mask pass depth state: tests against the scene's depth (so the selected object's
+    // mask is correctly occluded by anything already in front of it) but never writes - it must
+    // leave depthTexture exactly as the HDR scene pass left it, since the overlay pass right after
+    // still depends on those values for the gizmo/light markers' own depth test. LessEqual, not
+    // Less: this pass redraws the very same geometry the HDR scene pass (Pass A) already wrote
+    // depth for, so a visible fragment's depth here is exactly equal to what's already stored, not
+    // less than it - a strict Less would reject every one of the selected object's own fragments
+    // and the mask would always come out empty.
+    MTL::DepthStencilDescriptor* maskDepthDesc = MTL::DepthStencilDescriptor::alloc()->init();
+    maskDepthDesc->setDepthCompareFunction(MTL::CompareFunctionLessEqual);
+    maskDepthDesc->setDepthWriteEnabled(false);
+    MTL::DepthStencilState* maskDepthState = device->newDepthStencilState(maskDepthDesc);
+
     // run.sh/clean_run.sh launch the binary with the build/ directory as cwd
     MTL::Texture* colorTexture = loadTexture(device, "../texture/metal_plate_4k/textures/metal_plate_diff_4k.jpg", /*isSRGB=*/true);
     // Converted offline from the source EXR (DWAA compression, unsupported by stb_image) via ffmpeg.
@@ -346,6 +429,7 @@ int main() {
 
     float lastFrameTime = (float)glfwGetTime();
     bool toggleKeyWasPressed = false;
+    bool leftMouseWasPressed = false; // edge-detects a click for the Scene Editor's picking, below
 
     // Last frame's camera view-projection, for motion blur's reprojection (see postParams below).
     // Initialized to this frame's own VP on first use (a few lines into the loop) rather than
@@ -398,6 +482,7 @@ int main() {
             hdrColorTexture->release();
             bloomTextureA->release();
             bloomTextureB->release();
+            selectionMaskTexture->release();
             width = liveWidth;
             height = liveHeight;
             cppMetalLayer->setDrawableSize(CGSizeMake(width, height));
@@ -425,6 +510,13 @@ int main() {
             newBloomDesc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
             bloomTextureA = device->newTexture(newBloomDesc);
             bloomTextureB = device->newTexture(newBloomDesc);
+
+            MTL::TextureDescriptor* newSelectionMaskDesc = MTL::TextureDescriptor::texture2DDescriptor(
+                MTL::PixelFormatR8Unorm, (NS::UInteger)width, (NS::UInteger)height, false
+            );
+            newSelectionMaskDesc->setStorageMode(MTL::StorageModePrivate);
+            newSelectionMaskDesc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
+            selectionMaskTexture = device->newTexture(newSelectionMaskDesc);
         }
 
         // Fetch the canvas
@@ -555,6 +647,71 @@ int main() {
                         renderables.push_back({&obj, m.vertexBuffer, m.indexBuffer, m.indexCount, m.indexType});
                     }
                 }
+            }
+
+            // Click-to-select in the 3D viewport: a left-click while in edit mode (and not over an
+            // ImGui widget) ray-casts against each renderable's local-space bounding box - Cube's
+            // is the known unit box CubeMesh.hpp authors it at, Mesh's comes from MeshData::
+            // localMin/Max (see MeshLoader.cpp, computed once at load time). The closest hit (by
+            // actual world-space distance, not local-space t, since different objects' scales make
+            // local t values incomparable) sets selectedObjectIndex - the same variable the object
+            // list in drawSceneEditorPanel already drives, so either selection path highlights the
+            // same object via the mask/outline pass further down. A click that hits nothing
+            // deselects, matching common editor behavior.
+            bool leftMouseIsPressed = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+            bool leftMouseClicked = leftMouseIsPressed && !leftMouseWasPressed;
+            leftMouseWasPressed = leftMouseIsPressed;
+
+            if (leftMouseClicked && camera.uiMode && !ImGui::GetIO().WantCaptureMouse) {
+                int winWidth, winHeight;
+                glfwGetWindowSize(window, &winWidth, &winHeight);
+                double mouseX, mouseY;
+                glfwGetCursorPos(window, &mouseX, &mouseY);
+                float ndcX = (float)(mouseX / winWidth) * 2.0f - 1.0f;
+                float ndcY = 1.0f - (float)(mouseY / winHeight) * 2.0f;
+
+                simd::float4x4 invViewProj = simd_inverse(currentViewProj);
+                simd::float4 nearPoint4 = invViewProj * simd_make_float4(ndcX, ndcY, 0.0f, 1.0f);
+                simd::float4 farPoint4 = invViewProj * simd_make_float4(ndcX, ndcY, 1.0f, 1.0f);
+                simd::float3 rayOrigin = simd_make_float3(nearPoint4.x, nearPoint4.y, nearPoint4.z) / nearPoint4.w;
+                simd::float3 farPoint = simd_make_float3(farPoint4.x, farPoint4.y, farPoint4.z) / farPoint4.w;
+                simd::float3 rayDir = simd_normalize(farPoint - rayOrigin);
+
+                int hitIndex = -1;
+                float closestWorldDist = INFINITY;
+                for (const auto& r : renderables) {
+                    simd::float3 localMin, localMax;
+                    if (r.obj->type == SceneObjectType::Cube) {
+                        localMin = simd_make_float3(-0.5f, -0.5f, -0.5f);
+                        localMax = simd_make_float3(0.5f, 0.5f, 0.5f);
+                    } else {
+                        auto it = meshCache.find(r.obj->meshPath);
+                        if (it == meshCache.end()) continue;
+                        localMin = it->second.localMin;
+                        localMax = it->second.localMax;
+                    }
+
+                    simd::float4x4 modelMatrix = objectModelMatrix(*r.obj);
+                    simd::float4x4 invModel = simd_inverse(modelMatrix);
+                    simd::float4 localOrigin4 = invModel * simd_make_float4(rayOrigin.x, rayOrigin.y, rayOrigin.z, 1.0f);
+                    simd::float4 localDir4 = invModel * simd_make_float4(rayDir.x, rayDir.y, rayDir.z, 0.0f);
+                    simd::float3 localOrigin = simd_make_float3(localOrigin4.x, localOrigin4.y, localOrigin4.z);
+                    simd::float3 localDir = simd_make_float3(localDir4.x, localDir4.y, localDir4.z);
+
+                    float localT;
+                    if (!rayAABBIntersect(localOrigin, localDir, localMin, localMax, localT)) continue;
+
+                    simd::float3 localHit = localOrigin + localDir * localT;
+                    simd::float4 worldHit4 = modelMatrix * simd_make_float4(localHit.x, localHit.y, localHit.z, 1.0f);
+                    simd::float3 worldHit = simd_make_float3(worldHit4.x, worldHit4.y, worldHit4.z);
+                    float worldDist = simd_length(worldHit - rayOrigin);
+
+                    if (worldDist < closestWorldDist) {
+                        closestWorldDist = worldDist;
+                        hitIndex = (int)(r.obj - scene.objects.data());
+                    }
+                }
+                selectedObjectIndex = hitIndex;
             }
 
             // Write every drawn object's Uniforms into its own aligned slot before any draw call
@@ -716,6 +873,43 @@ int main() {
             }
             hdrEncoder->endEncoding();
 
+            // --- Selection mask pass: draws just the selected renderable's silhouette (if any)
+            // into selectionMaskTexture, depth-tested against the scene depth Pass A just wrote
+            // (Load, not Clear) so it's correctly occluded by anything in front of it - see
+            // selectionMaskFragmentMain's comment. Only active in edit mode (camera.uiMode),
+            // matching every other Scene-Editor-only affordance (gizmo, light markers). Always
+            // runs, even with nothing selected, so the mask is freshly cleared to 0 every frame -
+            // skipping the pass entirely when unselected would leave stale white silhouette data
+            // from whatever WAS selected last, and the outline has no other "off" gate to check.
+            MTL::RenderPassDescriptor* selectionMaskRPD = MTL::RenderPassDescriptor::renderPassDescriptor();
+            auto selectionMaskColorAttachment = selectionMaskRPD->colorAttachments()->object(0);
+            selectionMaskColorAttachment->setClearColor({0.0, 0.0, 0.0, 1.0});
+            selectionMaskColorAttachment->setLoadAction(MTL::LoadActionClear);
+            selectionMaskColorAttachment->setStoreAction(MTL::StoreActionStore);
+            selectionMaskColorAttachment->setTexture(selectionMaskTexture);
+            selectionMaskRPD->depthAttachment()->setTexture(depthTexture);
+            selectionMaskRPD->depthAttachment()->setLoadAction(MTL::LoadActionLoad);
+            selectionMaskRPD->depthAttachment()->setStoreAction(MTL::StoreActionStore);
+
+            MTL::RenderCommandEncoder* selectionMaskEncoder = cmdBuffer->renderCommandEncoder(selectionMaskRPD);
+            if (camera.uiMode && selectedObjectIndex >= 0 && selectedObjectIndex < (int)scene.objects.size()) {
+                const SceneObject* selectedObj = &scene.objects[selectedObjectIndex];
+                for (NS::UInteger i = 0; i < renderables.size(); i++) {
+                    if (renderables[i].obj != selectedObj) continue;
+                    const auto& r = renderables[i];
+                    selectionMaskEncoder->setDepthStencilState(maskDepthState);
+                    selectionMaskEncoder->setRenderPipelineState(selectionMaskPipelineState);
+                    NS::UInteger offset = i * kUniformStride;
+                    selectionMaskEncoder->setVertexBuffer(r.vertexBuffer, 0, 0);
+                    selectionMaskEncoder->setVertexBuffer(uniformBuffer, offset, 1);
+                    selectionMaskEncoder->drawIndexedPrimitives(
+                        MTL::PrimitiveTypeTriangle, r.indexCount, r.indexType, r.indexBuffer, 0
+                    );
+                    break;
+                }
+            }
+            selectionMaskEncoder->endEncoding();
+
             // --- Bloom chain: bright-pass extract (hdrColorTexture -> bloomTextureA), then a
             // horizontal blur (A -> B) and a vertical blur (B -> back into A) - see
             // bloomExtractFragmentMain/blurFragmentMain in Shader.metal. Skipped whenever intensity
@@ -782,6 +976,7 @@ int main() {
             postEncoder->setFragmentTexture(hdrColorTexture, 0);
             postEncoder->setFragmentTexture(bloomTextureA, 1);
             postEncoder->setFragmentTexture(depthTexture, 2);
+            postEncoder->setFragmentTexture(selectionMaskTexture, 3);
             postEncoder->setFragmentSamplerState(postProcessSamplerState, 0);
             // Nearest + clamp, same as the shadow maps - see postProcessFragmentMain's comment on
             // why Depth of Field can't linearly filter raw depth.
@@ -916,9 +1111,12 @@ int main() {
     hdrColorTexture->release();
     bloomTextureA->release();
     bloomTextureB->release();
+    selectionMaskTexture->release();
     depthTexture->release();
     depthState->release();
     depthDesc->release();
+    maskDepthState->release();
+    maskDepthDesc->release();
     shadowPipelineState->release();
     shadowPipeDesc->release();
     cubeShadowVertFunc->release();
@@ -933,6 +1131,9 @@ int main() {
     blurPipelineState->release();
     blurPipeDesc->release();
     blurFragFunc->release();
+    selectionMaskPipelineState->release();
+    selectionMaskPipeDesc->release();
+    selectionMaskFragFunc->release();
     pipelineState->release();
     pipeDesc->release();
     vertFunc->release();
