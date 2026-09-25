@@ -309,7 +309,7 @@ static float3 fresnelSchlickRoughness(float cosTheta, float3 F0, float roughness
 }
 
 // The scene pass writes three targets: the lit HDR color, plus a small G-buffer the screen-space
-// reflection pass (see ssrFragmentMain) reads back - the shading normal with roughness, and how much
+// reflection pass (see ssrTraceFragmentMain) reads back - the shading normal with roughness, and how much
 // of the image-based specular light this pixel's reflection is worth (see the write at the end of
 // fragmentMain). Sky pixels and anything never drawn keep the cleared zeros, which SSR skips.
 struct SceneFragmentOut {
@@ -672,6 +672,8 @@ struct AOParams {
     float strength;      // power the visibility is raised to
     float mode;          // AO_MODE_* (cast to int)
     float noiseSeed;     // 0..1, different every frame under TAA so it averages the noise away (0 = a fixed pattern)
+    float pixelScale;    // full-res pixels per AO pixel (2 = the AO buffer is half resolution); each AO pixel is
+                         // computed at the depth/normal of the full-res pixel it starts at, see aoUpsampleFragmentMain
 };
 
 // Must match the AmbientOcclusionMode enum in Scene.hpp
@@ -738,7 +740,9 @@ fragment float aoFragmentMain(PostProcessVertexOut in [[stage_in]],
                               depth2d<float> depthTexture [[texture(0)]],
                               texture2d<float> normalTexture [[texture(1)]],
                               constant AOParams& params [[buffer(0)]]) {
-    uint2 pixel = uint2(in.position.xy);
+    // Everything below works in full-resolution pixels, whatever size the AO target is.
+    uint2 pixel = min(uint2(floor(in.position.xy)) * uint(params.pixelScale + 0.5),
+                      uint2(depthTexture.get_width() - 1, depthTexture.get_height() - 1));
     float rawDepth = depthTexture.read(pixel);
     if (rawDepth >= 1.0) return 1.0; // sky / nothing drawn: nothing to occlude
 
@@ -851,7 +855,10 @@ fragment float aoBlurFragmentMain(PostProcessVertexOut in [[stage_in]],
                                   constant float2& direction [[buffer(0)]]) {
     int2 pixel = int2(in.position.xy);
     int2 maxPixel = int2(aoTexture.get_width() - 1, aoTexture.get_height() - 1);
-    float centerRaw = depthTexture.read(uint2(pixel));
+    // An AO texel stands for the full-res pixel it was computed at (pixelScale times its coordinates).
+    int scale = int(float(depthTexture.get_width()) / float(aoTexture.get_width()) + 0.5);
+    int2 maxDepthPixel = int2(depthTexture.get_width() - 1, depthTexture.get_height() - 1);
+    float centerRaw = depthTexture.read(uint2(min(pixel * scale, maxDepthPixel)));
     if (centerRaw >= 1.0) return 1.0;
     float centerDepth = aoLinearDepth(centerRaw);
 
@@ -859,7 +866,7 @@ fragment float aoBlurFragmentMain(PostProcessVertexOut in [[stage_in]],
     float weightSum = 0.0;
     for (int i = -3; i <= 3; i++) {
         int2 p = clamp(pixel + int2(direction) * i, int2(0), maxPixel);
-        float rawDepth = depthTexture.read(uint2(p));
+        float rawDepth = depthTexture.read(uint2(min(p * scale, maxDepthPixel)));
         float spatial = exp(-float(i * i) / 8.0);
         // Sky taps count as infinitely far away (weight 0); otherwise the weight falls off linearly
         // to 0 at a 4% relative depth difference.
@@ -872,9 +879,49 @@ fragment float aoBlurFragmentMain(PostProcessVertexOut in [[stage_in]],
     return sum / max(weightSum, 1e-4);
 }
 
-// --- Screen-space reflections. One full-screen pass after the whole scene (opaque, sky and glass) has
-// been drawn. The scene pass leaves a small G-buffer (see SceneFragmentOut): each pixel's shading
-// normal, roughness and a specular weight. For every reflective pixel this pass marches the mirror
+// Brings the (blurred, possibly lower-resolution) AO buffer up to full resolution for the scene pass to
+// read: for each full-res pixel, a bilinear blend of the four nearest AO texels, each weighted down by how
+// far its own depth is from this pixel's - so AO computed on a near surface doesn't bleed onto a far one
+// across a silhouette (a plain bilinear upsample would smear a dark halo there). At scale 1 it reduces to
+// a copy. An AO texel's depth is that of the full-res pixel it was computed at, as in aoFragmentMain.
+fragment float aoUpsampleFragmentMain(PostProcessVertexOut in [[stage_in]],
+                                      texture2d<float> aoTexture [[texture(0)]],
+                                      depth2d<float> depthTexture [[texture(1)]]) {
+    uint2 pixel = uint2(in.position.xy);
+    float rawDepth = depthTexture.read(pixel);
+    if (rawDepth >= 1.0) return 1.0;
+
+    float scale = float(depthTexture.get_width()) / float(aoTexture.get_width());
+    int2 maxTexel = int2(aoTexture.get_width() - 1, aoTexture.get_height() - 1);
+    int2 maxDepthPixel = int2(depthTexture.get_width() - 1, depthTexture.get_height() - 1);
+    float2 lowPosition = float2(pixel) / scale; // AO texel h was computed at full-res pixel h * scale
+    int2 base = int2(floor(lowPosition));
+    float2 fraction = lowPosition - float2(base);
+    float centerDepth = aoLinearDepth(rawDepth);
+
+    float sum = 0.0, weightSum = 0.0;
+    for (int dy = 0; dy <= 1; dy++) {
+        for (int dx = 0; dx <= 1; dx++) {
+            int2 texel = clamp(base + int2(dx, dy), int2(0), maxTexel);
+            float tapRaw = depthTexture.read(uint2(min(int2(float2(texel) * scale + 0.5), maxDepthPixel)));
+            float bilinear = (dx == 0 ? 1.0 - fraction.x : fraction.x) * (dy == 0 ? 1.0 - fraction.y : fraction.y);
+            // Same depth tolerance as the blur pass (weight 0 at a 4% relative difference), with a small floor
+            // so a pixel with no similar neighbour still gets something rather than dividing by zero.
+            float depthWeight = tapRaw >= 1.0 ? 1e-3
+                : max(saturate(1.0 - abs(aoLinearDepth(tapRaw) - centerDepth) / (0.04 * centerDepth)), 1e-3);
+            float w = bilinear * depthWeight;
+            sum += aoTexture.read(uint2(texel)).r * w;
+            weightSum += w;
+        }
+    }
+    return sum / max(weightSum, 1e-6);
+}
+
+// --- Screen-space reflections. Two full-screen passes after the whole scene (opaque, sky and glass) has
+// been drawn: ssrTraceFragmentMain, run at reduced resolution, finds what each ray hits, and
+// ssrCompositeFragmentMain upsamples that and applies it at full resolution. The scene pass leaves a small
+// G-buffer (see SceneFragmentOut): each pixel's shading normal, roughness and a specular weight. For every
+// reflective pixel the trace marches the mirror
 // direction through the depth buffer in screen space; where the ray finds a surface, the color there
 // (read from a mip-chained copy of the finished frame, blurrier for rougher surfaces) replaces the
 // environment-map reflection that fragmentMain already added, and where it finds nothing (the ray
@@ -891,6 +938,7 @@ struct SSRParams {
     float thickness;          // Scene::ssrThickness, world units
     float environmentIntensity;
     float noiseSeed;          // 0..1, different every frame under TAA so it averages the noise away (0 = a fixed pattern)
+    float pixelScale;         // full-res pixels per trace pixel (2 = the trace runs at half resolution)
 };
 
 #define SSR_MAX_STEPS 80          // depth-buffer taps per ray (the stride widens to cover long rays)
@@ -911,16 +959,19 @@ static float3 ssrViewPosition(float2 pixelCenter, float rawDepth, float2 size, c
     return float3(ndc.x * z / params.projScaleX, ndc.y * z / params.projScaleY, -z);
 }
 
-fragment float4 ssrFragmentMain(PostProcessVertexOut in [[stage_in]],
-                                depth2d<float> depthTexture [[texture(0)]],
-                                texture2d<float> normalRoughnessTexture [[texture(1)]],
-                                texture2d<float> specularWeightTexture [[texture(2)]],
-                                texture2d<float> sceneColor [[texture(3)]],
-                                texturecube<float> prefilterMap [[texture(4)]],
-                                constant SSRParams& params [[buffer(0)]],
-                                sampler colorSampler [[sampler(0)]],
-                                sampler envSampler [[sampler(1)]]) {
-    uint2 pixel = uint2(in.position.xy);
+// Pass 1, run at (usually) half resolution: marches one ray per trace pixel, from the surface at the
+// full-res pixel that trace pixel starts at, and writes what it found as (color, confidence) - the hit's
+// radiance and how much to trust it, 0 for a miss. Everything per-pixel-exact (the reflectance weight, the
+// environment it replaces) waits for the composite pass, which has the full-res G-buffer.
+fragment float4 ssrTraceFragmentMain(PostProcessVertexOut in [[stage_in]],
+                                     depth2d<float> depthTexture [[texture(0)]],
+                                     texture2d<float> normalRoughnessTexture [[texture(1)]],
+                                     texture2d<float> specularWeightTexture [[texture(2)]],
+                                     texture2d<float> sceneColor [[texture(3)]],
+                                     constant SSRParams& params [[buffer(0)]],
+                                     sampler colorSampler [[sampler(0)]]) {
+    uint2 pixel = min(uint2(floor(in.position.xy)) * uint(params.pixelScale + 0.5),
+                      uint2(depthTexture.get_width() - 1, depthTexture.get_height() - 1));
     float rawDepth = depthTexture.read(pixel);
     if (rawDepth >= 1.0) return float4(0.0); // sky
 
@@ -1039,6 +1090,68 @@ fragment float4 ssrFragmentMain(PostProcessVertexOut in [[stage_in]],
     float footprint = length(hitPixel - (float2(pixel) + 0.5)) * roughness * roughness * 0.6;
     float lod = clamp(log2(max(footprint, 1.0)), 0.0, float(sceneColor.get_num_mip_levels() - 1));
     float3 traced = min(sceneColor.sample(colorSampler, hitUV, level(lod)).rgb, SSR_MAX_HIT_RADIANCE);
+
+    return float4(traced, confidence);
+}
+
+// Pass 2, full resolution: takes the trace result (bilaterally upsampled from its own resolution - see
+// aoUpsampleFragmentMain for why not plain bilinear) and applies it to each pixel exactly: swap the
+// environment radiance the scene pass put into this pixel for the traced one, scaled by the same reflectance
+// weight, and add the difference into the HDR image.
+fragment float4 ssrCompositeFragmentMain(PostProcessVertexOut in [[stage_in]],
+                                         depth2d<float> depthTexture [[texture(0)]],
+                                         texture2d<float> normalRoughnessTexture [[texture(1)]],
+                                         texture2d<float> specularWeightTexture [[texture(2)]],
+                                         texture2d<float> sceneColor [[texture(3)]],
+                                         texturecube<float> prefilterMap [[texture(4)]],
+                                         texture2d<float> traceTexture [[texture(5)]],
+                                         constant SSRParams& params [[buffer(0)]],
+                                         sampler envSampler [[sampler(0)]]) {
+    uint2 pixel = uint2(in.position.xy);
+    float rawDepth = depthTexture.read(pixel);
+    if (rawDepth >= 1.0) return float4(0.0); // sky
+    float3 weight = specularWeightTexture.read(pixel).rgb;
+    if (max(weight.r, max(weight.g, weight.b)) < 0.002) return float4(0.0);
+
+    float2 size = float2(depthTexture.get_width(), depthTexture.get_height());
+    float2 traceSize = float2(traceTexture.get_width(), traceTexture.get_height());
+    float scale = size.x / traceSize.x;
+    float2 lowPosition = float2(pixel) / scale; // trace texel h was traced from full-res pixel h * scale
+    int2 base = int2(floor(lowPosition));
+    float2 fraction = lowPosition - float2(base);
+    float centerDepth = aoLinearDepth(rawDepth);
+
+    // Color is averaged over the texels that hit (weighted by their confidence), confidence over all of them:
+    // a pixel bordered by hits and misses gets the hits' color at a fractional strength, not a darkened one.
+    float3 tracedSum = float3(0.0);
+    float confidenceSum = 0.0, weightSum = 0.0;
+    for (int dy = 0; dy <= 1; dy++) {
+        for (int dx = 0; dx <= 1; dx++) {
+            int2 texel = clamp(base + int2(dx, dy), int2(0), int2(traceSize) - 1);
+            float tapRaw = depthTexture.read(uint2(min(int2(float2(texel) * scale + 0.5), int2(size) - 1)));
+            float bilinear = (dx == 0 ? 1.0 - fraction.x : fraction.x) * (dy == 0 ? 1.0 - fraction.y : fraction.y);
+            float depthWeight = tapRaw >= 1.0 ? 1e-3
+                : max(saturate(1.0 - abs(aoLinearDepth(tapRaw) - centerDepth) / (0.04 * centerDepth)), 1e-3);
+            float w = bilinear * depthWeight;
+            float4 tap = traceTexture.read(uint2(texel));
+            tracedSum += tap.rgb * tap.a * w;
+            confidenceSum += tap.a * w;
+            weightSum += w;
+        }
+    }
+    if (confidenceSum <= 1e-5) return float4(0.0);
+    float confidence = confidenceSum / weightSum;
+    float3 traced = tracedSum / confidenceSum;
+
+    // This pixel's own mirror direction (as the trace pass derived it) to look the environment up.
+    float4 normalRoughness = normalRoughnessTexture.read(pixel);
+    float roughness = normalRoughness.w;
+    float3 P = ssrViewPosition(float2(pixel) + 0.5, rawDepth, size, params);
+    float3 V = normalize(-P);
+    float3x3 viewRotation = float3x3(params.viewMatrix[0].xyz, params.viewMatrix[1].xyz, params.viewMatrix[2].xyz);
+    float3 N = normalize(viewRotation * normalRoughness.xyz);
+    if (dot(N, V) < 0.0) N = -N;
+    float3 worldR = transpose(viewRotation) * reflect(-V, N); // a rotation's inverse is its transpose
 
     // The environment radiance the scene pass already put into this pixel (same lookup as fragmentMain).
     float envLod = roughness * float(prefilterMap.get_num_mip_levels() - 1);

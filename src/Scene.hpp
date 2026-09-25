@@ -120,7 +120,7 @@ struct Scene {
     float ambientOcclusionStrength = 0.0f;
     float ambientOcclusionRadius = 0.5f;
     AmbientOcclusionMode ambientOcclusionMode = AmbientOcclusionMode::GTAO;
-    // Screen-space reflections (see ssrFragmentMain in Shader.metal and Main.cpp's SSR pass): glossy
+    // Screen-space reflections (see ssrTraceFragmentMain in Shader.metal and Main.cpp's SSR passes): glossy
     // surfaces reflect the rest of the visible scene instead of only the environment map. Strength is
     // the blend toward the traced reflection wherever a ray finds a hit (0 = off and the SSR pass is
     // skipped entirely, 1 = fully replace the image-based reflection there); maxDistance is how far

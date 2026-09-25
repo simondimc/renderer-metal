@@ -221,15 +221,27 @@ int main() {
         d->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
         return device->newTexture(d);
     };
-    MTL::Texture* aoNormalTexture = makeAOTexture(MTL::PixelFormatRGBA16Float, (NS::UInteger)width, (NS::UInteger)height);
-    MTL::Texture* aoTextureA = makeAOTexture(MTL::PixelFormatR16Float, (NS::UInteger)width, (NS::UInteger)height);
-    MTL::Texture* aoTextureB = makeAOTexture(MTL::PixelFormatR16Float, (NS::UInteger)width, (NS::UInteger)height);
+    // AO and SSR are the two most expensive effects and both are soft, low-frequency signals, so they are
+    // computed at 1/kAODownscale and 1/kSSRDownscale of the screen size per axis (2 = a quarter of the
+    // pixels) and brought back to full resolution by depth-aware upsample passes (aoUpsampleFragmentMain,
+    // ssrCompositeFragmentMain). The shaders read the factor off the texture sizes, so 1 also works.
+    constexpr int kAODownscale = 2;
+    constexpr int kSSRDownscale = 2;
+    auto downscaled = [](int size, int factor) { return (NS::UInteger)((size + factor - 1) / factor); };
 
-    // Screen-space reflection G-buffer (see SceneFragmentOut and ssrFragmentMain in Shader.metal): the
+    MTL::Texture* aoNormalTexture = makeAOTexture(MTL::PixelFormatRGBA16Float, (NS::UInteger)width, (NS::UInteger)height);
+    MTL::Texture* aoTextureA = makeAOTexture(MTL::PixelFormatR16Float, downscaled(width, kAODownscale), downscaled(height, kAODownscale));
+    MTL::Texture* aoTextureB = makeAOTexture(MTL::PixelFormatR16Float, downscaled(width, kAODownscale), downscaled(height, kAODownscale));
+    // The finished AO at full resolution - what the scene pass actually reads.
+    MTL::Texture* aoUpsampledTexture = makeAOTexture(MTL::PixelFormatR16Float, (NS::UInteger)width, (NS::UInteger)height);
+
+    // Screen-space reflection G-buffer (see SceneFragmentOut and ssrTraceFragmentMain in Shader.metal): the
     // scene pass writes each pixel's shading normal + roughness and its specular weight as extra color
     // attachments, and the SSR pass reads them back. Full resolution, never leaves the GPU.
     MTL::Texture* ssrNormalTexture = makeAOTexture(MTL::PixelFormatRGBA16Float, (NS::UInteger)width, (NS::UInteger)height);
     MTL::Texture* ssrWeightTexture = makeAOTexture(MTL::PixelFormatRGBA16Float, (NS::UInteger)width, (NS::UInteger)height);
+    // The ray-march result (traced color, confidence) at reduced resolution, composited at full resolution.
+    MTL::Texture* ssrTraceTexture = makeAOTexture(MTL::PixelFormatRGBA16Float, downscaled(width, kSSRDownscale), downscaled(height, kSSRDownscale));
 
     // Temporal anti-aliasing history (see taaFragmentMain in Shader.metal): the resolve pass reads last
     // frame's result from one of these and writes this frame's into the other, then the two swap.
@@ -467,10 +479,18 @@ int main() {
     aoBlurPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatR16Float);
     MTL::RenderPipelineState* aoBlurPipelineState = device->newRenderPipelineState(aoBlurPipeDesc, &error);
 
+    // AO upsample: the blurred (reduced-resolution) AO to a full-resolution R16Float.
+    MTL::Function* aoUpsampleFragFunc = library->newFunction(NS::String::string("aoUpsampleFragmentMain", NS::UTF8StringEncoding));
+    MTL::RenderPipelineDescriptor* aoUpsamplePipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
+    aoUpsamplePipeDesc->setVertexFunction(postProcessVertFunc);
+    aoUpsamplePipeDesc->setFragmentFunction(aoUpsampleFragFunc);
+    aoUpsamplePipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatR16Float);
+    MTL::RenderPipelineState* aoUpsamplePipelineState = device->newRenderPipelineState(aoUpsamplePipeDesc, &error);
+
     // Screen-space reflection PSO: full-screen pass drawn straight into the HDR target, adding its
     // correction ((traced - environment) * weight, negative where the traced color is darker) onto
     // what the scene pass left there. Alpha is left as it was.
-    MTL::Function* ssrFragFunc = library->newFunction(NS::String::string("ssrFragmentMain", NS::UTF8StringEncoding));
+    MTL::Function* ssrFragFunc = library->newFunction(NS::String::string("ssrCompositeFragmentMain", NS::UTF8StringEncoding));
     MTL::RenderPipelineDescriptor* ssrPipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
     ssrPipeDesc->setVertexFunction(postProcessVertFunc);
     ssrPipeDesc->setFragmentFunction(ssrFragFunc);
@@ -482,6 +502,14 @@ int main() {
     ssrColorAttachment->setSourceAlphaBlendFactor(MTL::BlendFactorZero);
     ssrColorAttachment->setDestinationAlphaBlendFactor(MTL::BlendFactorOne);
     MTL::RenderPipelineState* ssrPipelineState = device->newRenderPipelineState(ssrPipeDesc, &error);
+
+    // The trace pass in front of it writes (color, confidence) into ssrTraceTexture: no blending.
+    MTL::Function* ssrTraceFragFunc = library->newFunction(NS::String::string("ssrTraceFragmentMain", NS::UTF8StringEncoding));
+    MTL::RenderPipelineDescriptor* ssrTracePipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
+    ssrTracePipeDesc->setVertexFunction(postProcessVertFunc);
+    ssrTracePipeDesc->setFragmentFunction(ssrTraceFragFunc);
+    ssrTracePipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatRGBA16Float);
+    MTL::RenderPipelineState* ssrTracePipelineState = device->newRenderPipelineState(ssrTracePipeDesc, &error);
 
     // Temporal anti-aliasing PSO: full-screen resolve of the current HDR frame against the history into
     // one of the taaTextures (see taaFragmentMain in Shader.metal).
@@ -696,6 +724,8 @@ int main() {
             aoNormalTexture->release();
             aoTextureA->release();
             aoTextureB->release();
+            aoUpsampledTexture->release();
+            ssrTraceTexture->release();
             ssrNormalTexture->release();
             ssrWeightTexture->release();
             taaTextures[0]->release();
@@ -738,8 +768,10 @@ int main() {
             selectionMaskTexture = device->newTexture(newSelectionMaskDesc);
 
             aoNormalTexture = makeAOTexture(MTL::PixelFormatRGBA16Float, (NS::UInteger)width, (NS::UInteger)height);
-            aoTextureA = makeAOTexture(MTL::PixelFormatR16Float, (NS::UInteger)width, (NS::UInteger)height);
-            aoTextureB = makeAOTexture(MTL::PixelFormatR16Float, (NS::UInteger)width, (NS::UInteger)height);
+            aoTextureA = makeAOTexture(MTL::PixelFormatR16Float, downscaled(width, kAODownscale), downscaled(height, kAODownscale));
+            aoTextureB = makeAOTexture(MTL::PixelFormatR16Float, downscaled(width, kAODownscale), downscaled(height, kAODownscale));
+            aoUpsampledTexture = makeAOTexture(MTL::PixelFormatR16Float, (NS::UInteger)width, (NS::UInteger)height);
+            ssrTraceTexture = makeAOTexture(MTL::PixelFormatRGBA16Float, downscaled(width, kSSRDownscale), downscaled(height, kSSRDownscale));
             ssrNormalTexture = makeAOTexture(MTL::PixelFormatRGBA16Float, (NS::UInteger)width, (NS::UInteger)height);
             ssrWeightTexture = makeAOTexture(MTL::PixelFormatRGBA16Float, (NS::UInteger)width, (NS::UInteger)height);
             taaTextures[0] = makeAOTexture(MTL::PixelFormatRGBA16Float, (NS::UInteger)width, (NS::UInteger)height);
@@ -1204,10 +1236,11 @@ int main() {
                     float strength;
                     float mode; // AmbientOcclusionMode, cast to float - see AO_MODE_* in Shader.metal
                     float noiseSeed;
+                    float pixelScale;
                 } aoParams = {
                     viewMatrix(camera), projection.columns[0].x, projection.columns[1].y,
                     scene.ambientOcclusionRadius, scene.ambientOcclusionStrength,
-                    (float)(int)scene.ambientOcclusionMode, noiseSeed
+                    (float)(int)scene.ambientOcclusionMode, noiseSeed, (float)kAODownscale
                 };
 
                 MTL::RenderPassDescriptor* aoRPD = MTL::RenderPassDescriptor::renderPassDescriptor();
@@ -1239,6 +1272,19 @@ int main() {
                     aoBlurEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, (NS::UInteger)3);
                     aoBlurEncoder->endEncoding();
                 }
+
+                // Blurred AO (in A) back up to full resolution, using the full-res prepass depth.
+                MTL::RenderPassDescriptor* aoUpsampleRPD = MTL::RenderPassDescriptor::renderPassDescriptor();
+                auto aoUpsampleColor = aoUpsampleRPD->colorAttachments()->object(0);
+                aoUpsampleColor->setTexture(aoUpsampledTexture);
+                aoUpsampleColor->setLoadAction(MTL::LoadActionDontCare);
+                aoUpsampleColor->setStoreAction(MTL::StoreActionStore);
+                MTL::RenderCommandEncoder* aoUpsampleEncoder = beginRenderPass(aoUpsampleRPD, "AO upsample");
+                aoUpsampleEncoder->setRenderPipelineState(aoUpsamplePipelineState);
+                aoUpsampleEncoder->setFragmentTexture(aoTextureA, 0);
+                aoUpsampleEncoder->setFragmentTexture(depthTexture, 1);
+                aoUpsampleEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, (NS::UInteger)3);
+                aoUpsampleEncoder->endEncoding();
             }
 
             // --- Pass A: HDR scene pass - cube/mesh objects only, lit in linear space, written
@@ -1297,7 +1343,7 @@ int main() {
             MTL::RenderCommandEncoder* hdrEncoder = beginRenderPass(hdrRPD, "Scene");
             hdrEncoder->setDepthStencilState(depthState);
             hdrEncoder->setRenderPipelineState(pipelineState);
-            bindSceneState(hdrEncoder, aoActive ? aoTextureA : whiteTexture);
+            bindSceneState(hdrEncoder, aoActive ? aoUpsampledTexture : whiteTexture);
 
             // Glass and blended submeshes, found up front: they wait for A2 below.
             struct TransparentDraw {
@@ -1442,7 +1488,7 @@ int main() {
                 transparentEncoder->endEncoding();
             }
 
-            // --- Screen-space reflections (see ssrFragmentMain in Shader.metal): once the whole scene -
+            // --- Screen-space reflections (see ssrTraceFragmentMain/ssrCompositeFragmentMain in Shader.metal): once the whole scene -
             // opaque, sky and glass - is in hdrColorTexture, copy it into a mip-chained texture (the
             // pass can't read the target it adds to, and the mips are what rough reflections blur
             // with) and run the ray-march over the depth buffer and the scene pass's G-buffer,
@@ -1468,26 +1514,46 @@ int main() {
                     float thickness;
                     float environmentIntensity;
                     float noiseSeed;
+                    float pixelScale;
                 } ssrParams = {
                     viewMatrix(camera), ssrProjection.columns[0].x, ssrProjection.columns[1].y,
                     scene.ssrStrength, scene.ssrMaxDistance, scene.ssrThickness, scene.environmentIntensity,
-                    noiseSeed
+                    noiseSeed, (float)kSSRDownscale
                 };
+
+                // Trace at reduced resolution into ssrTraceTexture...
+                MTL::RenderPassDescriptor* ssrTraceRPD = MTL::RenderPassDescriptor::renderPassDescriptor();
+                auto ssrTraceColor = ssrTraceRPD->colorAttachments()->object(0);
+                ssrTraceColor->setTexture(ssrTraceTexture);
+                ssrTraceColor->setLoadAction(MTL::LoadActionDontCare);
+                ssrTraceColor->setStoreAction(MTL::StoreActionStore);
+                MTL::RenderCommandEncoder* ssrTraceEncoder = beginRenderPass(ssrTraceRPD, "SSR trace");
+                ssrTraceEncoder->setRenderPipelineState(ssrTracePipelineState);
+                ssrTraceEncoder->setFragmentTexture(depthTexture, 0);
+                ssrTraceEncoder->setFragmentTexture(ssrNormalTexture, 1);
+                ssrTraceEncoder->setFragmentTexture(ssrWeightTexture, 2);
+                ssrTraceEncoder->setFragmentTexture(transmissionTexture, 3);
+                ssrTraceEncoder->setFragmentSamplerState(screenSamplerState, 0);
+                ssrTraceEncoder->setFragmentBytes(&ssrParams, sizeof(ssrParams), 0);
+                ssrTraceEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, (NS::UInteger)3);
+                ssrTraceEncoder->endEncoding();
+
+                // ...then upsample it and add the correction into the HDR image at full resolution.
 
                 MTL::RenderPassDescriptor* ssrRPD = MTL::RenderPassDescriptor::renderPassDescriptor();
                 auto ssrColor = ssrRPD->colorAttachments()->object(0);
                 ssrColor->setTexture(hdrColorTexture);
                 ssrColor->setLoadAction(MTL::LoadActionLoad);
                 ssrColor->setStoreAction(MTL::StoreActionStore);
-                MTL::RenderCommandEncoder* ssrEncoder = beginRenderPass(ssrRPD, "SSR");
+                MTL::RenderCommandEncoder* ssrEncoder = beginRenderPass(ssrRPD, "SSR composite");
                 ssrEncoder->setRenderPipelineState(ssrPipelineState);
                 ssrEncoder->setFragmentTexture(depthTexture, 0);
                 ssrEncoder->setFragmentTexture(ssrNormalTexture, 1);
                 ssrEncoder->setFragmentTexture(ssrWeightTexture, 2);
                 ssrEncoder->setFragmentTexture(transmissionTexture, 3);
                 ssrEncoder->setFragmentTexture(environment.prefiltered, 4);
-                ssrEncoder->setFragmentSamplerState(screenSamplerState, 0);
-                ssrEncoder->setFragmentSamplerState(envSamplerState, 1);
+                ssrEncoder->setFragmentTexture(ssrTraceTexture, 5);
+                ssrEncoder->setFragmentSamplerState(envSamplerState, 0);
                 ssrEncoder->setFragmentBytes(&ssrParams, sizeof(ssrParams), 0);
                 ssrEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, (NS::UInteger)3);
                 ssrEncoder->endEncoding();
@@ -1780,6 +1846,8 @@ int main() {
     aoNormalTexture->release();
     aoTextureA->release();
     aoTextureB->release();
+    aoUpsampledTexture->release();
+    ssrTraceTexture->release();
     ssrNormalTexture->release();
     ssrWeightTexture->release();
     taaTextures[0]->release();
@@ -1825,6 +1893,12 @@ int main() {
     ssrPipelineState->release();
     ssrPipeDesc->release();
     ssrFragFunc->release();
+    ssrTracePipelineState->release();
+    ssrTracePipeDesc->release();
+    ssrTraceFragFunc->release();
+    aoUpsamplePipelineState->release();
+    aoUpsamplePipeDesc->release();
+    aoUpsampleFragFunc->release();
     taaPipelineState->release();
     taaPipeDesc->release();
     taaFragFunc->release();
