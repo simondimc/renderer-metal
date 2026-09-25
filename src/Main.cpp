@@ -445,12 +445,12 @@ int main() {
             // it yet, so overwriting the same slot before commit would corrupt earlier draws' data.
             for (NS::UInteger i = 0; i < renderables.size(); i++) {
                 Uniforms uniforms = computeUniforms(camera, objectModelMatrix(*renderables[i].obj), lights, lightCount,
-                                                     liveWidth, liveHeight);
+                                                     liveWidth, liveHeight, scene.exposure, scene.toneMapOperator);
                 memcpy((uint8_t*)uniformBuffer->contents() + i * kUniformStride, &uniforms, sizeof(Uniforms));
             }
             if (camera.uiMode) {
                 Uniforms gizmoUniforms = computeUniforms(camera, matrix_identity_float4x4, lights, lightCount,
-                                                          liveWidth, liveHeight);
+                                                          liveWidth, liveHeight, scene.exposure, scene.toneMapOperator);
                 memcpy((uint8_t*)uniformBuffer->contents() + kGizmoUniformOffset, &gizmoUniforms, sizeof(Uniforms));
 
                 // Light markers: a small translate-only model matrix places the marker at each light.
@@ -464,13 +464,14 @@ int main() {
                         simd_make_float4(lights[i].position.x, lights[i].position.y, lights[i].position.z, 1.0f)
                     );
                     Uniforms markerUniforms = computeUniforms(camera, markerModel, lights, lightCount,
-                                                               liveWidth, liveHeight);
+                                                               liveWidth, liveHeight, scene.exposure, scene.toneMapOperator);
                     memcpy((uint8_t*)uniformBuffer->contents() + kLightMarkerUniformOffset + i * kUniformStride,
                            &markerUniforms, sizeof(Uniforms));
 
                     if (lightObjects[i] && lights[i].type != LightType::Point) {
                         Uniforms rayUniforms = computeUniforms(camera, objectModelMatrix(*lightObjects[i]),
-                                                                lights, lightCount, liveWidth, liveHeight);
+                                                                lights, lightCount, liveWidth, liveHeight,
+                                                                scene.exposure, scene.toneMapOperator);
                         memcpy((uint8_t*)uniformBuffer->contents() + kLightRayUniformOffset + i * kUniformStride,
                                &rayUniforms, sizeof(Uniforms));
                     }

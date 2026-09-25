@@ -23,7 +23,7 @@
 - Deferred Shading
 - Clustered/Tiled Rendering
 - Temporal Anti-Aliasing (TAA)
-- HDR & Tone Mapping
+- [x] HDR & Tone Mapping
 
 ### Materials & Shading
 - [x] Linear Color Space & Gamma Correction

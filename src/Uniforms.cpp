@@ -4,7 +4,7 @@
 
 Uniforms computeUniforms(const Camera& cam, const simd::float4x4& objectModel,
                           const SceneLight* lights, int lightCount,
-                          int width, int height) {
+                          int width, int height, float exposure, ToneMapOperator toneMapOperator) {
     Uniforms u;
 
     float fov = 60.0f * (M_PI / 180.0f);
@@ -42,6 +42,7 @@ Uniforms computeUniforms(const Camera& cam, const simd::float4x4& objectModel,
         u.lightTypes[i] = simd_make_int4((int)light.type, 0, 0, 0);
     }
     u.lightMeta = simd_make_int4(count, 0, 0, 0);
+    u.renderParams = simd_make_float4(exposure, (float)(int)toneMapOperator, 0.0f, 0.0f);
 
     return u;
 }

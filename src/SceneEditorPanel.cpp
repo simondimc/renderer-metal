@@ -12,10 +12,20 @@ int countOfType(const Scene& scene, SceneObjectType type) {
     }
     return count;
 }
+
+// Order must match ToneMapOperator in Scene.hpp
+constexpr const char* kToneMapOperatorNames[] = {"Clamp", "Reinhard", "ACES", "Uncharted2"};
 } // namespace
 
 void drawSceneEditorPanel(Scene& scene, int& selectedIndex) {
     ImGui::Begin("Scene Editor");
+
+    ImGui::DragFloat("Exposure", &scene.exposure, 0.01f, 0.01f, 10.0f);
+    int toneMapIndex = (int)scene.toneMapOperator;
+    if (ImGui::Combo("Tone Map", &toneMapIndex, kToneMapOperatorNames, IM_ARRAYSIZE(kToneMapOperatorNames))) {
+        scene.toneMapOperator = (ToneMapOperator)toneMapIndex;
+    }
+    ImGui::Separator();
 
     ImGui::BeginDisabled(scene.objects.size() >= kMaxSceneObjects);
     if (ImGui::Button("Add Cube")) {

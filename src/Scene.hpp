@@ -12,6 +12,12 @@ enum class SceneObjectType { Cube, Light, Mesh };
 // see sampleAreaLight in Shader.metal; not physically-based, no soft shadows).
 enum class LightType { Point, Directional, Spot, Area };
 
+// Clamp: the old behavior - hard per-channel clip at 1.0, no curve. Reinhard: x/(1+x), a simple
+// classic rolloff. ACES: Narkowicz's fit to the ACES filmic reference curve, punchier contrast.
+// Uncharted2: Hable's filmic curve (as used in the game), a softer shoulder than ACES. Must match
+// the order of TONE_MAP_* defines in Shader.metal.
+enum class ToneMapOperator { Clamp, Reinhard, ACES, Uncharted2 };
+
 // A single instance in the scene - either a cube (mesh/textures are shared, only the transform
 // differs) or a light (no mesh; see LightType for the supported kinds).
 // Plain float[3] (not simd::float3) so ImGui::DragFloat3 can take its address directly -
@@ -35,6 +41,13 @@ struct SceneObject {
 
 struct Scene {
     std::vector<SceneObject> objects;
+    // Global HDR exposure multiplier applied before tone mapping (see fragmentMain in
+    // Shader.metal) - scales linear scene radiance up/down before the curve compresses it into
+    // displayable range, the same role a camera's exposure setting plays.
+    float exposure = 1.0f;
+    // Which curve fragmentMain uses to compress exposed HDR radiance into [0, 1] before gamma
+    // encoding - see ToneMapOperator above.
+    ToneMapOperator toneMapOperator = ToneMapOperator::ACES;
 };
 
 // Caps the per-frame GPU uniform buffer sizing in Main.cpp (each object gets its own aligned slot)

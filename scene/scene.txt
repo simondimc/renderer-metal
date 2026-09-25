@@ -1,4 +1,6 @@
 # renderer-metal scene file v1
+exposure 1
+tonemap aces
 object Cube
 position 0 0 0
 rotation 0 0 0

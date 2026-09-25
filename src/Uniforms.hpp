@@ -40,6 +40,9 @@ struct Uniforms {
     simd::int4 lightTypes[kMaxLights];        // x = LightType of that light
     simd::int4 lightMeta;                     // x = active light count
     simd::float4 cameraPosition;
+    // x = exposure, y = ToneMapOperator index (see fragmentMain's tone mapping and the
+    // TONE_MAP_* defines in Shader.metal, which must match ToneMapOperator's order in Scene.hpp)
+    simd::float4 renderParams;
 };
 
 // Builds the per-object Uniforms: projects/views objectModel through the camera, lit by up to
@@ -48,4 +51,4 @@ struct Uniforms {
 // Main.cpp (see Shadow.hpp) - they change per light, not per object, so they don't belong here.
 Uniforms computeUniforms(const Camera& cam, const simd::float4x4& objectModel,
                           const SceneLight* lights, int lightCount,
-                          int width, int height);
+                          int width, int height, float exposure, ToneMapOperator toneMapOperator);

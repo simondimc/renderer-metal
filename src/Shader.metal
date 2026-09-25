@@ -9,6 +9,12 @@ using namespace metal;
 #define LIGHT_TYPE_SPOT 2
 #define LIGHT_TYPE_AREA 3
 
+// Must match the ToneMapOperator enum in Scene.hpp
+#define TONE_MAP_CLAMP 0
+#define TONE_MAP_REINHARD 1
+#define TONE_MAP_ACES 2
+#define TONE_MAP_UNCHARTED2 3
+
 struct VertexInput {
     float3 position [[attribute(0)]];
     float2 uv       [[attribute(1)]];
@@ -37,6 +43,7 @@ struct Uniforms {
     int4 lightTypes[MAX_LIGHTS];        // x = LightType of that light
     int4 lightMeta;                     // x = active light count
     float4 cameraPosition;
+    float4 renderParams;                // x = exposure (see fragmentMain's tone mapping)
 };
 
 // Vertex Shader
@@ -124,6 +131,62 @@ static float sampleProjectedShadow(float3 worldPosition, float3 shadowEye, float
 
     constexpr float bias = 0.05; // world-space units, same as sampleCubeShadow's
     return (currentDistance - bias > closestDistance) ? 0.0 : 1.0;
+}
+
+// Four interchangeable ways to compress unbounded linear HDR radiance down to [0, 1] before gamma
+// encoding (see fragmentMain and toneMap below, and ToneMapOperator in Scene.hpp). All operate
+// per-channel, so a strongly single-hued light can still push that channel toward 1.0 faster than
+// the others - none of these are luminance-preserving desaturating operators.
+
+// The pre-HDR behavior: hard per-channel clip at 1.0. No highlight rolloff, so anything overbright
+// blows out to flat white/primary colors.
+static float3 clampToneMap(float3 color) {
+    return saturate(color);
+}
+
+// Classic x / (1 + x): a simple, cheap rolloff that approaches but never reaches 1.0. Softer and
+// less contrasty than the filmic curves below - midtones get compressed more, since the curve
+// starts bending immediately rather than staying linear at low values.
+static float3 reinhardToneMap(float3 color) {
+    return color / (1.0 + color);
+}
+
+// Narkowicz's fit to the ACES filmic reference curve: stays closer to linear through the midtones
+// than Reinhard, with a punchier, more contrasty shoulder into the highlights.
+static float3 acesFilmicToneMap(float3 color) {
+    constexpr float a = 2.51;
+    constexpr float b = 0.03;
+    constexpr float c = 2.43;
+    constexpr float d = 0.59;
+    constexpr float e = 0.14;
+    return saturate((color * (a * color + b)) / (color * (c * color + d) + e));
+}
+
+// Hable's filmic curve (as used in Uncharted 2): a longer, gentler shoulder than ACES, so bright
+// highlights roll off more gradually instead of compressing hard near 1.0. Needs its own white-
+// point normalization (whiteScale) since the raw curve doesn't map input 1.0 to output 1.0.
+static float3 uncharted2Partial(float3 x) {
+    constexpr float A = 0.15;
+    constexpr float B = 0.50;
+    constexpr float C = 0.10;
+    constexpr float D = 0.20;
+    constexpr float E = 0.02;
+    constexpr float F = 0.30;
+    return ((x * (A * x + C * B) + D * E) / (x * (A * x + B) + D * F)) - E / F;
+}
+
+static float3 uncharted2ToneMap(float3 color) {
+    constexpr float W = 11.2; // linear white point the curve is normalized against
+    float3 curved = uncharted2Partial(color);
+    float3 whiteScale = 1.0 / uncharted2Partial(float3(W));
+    return saturate(curved * whiteScale);
+}
+
+static float3 toneMap(float3 color, int op) {
+    if (op == TONE_MAP_CLAMP) return clampToneMap(color);
+    if (op == TONE_MAP_REINHARD) return reinhardToneMap(color);
+    if (op == TONE_MAP_UNCHARTED2) return uncharted2ToneMap(color);
+    return acesFilmicToneMap(color); // TONE_MAP_ACES, and the default for any unrecognized value
 }
 
 // Fragment Shader
@@ -221,10 +284,13 @@ fragment float4 fragmentMain(RasterData in [[stage_in]],
         litColor += shadow * (texColor.rgb * diffuse + specular) * radiance;
     }
 
-    // texColor came from an sRGB texture, so the GPU already decoded it to linear on sample - all
-    // the lighting math above ran in linear space. The display expects gamma-encoded (sRGB) values
-    // though, so encode once here, at the very end, rather than per-input.
-    float3 gammaEncoded = pow(saturate(litColor), 1.0 / 2.2);
+    // litColor is unbounded linear HDR radiance (bright/overlapping lights can push it well past
+    // 1.0) - exposure scales it, then the selected curve compresses it into [0, 1], softening the
+    // highlight rolloff instead of the harsh clipping a plain saturate() would give. The display
+    // expects gamma-encoded (sRGB) values, so that's applied last, after tone mapping.
+    float3 exposed = litColor * uniforms.renderParams.x;
+    float3 toneMapped = toneMap(exposed, int(uniforms.renderParams.y));
+    float3 gammaEncoded = pow(toneMapped, 1.0 / 2.2);
     return float4(gammaEncoded, texColor.a);
 }
 

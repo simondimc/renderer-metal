@@ -79,6 +79,22 @@ LightType parseLightType(const std::string& name) {
     return LightType::Point;
 }
 
+const char* toneMapOperatorName(ToneMapOperator op) {
+    switch (op) {
+        case ToneMapOperator::Clamp:      return "clamp";
+        case ToneMapOperator::Reinhard:   return "reinhard";
+        case ToneMapOperator::Uncharted2: return "uncharted2";
+        case ToneMapOperator::ACES:       default: return "aces";
+    }
+}
+
+ToneMapOperator parseToneMapOperator(const std::string& name) {
+    if (name == "clamp")      return ToneMapOperator::Clamp;
+    if (name == "reinhard")   return ToneMapOperator::Reinhard;
+    if (name == "uncharted2") return ToneMapOperator::Uncharted2;
+    return ToneMapOperator::ACES;
+}
+
 } // namespace
 
 simd::float4x4 objectModelMatrix(const SceneObject& obj) {
@@ -104,6 +120,8 @@ simd::float3 objectUp(const SceneObject& obj) {
 }
 
 // File grammar - one block per object, in order:
+//   exposure <v>            (global, not tied to any object - see Scene::exposure)
+//   tonemap clamp|reinhard|aces|uncharted2  (global - see Scene::toneMapOperator)
 //   object <name>          (a Cube or Mesh) or  light <name>          (a Light)
 //   position <x> <y> <z>
 //   rotation <x> <y> <z>    (degrees; Cube/Mesh always, Light only for Directional/Spot/Area)
@@ -125,6 +143,8 @@ bool saveScene(const Scene& scene, const std::string& path) {
     }
 
     out << "# renderer-metal scene file v1\n";
+    out << "exposure " << scene.exposure << "\n";
+    out << "tonemap " << toneMapOperatorName(scene.toneMapOperator) << "\n";
     for (const auto& obj : scene.objects) {
         out << (obj.type == SceneObjectType::Light ? "light " : "object ") << obj.name << "\n";
         out << "position " << obj.position[0] << " " << obj.position[1] << " " << obj.position[2] << "\n";
@@ -169,7 +189,13 @@ bool loadScene(Scene& scene, const std::string& path) {
         std::string keyword;
         ss >> keyword;
 
-        if (keyword == "object" || keyword == "light") {
+        if (keyword == "exposure") {
+            ss >> loaded.exposure;
+        } else if (keyword == "tonemap") {
+            std::string opName;
+            ss >> opName;
+            loaded.toneMapOperator = parseToneMapOperator(opName);
+        } else if (keyword == "object" || keyword == "light") {
             SceneObject obj;
             obj.type = (keyword == "light") ? SceneObjectType::Light : SceneObjectType::Cube;
             std::getline(ss, obj.name);
