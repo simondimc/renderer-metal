@@ -116,3 +116,12 @@ simd::float4x4 computeSpotShadowMatrix(simd::float3 position, simd::float3 direc
 
     return proj * view;
 }
+
+uint64_t hashBytes(uint64_t hash, const void* data, size_t size) {
+    const unsigned char* bytes = static_cast<const unsigned char*>(data);
+    for (size_t i = 0; i < size; i++) {
+        hash ^= bytes[i];
+        hash *= 1099511628211ull;
+    }
+    return hash;
+}

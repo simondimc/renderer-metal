@@ -1,4 +1,6 @@
 #pragma once
+#include <cstddef>
+#include <cstdint>
 #include <simd/simd.h>
 
 // Cube shadow map face resolution (per face, so total memory per light is 6x this squared).
@@ -22,6 +24,15 @@ constexpr float kDirectionalShadowHalfExtent = 15.0f;
 constexpr float kDirectionalShadowDistance = 25.0f;
 constexpr float kDirectionalShadowNearPlane = 0.05f;
 constexpr float kDirectionalShadowFarPlane = 2.0f * kDirectionalShadowDistance;
+
+// Shadow-map caching (see Main.cpp's shadow pass): a shadow map only has to be redrawn when something
+// that shapes it changed, and "did anything change" is answered by comparing a hash of everything that
+// does (the light, and every shadow caster's transform and geometry) with the hash from when the map was
+// last drawn. hashBytes folds a block of memory into a running 64-bit FNV-1a hash - start from
+// kHashSeed, chain the calls. Hash plain values (floats, pointers), never structs, whose padding bytes
+// are uninitialised and would make identical data hash differently.
+constexpr uint64_t kHashSeed = 14695981039346656037ull;
+uint64_t hashBytes(uint64_t hash, const void* data, size_t size);
 
 // Builds the 6 face view-projection matrices for one point light's cube shadow map, in the same
 // slice order Metal uses for a MTLTextureType::TypeCube texture: +X, -X, +Y, -Y, +Z, -Z. Each

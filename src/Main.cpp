@@ -627,6 +627,14 @@ int main() {
     int taaWriteIndex = 0;
     bool taaHistoryValid = false;
 
+    // Shadow-map cache (see the shadow pass in the loop below): per light slot, the hash of everything
+    // the slot's shadow map was last drawn from, so the map is only redrawn when that changes.
+    struct ShadowCacheEntry {
+        uint64_t signature = 0;
+        bool valid = false;
+    };
+    ShadowCacheEntry shadowCache[kMaxLights];
+
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
@@ -1054,6 +1062,22 @@ int main() {
                 }
             };
 
+            // Shadow-map cache: a shadow map is fully determined by its light and by the shadow casters
+            // (each renderable's transform and geometry - materials and textures are fixed per mesh), so
+            // it only needs redrawing when a hash of those differs from the one taken when it was last
+            // drawn. The maps are persistent textures (only their contents are rewritten every frame), so
+            // a skipped pass leaves last frame's - still correct - result in place. Point lights are the
+            // expensive ones: six full-scene passes each. Any change to any caster redraws every light's
+            // map, since nothing here tracks which lights an object can reach.
+            uint64_t casterSignature = kHashSeed;
+            for (const auto& r : renderables) {
+                simd::float4x4 model = objectModelMatrix(*r.obj);
+                casterSignature = hashBytes(casterSignature, &model, sizeof(model));
+                const void* geometry[3] = {r.vertexBuffer, r.indexBuffer, r.mesh};
+                casterSignature = hashBytes(casterSignature, geometry, sizeof(geometry));
+                casterSignature = hashBytes(casterSignature, &r.indexCount, sizeof(r.indexCount));
+            }
+
             // Shadow pass: render every cube's depth/distance-from-light into each active light's
             // shadow map(s), before the main color pass that will sample them all. Point lights
             // get 6 encoders (one per cube face, see the earlier conversation on instanced/layered
@@ -1062,6 +1086,23 @@ int main() {
             // encoder each into their single-frustum depth map; Area lights don't cast shadows yet.
             for (int lightIndex = 0; lightIndex < lightCount; lightIndex++) {
                 LightType lightType = lights[lightIndex].type;
+                if (lightType != LightType::Point && lightType != LightType::Directional && lightType != LightType::Spot) continue;
+
+                // This light's share of the hash: what its map is rendered from - a point light only its
+                // position (the cube faces are fixed around it), the others their whole view-projection.
+                const SceneLight& light = lights[lightIndex];
+                uint64_t signature = hashBytes(casterSignature, &lightType, sizeof(lightType));
+                float lightPosition[3] = {light.position.x, light.position.y, light.position.z};
+                signature = hashBytes(signature, lightPosition, sizeof(lightPosition));
+                if (lightType != LightType::Point) {
+                    float lightDirection[3] = {light.direction.x, light.direction.y, light.direction.z};
+                    signature = hashBytes(signature, lightDirection, sizeof(lightDirection));
+                    signature = hashBytes(signature, &light.shadowViewProj, sizeof(light.shadowViewProj));
+                }
+                ShadowCacheEntry& cached = shadowCache[lightIndex];
+                if (cached.valid && cached.signature == signature) continue; // the map is already up to date
+                cached = {signature, true};
+
                 if (lightType == LightType::Point) {
                     for (int face = 0; face < kCubeFaceCount; face++) {
                         MTL::RenderPassDescriptor* shadowRPD = MTL::RenderPassDescriptor::renderPassDescriptor();
