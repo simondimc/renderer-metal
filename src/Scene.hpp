@@ -22,6 +22,10 @@ enum class ToneMapOperator { Clamp, Reinhard, ACES, Uncharted2 };
 // scene files without a "texture" line use.
 constexpr const char* kDefaultTextureSet = "metal_plate_4k";
 
+// Name of the built-in gradient-sky-plus-sun environment (see EnvironmentLibrary in Environment.hpp);
+// scene files without an "environmentmap" line use it.
+constexpr const char* kDefaultEnvironment = "procedural";
+
 // Metallic-roughness PBR material (see fragmentMain in Shader.metal). Cubes and .obj meshes take
 // their albedo/normal/roughness/metallic maps from the texture set named by textureSet (glTF meshes
 // bring their own materials instead); useTextures chooses between those maps and flat scalar values.
@@ -33,7 +37,7 @@ struct Material {
     float albedo[3] = {1.0f, 1.0f, 1.0f};
     float metallic = 1.0f;   // 0 = dielectric, 1 = metal
     float roughness = 1.0f;  // 0 = mirror-smooth, 1 = fully rough
-    float ao = 1.0f;         // ambient occlusion multiplier on the (still constant) ambient term
+    float ao = 1.0f;         // ambient occlusion multiplier on the image-based (ambient) lighting
     bool useTextures = true;
     std::string textureSet = kDefaultTextureSet;
 };
@@ -94,6 +98,13 @@ struct Scene {
     // Lens Flare: 0 = off - glow + ghost artifacts for lights on-screen and unoccluded. See
     // LensFlareLight in Shader.metal and Main.cpp's per-light screen projection.
     float lensFlareStrength = 0.0f;
+    // Image-based lighting (see fragmentMain in Shader.metal): the environment lights every surface
+    // from all directions and is what metals reflect. environment names an entry of the
+    // EnvironmentLibrary; intensity scales both the lighting and the visible sky; showSky = false
+    // keeps the lighting but draws the flat clear color as the background instead.
+    std::string environment = kDefaultEnvironment;
+    float environmentIntensity = 1.0f;
+    bool showSky = true;
 };
 
 // Caps the per-frame GPU uniform buffer sizing in Main.cpp (each object gets its own aligned slot)

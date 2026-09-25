@@ -1,15 +1,17 @@
 # renderer-metal scene file v1
 exposure 1
 tonemap aces
-vignette 1.26
+vignette 0
 chromaticaberration 0
 filmgrain 0
 sharpen 0
 colorgrading 1 1
-bloom 0.03 0.57
-dof 3 3 0.4
-motionblur 3
-lensflare 0.001
+bloom 0 0
+dof 0 0 0
+motionblur 0
+lensflare 0
+environment 0.71 1
+environmentmap kloofendal_48d_partly_cloudy_puresky_4k
 object Cube
 position 0 0 0
 rotation 0 0 0
@@ -20,7 +22,7 @@ object Cube 2
 position 0 -1 0
 rotation 0 0 0
 scale 100 1 100
-material 1 1 1 1 1 1 1
+material 0.102941 0.0899993 0.0479383 1 1 1 0
 texture metal_plate_4k
 object Cube 3
 position 4.15 -0.2 2.8
@@ -28,31 +30,6 @@ rotation 0 0 0
 scale 1 1 1
 material 1 1 1 1 1 1 1
 texture metal_plate_4k
-light Light 1
-position -2.95 0.3 2
-lighttype point
-color 1 0 0
-intensity 2.1
-light Light 2
-position 0 0 0
-lighttype directional
-color 1 1 1
-intensity 1.8
-rotation -73 -34 10
-light Light 3
-position 2 2 2
-lighttype spot
-color 0 0.199827 0.970588
-intensity 6.1
-rotation -22 -202 -6
-spotangles 18.5 44
-light Light 4
-position 2 1.25 1.3
-lighttype area
-color 0.00458957 0.936275 0.0593946
-intensity 4.3
-rotation 0 0 0
-areasize 2.56 1.16
 object Mesh 1
 position -4.4 -0.65 3
 rotation 0 0 0
@@ -73,3 +50,8 @@ rotation 0 0 0
 scale 1 1 1
 material 1 1 1 0 1 1 1
 texture smoked_walnut_veneer_4k
+light Light 1
+position -0.5 0.2 3.65
+lighttype point
+color 1 1 1
+intensity 3

@@ -28,13 +28,36 @@ bool usesTextureSet(const SceneObject& obj) {
 constexpr const char* kToneMapOperatorNames[] = {"Clamp", "Reinhard", "ACES", "Uncharted2"};
 } // namespace
 
-void drawSceneEditorPanel(Scene& scene, int& selectedIndex, TextureLibrary& textureLibrary) {
+void drawSceneEditorPanel(Scene& scene, int& selectedIndex, TextureLibrary& textureLibrary,
+                          EnvironmentLibrary& environmentLibrary) {
     ImGui::Begin("Scene Editor");
 
     ImGui::DragFloat("Exposure", &scene.exposure, 0.01f, 0.01f, 10.0f);
     int toneMapIndex = (int)scene.toneMapOperator;
     if (ImGui::Combo("Tone Map", &toneMapIndex, kToneMapOperatorNames, IM_ARRAYSIZE(kToneMapOperatorNames))) {
         scene.toneMapOperator = (ToneMapOperator)toneMapIndex;
+    }
+
+    if (ImGui::TreeNode("Environment (IBL)")) {
+        const auto& environments = environmentLibrary.names();
+        bool known = std::find(environments.begin(), environments.end(), scene.environment) != environments.end();
+        std::string preview = known ? scene.environment : scene.environment + " (missing)";
+        if (ImGui::BeginCombo("Environment", preview.c_str())) {
+            for (const std::string& name : environments) {
+                if (ImGui::Selectable(name.c_str(), name == scene.environment)) {
+                    scene.environment = name;
+                }
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Rescan##environment")) {
+            environmentLibrary.rescan();
+        }
+        ImGui::DragFloat("Intensity", &scene.environmentIntensity, 0.01f, 0.0f, 10.0f);
+        ImGui::Checkbox("Show Sky", &scene.showSky);
+        ImGui::TextDisabled("(.hdr/.exr panoramas in environment/)");
+        ImGui::TreePop();
     }
 
     if (ImGui::TreeNode("Post-Processing")) {

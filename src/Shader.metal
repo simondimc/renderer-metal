@@ -279,6 +279,13 @@ static float3 fresnelSchlick(float cosTheta, float3 F0) {
     return F0 + (1.0 - F0) * powr(saturate(1.0 - cosTheta), 5.0);
 }
 
+// Schlick's Fresnel for ambient (image-based) light: there's no single half vector to measure the
+// angle against, so the view angle stands in for it, and rough surfaces are kept from reflecting
+// more at grazing angles than their F0 lets a rough microsurface actually do.
+static float3 fresnelSchlickRoughness(float cosTheta, float3 F0, float roughness) {
+    return F0 + (max(float3(1.0 - roughness), F0) - F0) * powr(saturate(1.0 - cosTheta), 5.0);
+}
+
 // Fragment Shader
 fragment float4 fragmentMain(RasterData in [[stage_in]],
                              constant Uniforms& uniforms [[buffer(1)]],
@@ -287,12 +294,14 @@ fragment float4 fragmentMain(RasterData in [[stage_in]],
                              array<texturecube<float>, MAX_LIGHTS> shadowCubes [[texture(2)]],
                              array<texture2d<float>, MAX_LIGHTS> shadow2DMaps [[texture(2 + MAX_LIGHTS)]],
                              texture2d<float> ormMap [[texture(2 + 2 * MAX_LIGHTS)]],
+                             texturecube<float> irradianceMap [[texture(3 + 2 * MAX_LIGHTS)]],
+                             texturecube<float> prefilterMap [[texture(4 + 2 * MAX_LIGHTS)]],
+                             texture2d<float> brdfLUT [[texture(5 + 2 * MAX_LIGHTS)]],
                              constant MaterialParams& material [[buffer(2)]],
+                             constant float& environmentIntensity [[buffer(3)]],
                              sampler smp [[sampler(0)]],
-                             sampler shadowSampler [[sampler(1)]]) {
-    // Placeholder for image-based lighting: a constant ambient term, scaled by the material's AO.
-    constexpr float ambientStrength = 0.15;
-
+                             sampler shadowSampler [[sampler(1)]],
+                             sampler envSampler [[sampler(2)]]) {
     bool useTextures = uniforms.materialParams.w > 0.5;
 
     float3 N = normalize(in.worldNormal);
@@ -331,8 +340,22 @@ fragment float4 fragmentMain(RasterData in [[stage_in]],
     float3 F0 = mix(float3(0.04), albedo, metallic);
     float NdotV = max(dot(normal, viewDir), 1e-4);
 
-    // Metals have no diffuse term; ambient diffuse + a crude ambient specular (F0) stand in for IBL.
-    float3 litColor = ambientStrength * ao * (albedo * (1.0 - metallic) + F0);
+    // Image-based lighting (split-sum approximation): the environment is precomputed once (see
+    // Environment.cpp and the *Kernel functions at the bottom of this file) into a diffuse irradiance
+    // cube, a specular cube prefiltered per roughness (one mip per roughness step), and a 2D BRDF
+    // lookup table - so the whole ambient term costs three texture reads instead of an integral.
+    float3 F_ibl = fresnelSchlickRoughness(NdotV, F0, roughness);
+    float3 kD_ibl = (1.0 - F_ibl) * (1.0 - metallic); // metals have no diffuse term
+    float3 irradiance = irradianceMap.sample(envSampler, normal).rgb;
+    float3 diffuseIBL = irradiance * albedo;
+
+    float3 R = reflect(-viewDir, normal);
+    float lod = roughness * float(prefilterMap.get_num_mip_levels() - 1);
+    float3 prefiltered = prefilterMap.sample(envSampler, R, level(lod)).rgb;
+    float2 envBRDF = brdfLUT.sample(envSampler, float2(NdotV, roughness)).rg;
+    float3 specularIBL = prefiltered * (F_ibl * envBRDF.x + envBRDF.y);
+
+    float3 litColor = (kD_ibl * diffuseIBL + specularIBL) * ao * environmentIntensity;
 
     int lightCount = uniforms.lightMeta.x;
     for (int i = 0; i < lightCount; i++) {
@@ -770,4 +793,236 @@ vertex AxisRasterData axisVertexMain(AxisVertexInput in [[stage_in]],
 
 fragment float4 axisFragmentMain(AxisRasterData in [[stage_in]]) {
     return float4(in.color, 1.0);
+}
+
+// --- Environment: sky background + the compute kernels that precompute the image-based lighting
+// data (see Environment.cpp, which dispatches them once per environment, not per frame) ---
+
+struct SkyParams {
+    float4x4 invViewProj;
+    float4 cameraPosition;
+    float intensity;
+};
+
+// Same full-screen triangle as postProcessVertexMain, but at the far plane (z = 1) so the sky only
+// shows where the scene pass left the depth buffer at its cleared value - drawn after the objects
+// with depth test LessEqual / no depth write (see Main.cpp), so it costs nothing where geometry is.
+vertex PostProcessVertexOut skyVertexMain(uint vertexID [[vertex_id]]) {
+    PostProcessVertexOut out;
+    float2 uv = float2((vertexID << 1) & 2, vertexID & 2);
+    out.uv = uv;
+    out.position = float4(uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 1.0, 1.0);
+    return out;
+}
+
+fragment float4 skyFragmentMain(PostProcessVertexOut in [[stage_in]],
+                                constant SkyParams& params [[buffer(0)]],
+                                texturecube<float> skyCube [[texture(0)]],
+                                sampler envSampler [[sampler(2)]]) {
+    // Unproject this pixel's far-plane point to world space; its direction from the camera is what
+    // the cube map is looked up with. Only the direction matters, so the sky never parallaxes.
+    float4 ndc = float4(in.uv.x * 2.0 - 1.0, 1.0 - in.uv.y * 2.0, 1.0, 1.0);
+    float4 world = params.invViewProj * ndc;
+    float3 dir = normalize(world.xyz / world.w - params.cameraPosition.xyz);
+    return float4(skyCube.sample(envSampler, dir, level(0)).rgb * params.intensity, 1.0);
+}
+
+// Maps a cube face + [-1,1] face-local coordinate (u right, v down, in texture-row order) to the
+// direction it represents - the standard cube-map face table, which is what the hardware uses when
+// the finished cube is sampled by direction.
+static float3 cubeDirection(uint face, float2 uv) {
+    switch (face) {
+        case 0:  return normalize(float3( 1.0, -uv.y, -uv.x)); // +X
+        case 1:  return normalize(float3(-1.0, -uv.y,  uv.x)); // -X
+        case 2:  return normalize(float3( uv.x,  1.0,  uv.y)); // +Y
+        case 3:  return normalize(float3( uv.x, -1.0, -uv.y)); // -Y
+        case 4:  return normalize(float3( uv.x, -uv.y,  1.0)); // +Z
+        default: return normalize(float3(-uv.x, -uv.y, -1.0)); // -Z
+    }
+}
+
+static float2 cubeFaceUV(uint2 pixel, uint size) {
+    return (float2(pixel) + 0.5) / float(size) * 2.0 - 1.0;
+}
+
+// Built-in environment used when no .hdr file is chosen: a gradient sky with a small, very bright sun
+// and a dim ground, so the default scene has directional ambient light and something to reflect
+// without needing any asset on disk. Radiance is in linear HDR units like everything else.
+static float3 proceduralSky(float3 dir) {
+    const float3 horizonColor = float3(0.80, 0.85, 0.92);
+    const float3 zenithColor = float3(0.18, 0.38, 0.85);
+    const float3 groundColor = float3(0.16, 0.14, 0.12);
+    const float3 sunDirection = normalize(float3(0.5, 0.45, 0.6));
+
+    float h = dir.y;
+    float3 sky = mix(horizonColor, zenithColor, powr(saturate(h), 0.6));
+    float3 color = mix(sky, groundColor, smoothstep(0.0, -0.15, h));
+
+    float sunCos = dot(dir, sunDirection);
+    color += float3(1.0, 0.85, 0.6) * (powr(saturate(sunCos), 48.0) * 0.5);            // soft glow
+    color += float3(1.0, 0.9, 0.7) * (150.0 * smoothstep(0.9994, 0.9998, sunCos));   // ~2 degree disc
+    return color;
+}
+
+kernel void proceduralSkyToCubeKernel(texturecube<float, access::write> dst [[texture(0)]],
+                                      uint3 gid [[thread_position_in_grid]]) {
+    uint size = dst.get_width();
+    if (gid.x >= size || gid.y >= size) return;
+    float3 dir = cubeDirection(gid.z, cubeFaceUV(gid.xy, size));
+    dst.write(float4(proceduralSky(dir), 1.0), gid.xy, gid.z);
+}
+
+// Resamples an equirectangular (lat-long) HDR panorama into a cube map. Image row 0 = straight up.
+kernel void equirectToCubeKernel(texture2d<float> src [[texture(0)]],
+                                 texturecube<float, access::write> dst [[texture(1)]],
+                                 uint3 gid [[thread_position_in_grid]]) {
+    uint size = dst.get_width();
+    if (gid.x >= size || gid.y >= size) return;
+    float3 dir = cubeDirection(gid.z, cubeFaceUV(gid.xy, size));
+    float2 uv = float2(atan2(dir.z, dir.x) / (2.0 * PI) + 0.5, acos(clamp(dir.y, -1.0, 1.0)) / PI);
+    constexpr sampler eqSampler(filter::linear, s_address::repeat, t_address::clamp_to_edge);
+    dst.write(float4(src.sample(eqSampler, uv, level(0)).rgb, 1.0), gid.xy, gid.z);
+}
+
+// Diffuse irradiance: for every output direction N, the cosine-weighted average of the environment
+// over the hemisphere around N (already divided by PI, so the shader only multiplies by albedo). A
+// brute-force angular sweep - fine for a one-time bake at 32x32 - reading a low mip of the source so
+// a tiny bright sun contributes its energy smoothly instead of as a few noisy taps.
+kernel void irradianceKernel(texturecube<float> src [[texture(0)]],
+                             texturecube<float, access::write> dst [[texture(1)]],
+                             uint3 gid [[thread_position_in_grid]]) {
+    uint size = dst.get_width();
+    if (gid.x >= size || gid.y >= size) return;
+    float3 N = cubeDirection(gid.z, cubeFaceUV(gid.xy, size));
+    float3 up = abs(N.y) < 0.999 ? float3(0.0, 1.0, 0.0) : float3(1.0, 0.0, 0.0);
+    float3 right = normalize(cross(up, N));
+    up = cross(N, right);
+
+    constexpr sampler s(filter::linear, mip_filter::linear, address::clamp_to_edge);
+    constexpr float step = 0.05;
+    float3 sum = float3(0.0);
+    float count = 0.0;
+    for (float phi = 0.0; phi < 2.0 * PI; phi += step) {
+        for (float theta = 0.0; theta < 0.5 * PI; theta += step) {
+            float3 t = float3(sin(theta) * cos(phi), sin(theta) * sin(phi), cos(theta));
+            float3 dir = t.x * right + t.y * up + t.z * N;
+            sum += src.sample(s, dir, level(5.0)).rgb * cos(theta) * sin(theta);
+            count += 1.0;
+        }
+    }
+    dst.write(float4(PI * sum / count, 1.0), gid.xy, gid.z);
+}
+
+static float radicalInverse(uint bits) {
+    bits = (bits << 16u) | (bits >> 16u);
+    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+    return float(bits) * 2.3283064365386963e-10;
+}
+
+// Low-discrepancy 2D point set for Monte Carlo integration.
+static float2 hammersley(uint i, uint count) {
+    return float2(float(i) / float(count), radicalInverse(i));
+}
+
+// Picks a half vector around N distributed like the GGX lobe, so samples land where the specular
+// highlight actually has energy instead of being wasted uniformly over the sphere.
+static float3 importanceSampleGGX(float2 Xi, float3 N, float roughness) {
+    float a = roughness * roughness;
+    float phi = 2.0 * PI * Xi.x;
+    float cosTheta = sqrt((1.0 - Xi.y) / (1.0 + (a * a - 1.0) * Xi.y));
+    float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
+    float3 H = float3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta);
+
+    float3 up = abs(N.z) < 0.999 ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
+    float3 tangent = normalize(cross(up, N));
+    float3 bitangent = cross(N, tangent);
+    return normalize(tangent * H.x + bitangent * H.y + N * H.z);
+}
+
+// Specular prefilter: one dispatch per mip of the output cube, each at that mip's roughness. Uses the
+// usual N = V = R assumption (so the highlight is isotropic - it loses the stretched grazing-angle
+// reflections, an accepted trade-off of the split-sum method). Every tap reads the source at a mip
+// chosen from the sample's solid angle, which removes the fireflies a tiny bright sun would cause.
+kernel void prefilterKernel(texturecube<float> src [[texture(0)]],
+                            texturecube<float, access::write> dst [[texture(1)]],
+                            constant float& roughness [[buffer(0)]],
+                            uint3 gid [[thread_position_in_grid]]) {
+    uint size = dst.get_width();
+    if (gid.x >= size || gid.y >= size) return;
+    float3 N = cubeDirection(gid.z, cubeFaceUV(gid.xy, size));
+    float3 V = N;
+
+    constexpr sampler s(filter::linear, mip_filter::linear, address::clamp_to_edge);
+    constexpr uint sampleCount = 256;
+    float srcSize = float(src.get_width());
+
+    // A perfectly smooth mip (roughness 0) is just the environment itself: the GGX lobe collapses to
+    // a single direction, and its normal-distribution term is 0/0 = NaN there. Read the source mip
+    // whose resolution matches this output's so the copy isn't aliased by point-sampling mip 0.
+    if (roughness < 1e-3) {
+        dst.write(float4(src.sample(s, N, level(log2(srcSize / float(size)))).rgb, 1.0), gid.xy, gid.z);
+        return;
+    }
+
+    float texelSolidAngle = 4.0 * PI / (6.0 * srcSize * srcSize);
+
+    float3 color = float3(0.0);
+    float weight = 0.0;
+    for (uint i = 0; i < sampleCount; i++) {
+        float3 H = importanceSampleGGX(hammersley(i, sampleCount), N, roughness);
+        float3 L = normalize(2.0 * dot(V, H) * H - V);
+        float NdotL = dot(N, L);
+        if (NdotL <= 0.0) continue;
+
+        float NdotH = max(dot(N, H), 0.0);
+        float HdotV = max(dot(H, V), 0.0);
+        float D = distributionGGX(NdotH, roughness);
+        float pdf = D * NdotH / (4.0 * HdotV) + 1e-4;
+        float sampleSolidAngle = 1.0 / (float(sampleCount) * pdf + 1e-4);
+        float mip = roughness == 0.0 ? 0.0 : 0.5 * log2(sampleSolidAngle / texelSolidAngle);
+
+        color += src.sample(s, L, level(mip)).rgb * NdotL;
+        weight += NdotL;
+    }
+    dst.write(float4(color / max(weight, 1e-4), 1.0), gid.xy, gid.z);
+}
+
+// Geometry term with the IBL remap of k (a/2, not the direct-lighting (a+1)^2/8 used above).
+static float geometrySchlickGGXIBL(float NdotX, float roughness) {
+    float k = (roughness * roughness) / 2.0;
+    return NdotX / (NdotX * (1.0 - k) + k);
+}
+
+// BRDF lookup table: x = NdotV, y = roughness -> (scale, bias) applied to F0 in fragmentMain. It only
+// depends on the BRDF, not on any environment, so it's baked once for the whole app.
+kernel void brdfLUTKernel(texture2d<float, access::write> dst [[texture(0)]],
+                          uint2 gid [[thread_position_in_grid]]) {
+    uint size = dst.get_width();
+    if (gid.x >= size || gid.y >= size) return;
+    float NdotV = max((float(gid.x) + 0.5) / float(size), 1e-3);
+    float roughness = (float(gid.y) + 0.5) / float(size);
+
+    float3 V = float3(sqrt(1.0 - NdotV * NdotV), 0.0, NdotV);
+    float3 N = float3(0.0, 0.0, 1.0);
+
+    constexpr uint sampleCount = 1024;
+    float A = 0.0, B = 0.0;
+    for (uint i = 0; i < sampleCount; i++) {
+        float3 H = importanceSampleGGX(hammersley(i, sampleCount), N, roughness);
+        float3 L = normalize(2.0 * dot(V, H) * H - V);
+        float NdotL = saturate(L.z);
+        float NdotH = saturate(H.z);
+        float VdotH = saturate(dot(V, H));
+        if (NdotL <= 0.0) continue;
+
+        float G = geometrySchlickGGXIBL(NdotV, roughness) * geometrySchlickGGXIBL(NdotL, roughness);
+        float G_Vis = (G * VdotH) / max(NdotH * NdotV, 1e-4);
+        float Fc = powr(1.0 - VdotH, 5.0);
+        A += (1.0 - Fc) * G_Vis;
+        B += Fc * G_Vis;
+    }
+    dst.write(float4(A / float(sampleCount), B / float(sampleCount), 0.0, 1.0), gid);
 }

@@ -131,6 +131,9 @@ simd::float3 objectUp(const SceneObject& obj) {
 //   dof <focusDistance> <focusRange> <strength>  (global - see Scene::dofFocusDistance/Range/Strength)
 //   motionblur <strength>   (global - see Scene::motionBlurStrength)
 //   lensflare <strength>    (global - see Scene::lensFlareStrength)
+//   environment <intensity> <showSky 0|1>   (global - see Scene::environmentIntensity/showSky)
+//   environmentmap <name>   (global - .hdr file stem under environment/, see Scene::environment;
+//                            absent = kDefaultEnvironment, so old scene files load unchanged)
 //   object <name>          (a Cube or Mesh) or  light <name>          (a Light)
 //   position <x> <y> <z>
 //   rotation <x> <y> <z>    (degrees; Cube/Mesh always, Light only for Directional/Spot/Area)
@@ -167,6 +170,8 @@ bool saveScene(const Scene& scene, const std::string& path) {
     out << "dof " << scene.dofFocusDistance << " " << scene.dofFocusRange << " " << scene.dofStrength << "\n";
     out << "motionblur " << scene.motionBlurStrength << "\n";
     out << "lensflare " << scene.lensFlareStrength << "\n";
+    out << "environment " << scene.environmentIntensity << " " << (scene.showSky ? 1 : 0) << "\n";
+    out << "environmentmap " << scene.environment << "\n";
     for (const auto& obj : scene.objects) {
         out << (obj.type == SceneObjectType::Light ? "light " : "object ") << obj.name << "\n";
         out << "position " << obj.position[0] << " " << obj.position[1] << " " << obj.position[2] << "\n";
@@ -239,6 +244,14 @@ bool loadScene(Scene& scene, const std::string& path) {
             ss >> loaded.motionBlurStrength;
         } else if (keyword == "lensflare") {
             ss >> loaded.lensFlareStrength;
+        } else if (keyword == "environment") {
+            int showSky = 1;
+            ss >> loaded.environmentIntensity >> showSky;
+            loaded.showSky = showSky != 0;
+        } else if (keyword == "environmentmap") {
+            std::getline(ss, loaded.environment);
+            size_t start = loaded.environment.find_first_not_of(' ');
+            loaded.environment = (start == std::string::npos) ? kDefaultEnvironment : loaded.environment.substr(start);
         } else if (keyword == "object" || keyword == "light") {
             SceneObject obj;
             obj.type = (keyword == "light") ? SceneObjectType::Light : SceneObjectType::Cube;

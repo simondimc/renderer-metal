@@ -42,7 +42,7 @@
 - [x] Physically Based Rendering (PBR)
 - [x] Normal Mapping
 - Bump/Parallax Mapping
-- Image-Based Lighting (IBL)
+- [x] Image-Based Lighting (IBL)
 - Anisotropic Shading
 - Transmission & Volume (glass)
 - Emissive Materials

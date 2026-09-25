@@ -13,6 +13,7 @@
 #include "Bridge.hpp"
 #include "Camera.hpp"
 #include "CubeMesh.hpp"
+#include "Environment.hpp"
 #include "LightMarker.hpp"
 #include "MeshLoader.hpp"
 #include "Scene.hpp"
@@ -324,6 +325,17 @@ int main() {
     selectionMaskPipeDesc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
     MTL::RenderPipelineState* selectionMaskPipelineState = device->newRenderPipelineState(selectionMaskPipeDesc, &error);
 
+    // Sky PSO: full-screen triangle at the far plane, drawn into the same HDR + depth targets as the
+    // scene (see skyVertexMain/skyFragmentMain in Shader.metal and the sky draw in Pass A below).
+    MTL::Function* skyVertFunc = library->newFunction(NS::String::string("skyVertexMain", NS::UTF8StringEncoding));
+    MTL::Function* skyFragFunc = library->newFunction(NS::String::string("skyFragmentMain", NS::UTF8StringEncoding));
+    MTL::RenderPipelineDescriptor* skyPipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
+    skyPipeDesc->setVertexFunction(skyVertFunc);
+    skyPipeDesc->setFragmentFunction(skyFragFunc);
+    skyPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatRGBA16Float);
+    skyPipeDesc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
+    MTL::RenderPipelineState* skyPipelineState = device->newRenderPipelineState(skyPipeDesc, &error);
+
     // Post-process PSO: full-screen pass that resolves hdrColorTexture down to the drawable (see
     // postProcessVertexMain/postProcessFragmentMain in Shader.metal). No vertex descriptor (the
     // vertex function takes no [[stage_in]] input - see its comment) and no depth attachment (it
@@ -390,10 +402,22 @@ int main() {
     maskDepthDesc->setDepthWriteEnabled(false);
     MTL::DepthStencilState* maskDepthState = device->newDepthStencilState(maskDepthDesc);
 
+    // Sky depth state: the sky is emitted at exactly the far plane (depth 1.0), which is also what the
+    // depth buffer is cleared to - so LessEqual lets it fill precisely the pixels no geometry covered.
+    // No depth write, since nothing should test against the sky afterwards.
+    MTL::DepthStencilDescriptor* skyDepthDesc = MTL::DepthStencilDescriptor::alloc()->init();
+    skyDepthDesc->setDepthCompareFunction(MTL::CompareFunctionLessEqual);
+    skyDepthDesc->setDepthWriteEnabled(false);
+    MTL::DepthStencilState* skyDepthState = device->newDepthStencilState(skyDepthDesc);
+
     // run.sh/clean_run.sh launch the binary with the build/ directory as cwd. Each subfolder of
     // texture/ is a set the Scene Editor can assign per object; sets load on first use.
     auto textureLibraryPtr = std::make_unique<TextureLibrary>(device, "../texture");
     TextureLibrary& textureLibrary = *textureLibraryPtr;
+    // Image-based lighting environments: the built-in procedural sky plus any .hdr panoramas in
+    // environment/. Baked lazily, the first time the scene selects one (see EnvironmentLibrary).
+    auto environmentLibraryPtr = std::make_unique<EnvironmentLibrary>(device, library, "../environment");
+    EnvironmentLibrary& environmentLibrary = *environmentLibraryPtr;
     // Stand-ins for a glTF material's missing maps: white (albedo/ORM - leaves the factors as-is)
     // and a straight-up tangent-space normal (leaves the vertex normal unperturbed).
     MTL::Texture* whiteTexture = createSolidTexture(device, 255, 255, 255, 255, /*isSRGB=*/false);
@@ -406,6 +430,17 @@ int main() {
     samplerDesc->setSAddressMode(MTL::SamplerAddressModeRepeat);
     samplerDesc->setTAddressMode(MTL::SamplerAddressModeRepeat);
     MTL::SamplerState* samplerState = device->newSamplerState(samplerDesc);
+
+    // Environment sampler: trilinear (the prefiltered specular cube is indexed by roughness through
+    // its mip level) and clamped, so the BRDF lookup table doesn't wrap around its edges.
+    MTL::SamplerDescriptor* envSamplerDesc = MTL::SamplerDescriptor::alloc()->init();
+    envSamplerDesc->setMinFilter(MTL::SamplerMinMagFilterLinear);
+    envSamplerDesc->setMagFilter(MTL::SamplerMinMagFilterLinear);
+    envSamplerDesc->setMipFilter(MTL::SamplerMipFilterLinear);
+    envSamplerDesc->setSAddressMode(MTL::SamplerAddressModeClampToEdge);
+    envSamplerDesc->setTAddressMode(MTL::SamplerAddressModeClampToEdge);
+    envSamplerDesc->setRAddressMode(MTL::SamplerAddressModeClampToEdge);
+    MTL::SamplerState* envSamplerState = device->newSamplerState(envSamplerDesc);
 
     // Shadow cube sampler: nearest + clamp, since linearly filtering raw (uncompared) distance
     // values would blend distances instead of blending shadow/lit results, giving wrong edges.
@@ -583,7 +618,7 @@ int main() {
 
             beginUIFrame(overlayRPD);
             if (camera.uiMode) {
-                drawSceneEditorPanel(scene, selectedObjectIndex, textureLibrary);
+                drawSceneEditorPanel(scene, selectedObjectIndex, textureLibrary, environmentLibrary);
             }
 
             // Lazily load any newly-referenced Mesh asset - editing the path field or adding a
@@ -598,8 +633,8 @@ int main() {
 
             // Gather up to kMaxLights lights (of any type) from the scene. lightObjects[i] keeps
             // the originating SceneObject alongside lights[i] (same index) so the marker/ray pass
-            // below can read its rotation - only a nullptr for the synthetic fallback light.
-            // If there are no lights at all, fall back to a single default so the scene isn't unlit.
+            // below can read its rotation.
+            // A scene with no lights is lit by the environment alone (image-based lighting).
             constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
             SceneLight lights[kMaxLights];
             const SceneObject* lightObjects[kMaxLights] = {};
@@ -628,13 +663,6 @@ int main() {
                 }
                 lightObjects[lightCount] = &obj;
                 lightCount++;
-            }
-            if (lightCount == 0) {
-                lights[0] = SceneLight{};
-                lights[0].position = simd_make_float3(2.0f, 4.0f, 2.0f);
-                lights[0].color = simd_make_float3(1.0f, 1.0f, 1.0f);
-                lights[0].intensity = 3.0f;
-                lightCount = 1;
             }
 
             // Every active Point light gets its own 6-face cube shadow map (see Shadow.hpp).
@@ -877,6 +905,14 @@ int main() {
             }
             hdrEncoder->setFragmentSamplerState(samplerState, 0);
             hdrEncoder->setFragmentSamplerState(shadowSamplerState, 1);
+            hdrEncoder->setFragmentSamplerState(envSamplerState, 2);
+
+            // Image-based lighting inputs (see fragmentMain): the same three textures for every draw.
+            const Environment& environment = environmentLibrary.get(scene.environment);
+            hdrEncoder->setFragmentTexture(environment.irradiance, 3 + 2 * kMaxLights);
+            hdrEncoder->setFragmentTexture(environment.prefiltered, 4 + 2 * kMaxLights);
+            hdrEncoder->setFragmentTexture(environmentLibrary.brdfLUT(), 5 + 2 * kMaxLights);
+            hdrEncoder->setFragmentBytes(&scene.environmentIntensity, sizeof(float), 3);
 
             for (NS::UInteger i = 0; i < renderables.size(); i++) {
                 const auto& r = renderables[i];
@@ -915,6 +951,25 @@ int main() {
                         0
                     );
                 }
+            }
+
+            // Sky background: drawn after the objects so it only shades the pixels they left uncovered
+            // (see skyDepthState). Skipped when hidden, leaving the flat clear color.
+            if (scene.showSky) {
+                struct {
+                    simd::float4x4 invViewProj;
+                    simd::float4 cameraPosition;
+                    float intensity;
+                } skyParams = {
+                    simd_inverse(currentViewProj),
+                    simd_make_float4(camera.position.x, camera.position.y, camera.position.z, 1.0f),
+                    scene.environmentIntensity
+                };
+                hdrEncoder->setDepthStencilState(skyDepthState);
+                hdrEncoder->setRenderPipelineState(skyPipelineState);
+                hdrEncoder->setFragmentBytes(&skyParams, sizeof(skyParams), 0);
+                hdrEncoder->setFragmentTexture(environment.sky, 0);
+                hdrEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, (NS::UInteger)3);
             }
             hdrEncoder->endEncoding();
 
@@ -1143,6 +1198,8 @@ int main() {
     shadowSamplerDesc->release();
     samplerState->release();
     samplerDesc->release();
+    envSamplerState->release();
+    envSamplerDesc->release();
     for (size_t i = 0; i < kMaxLights; i++) {
         shadowCubeMaps[i]->release();
     }
@@ -1160,6 +1217,12 @@ int main() {
     depthDesc->release();
     maskDepthState->release();
     maskDepthDesc->release();
+    skyDepthState->release();
+    skyDepthDesc->release();
+    skyPipelineState->release();
+    skyPipeDesc->release();
+    skyVertFunc->release();
+    skyFragFunc->release();
     shadowPipelineState->release();
     shadowPipeDesc->release();
     cubeShadowVertFunc->release();
@@ -1185,6 +1248,7 @@ int main() {
     vertexBuffer->release();
     indexBuffer->release();
     textureLibraryPtr.reset(); // releases every loaded texture set
+    environmentLibraryPtr.reset(); // releases every baked environment
     for (auto& entry : meshCache) {
         if (entry.second.vertexBuffer) entry.second.vertexBuffer->release();
         if (entry.second.indexBuffer) entry.second.indexBuffer->release();
