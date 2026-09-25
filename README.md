@@ -20,8 +20,8 @@
 - Multithreaded Command Buffer Recording
 
 ### Rendering Pipeline
-- Deferred Shading
-- Clustered/Tiled Rendering
+- [x] Clustered Forward Lighting
+- Visibility Buffer
 - [x] Temporal Anti-Aliasing (TAA)
 - [x] HDR & Tone Mapping
 
@@ -62,14 +62,15 @@
 
 ### Realism
 - Heightmap-Based Terrain & Tessellation
-- Instanced Rendering
 
 ### Optimization
-- Spatial Partitioning
 - [x] Frustum Culling
-- Occlusion Culling (Hi-Z / GPU-Driven)
-- Level of Detail (LOD)
+- Instanced Rendering
 - GPU-Driven Rendering / Indirect Draw Calls
+- Occlusion Culling (Hi-Z)
+- Level of Detail (LOD)
+- Meshlets / Mesh Shaders
+- Spatial Partitioning
 
 ### Advanced
 - [x] Shadow Mapping

@@ -83,6 +83,17 @@ MTL::BlitPassDescriptor* GpuTimer::blitDescriptor(const char* label) {
     return descriptor;
 }
 
+MTL::ComputePassDescriptor* GpuTimer::computeDescriptor(const char* label) {
+    MTL::ComputePassDescriptor* descriptor = MTL::ComputePassDescriptor::computePassDescriptor();
+    int first = allocatePass(label);
+    if (first < 0) return descriptor;
+    auto* attachment = descriptor->sampleBufferAttachments()->object(0);
+    attachment->setSampleBuffer(sampleBuffers_[currentSlot_]);
+    attachment->setStartOfEncoderSampleIndex(first);
+    attachment->setEndOfEncoderSampleIndex(first + 1);
+    return descriptor;
+}
+
 void GpuTimer::endFrame(int slot, MTL::CommandBuffer* commandBuffer) {
     float totalMilliseconds = (float)((commandBuffer->GPUEndTime() - commandBuffer->GPUStartTime()) * 1000.0);
     float shownTotalMilliseconds = totalMilliseconds; // replaced by the frame's busy time below, when measurable

@@ -1,0 +1,1064 @@
+# renderer-metal scene file v1
+# Clustered lighting stress test: 200 low-intensity point lights over a floor, plus a sun and a spot.
+camera 0 6 18 0 -0.3
+exposure 1
+tonemap aces
+environment 0.3 1
+object Floor
+position 0 -1 0
+rotation 0 0 0
+scale 60 0.2 60
+object Box0
+position -15 0.5 -6
+rotation 0 20 0
+scale 1.5 1.5 1.5
+object Box1
+position -9 0.5 -6
+rotation 0 20 0
+scale 1.5 1.5 1.5
+object Box2
+position -3 0.5 -6
+rotation 0 20 0
+scale 1.5 1.5 1.5
+object Box3
+position 3 0.5 -6
+rotation 0 20 0
+scale 1.5 1.5 1.5
+object Box4
+position 9 0.5 -6
+rotation 0 20 0
+scale 1.5 1.5 1.5
+object Box5
+position 15 0.5 -6
+rotation 0 20 0
+scale 1.5 1.5 1.5
+object Box6
+position -15 0.5 2
+rotation 0 20 0
+scale 1.5 1.5 1.5
+object Box7
+position -9 0.5 2
+rotation 0 20 0
+scale 1.5 1.5 1.5
+object Box8
+position -3 0.5 2
+rotation 0 20 0
+scale 1.5 1.5 1.5
+object Box9
+position 3 0.5 2
+rotation 0 20 0
+scale 1.5 1.5 1.5
+object Box10
+position 9 0.5 2
+rotation 0 20 0
+scale 1.5 1.5 1.5
+object Box11
+position 15 0.5 2
+rotation 0 20 0
+scale 1.5 1.5 1.5
+light L0
+position -14.67 1.11 2.48
+lighttype point
+color 0.68 0.70 0.25
+intensity 0.6
+light L1
+position -27.26 0.87 18.90
+lighttype point
+color 0.39 1.00 0.58
+intensity 0.6
+light L2
+position 18.84 1.71 -1.32
+lighttype point
+color 0.32 0.71 0.89
+intensity 0.6
+light L3
+position 1.30 1.78 13.51
+lighttype point
+color 0.25 0.81 0.67
+intensity 0.6
+light L4
+position -11.13 2.20 -26.26
+lighttype point
+color 0.58 0.78 0.90
+intensity 0.6
+light L5
+position 11.99 1.17 23.58
+lighttype point
+color 0.84 0.56 0.95
+intensity 0.6
+light L6
+position 21.22 0.60 -22.54
+lighttype point
+color 0.37 0.97 0.55
+intensity 0.6
+light L7
+position 7.09 1.42 -11.14
+lighttype point
+color 0.51 0.48 0.67
+intensity 0.6
+light L8
+position 4.72 1.80 22.64
+lighttype point
+color 0.94 0.89 0.99
+intensity 0.6
+light L9
+position 9.59 2.19 -18.87
+lighttype point
+color 0.97 0.92 0.66
+intensity 0.6
+light L10
+position 11.97 2.13 -16.18
+lighttype point
+color 0.66 0.43 0.25
+intensity 0.6
+light L11
+position 19.82 0.49 27.43
+lighttype point
+color 0.84 0.53 0.32
+intensity 0.6
+light L12
+position -11.54 2.22 15.05
+lighttype point
+color 0.24 0.69 0.24
+intensity 0.6
+light L13
+position 12.23 2.24 -9.47
+lighttype point
+color 0.98 0.60 1.00
+intensity 0.6
+light L14
+position -10.66 1.62 -23.69
+lighttype point
+color 0.23 0.36 0.53
+intensity 0.6
+light L15
+position 6.19 0.39 -19.25
+lighttype point
+color 0.89 0.45 0.97
+intensity 0.6
+light L16
+position 22.21 1.31 -6.84
+lighttype point
+color 0.62 0.72 0.68
+intensity 0.6
+light L17
+position 3.32 2.37 6.73
+lighttype point
+color 0.61 0.54 0.78
+intensity 0.6
+light L18
+position -14.69 2.45 -11.14
+lighttype point
+color 0.62 0.64 0.21
+intensity 0.6
+light L19
+position -4.75 0.34 4.48
+lighttype point
+color 0.69 0.71 0.25
+intensity 0.6
+light L20
+position 7.13 1.79 -1.89
+lighttype point
+color 0.48 0.77 0.79
+intensity 0.6
+light L21
+position -26.76 1.79 -24.61
+lighttype point
+color 0.97 0.40 0.57
+intensity 0.6
+light L22
+position 5.19 1.10 -10.08
+lighttype point
+color 0.45 0.50 0.68
+intensity 0.6
+light L23
+position -11.18 2.00 -6.88
+lighttype point
+color 0.22 0.66 0.79
+intensity 0.6
+light L24
+position -10.64 2.07 -15.54
+lighttype point
+color 0.39 0.35 0.55
+intensity 0.6
+light L25
+position 11.09 1.01 -22.30
+lighttype point
+color 0.47 0.87 0.55
+intensity 0.6
+light L26
+position 19.91 1.04 -18.52
+lighttype point
+color 0.72 0.91 0.56
+intensity 0.6
+light L27
+position -15.40 1.47 -21.23
+lighttype point
+color 0.35 0.85 0.87
+intensity 0.6
+light L28
+position -17.72 2.08 -12.40
+lighttype point
+color 0.71 0.85 0.48
+intensity 0.6
+light L29
+position -20.74 2.05 -11.65
+lighttype point
+color 0.42 0.48 0.53
+intensity 0.6
+light L30
+position -4.49 2.33 -5.07
+lighttype point
+color 0.32 0.20 0.95
+intensity 0.6
+light L31
+position 21.28 1.26 27.27
+lighttype point
+color 0.96 0.94 0.38
+intensity 0.6
+light L32
+position 13.75 1.76 18.86
+lighttype point
+color 0.62 0.43 0.47
+intensity 0.6
+light L33
+position -15.26 1.60 -24.19
+lighttype point
+color 0.43 0.85 0.24
+intensity 0.6
+light L34
+position 22.60 2.33 10.85
+lighttype point
+color 0.92 0.92 0.66
+intensity 0.6
+light L35
+position -27.26 0.68 13.74
+lighttype point
+color 0.44 0.73 0.62
+intensity 0.6
+light L36
+position -4.83 1.65 24.59
+lighttype point
+color 0.47 0.40 0.89
+intensity 0.6
+light L37
+position -1.28 1.07 15.81
+lighttype point
+color 0.36 0.63 0.85
+intensity 0.6
+light L38
+position -18.41 2.33 16.33
+lighttype point
+color 0.84 0.86 0.21
+intensity 0.6
+light L39
+position 7.20 0.41 20.30
+lighttype point
+color 0.42 0.41 0.62
+intensity 0.6
+light L40
+position -4.31 2.01 -1.52
+lighttype point
+color 0.20 0.24 0.30
+intensity 0.6
+light L41
+position -21.02 2.44 -24.17
+lighttype point
+color 0.88 0.27 0.60
+intensity 0.6
+light L42
+position -10.31 1.07 -10.38
+lighttype point
+color 0.72 0.67 0.49
+intensity 0.6
+light L43
+position -17.30 0.57 -9.59
+lighttype point
+color 0.64 0.77 0.50
+intensity 0.6
+light L44
+position -23.53 1.12 -18.00
+lighttype point
+color 0.68 0.83 0.50
+intensity 0.6
+light L45
+position 16.87 1.25 6.88
+lighttype point
+color 0.50 0.60 0.76
+intensity 0.6
+light L46
+position -4.45 1.31 10.87
+lighttype point
+color 0.40 0.63 0.76
+intensity 0.6
+light L47
+position -23.99 1.24 -4.21
+lighttype point
+color 0.90 0.95 0.50
+intensity 0.6
+light L48
+position 22.28 0.88 16.29
+lighttype point
+color 0.57 0.30 0.85
+intensity 0.6
+light L49
+position 9.09 2.04 21.69
+lighttype point
+color 0.73 0.79 0.65
+intensity 0.6
+light L50
+position -22.22 0.31 4.91
+lighttype point
+color 0.31 0.82 0.24
+intensity 0.6
+light L51
+position -22.86 2.24 -22.44
+lighttype point
+color 0.34 0.22 0.87
+intensity 0.6
+light L52
+position -21.21 1.78 19.26
+lighttype point
+color 0.87 0.96 0.66
+intensity 0.6
+light L53
+position 16.73 1.99 -25.97
+lighttype point
+color 0.61 0.77 0.29
+intensity 0.6
+light L54
+position 13.94 0.43 24.34
+lighttype point
+color 0.46 0.65 0.86
+intensity 0.6
+light L55
+position -14.44 0.85 -17.93
+lighttype point
+color 0.69 0.80 0.51
+intensity 0.6
+light L56
+position -7.42 1.07 -5.79
+lighttype point
+color 0.53 0.27 0.60
+intensity 0.6
+light L57
+position 26.49 1.94 -4.88
+lighttype point
+color 0.33 0.75 0.80
+intensity 0.6
+light L58
+position 9.74 1.36 0.96
+lighttype point
+color 0.71 0.92 0.32
+intensity 0.6
+light L59
+position -22.63 2.32 13.90
+lighttype point
+color 0.61 0.55 0.78
+intensity 0.6
+light L60
+position -17.58 0.74 -13.03
+lighttype point
+color 0.67 0.45 0.39
+intensity 0.6
+light L61
+position 10.70 0.95 25.39
+lighttype point
+color 0.76 0.53 0.88
+intensity 0.6
+light L62
+position 4.74 0.78 -13.04
+lighttype point
+color 0.22 0.58 0.51
+intensity 0.6
+light L63
+position -18.35 1.01 -7.81
+lighttype point
+color 0.82 0.31 0.99
+intensity 0.6
+light L64
+position -1.14 1.33 5.54
+lighttype point
+color 0.87 0.86 0.65
+intensity 0.6
+light L65
+position -1.05 2.18 12.36
+lighttype point
+color 0.52 0.79 0.97
+intensity 0.6
+light L66
+position -1.83 0.82 -15.14
+lighttype point
+color 0.77 0.74 0.97
+intensity 0.6
+light L67
+position 19.82 0.72 -14.44
+lighttype point
+color 0.41 0.35 0.76
+intensity 0.6
+light L68
+position 20.08 0.86 22.39
+lighttype point
+color 0.89 0.45 0.54
+intensity 0.6
+light L69
+position 12.82 0.50 -23.19
+lighttype point
+color 0.87 0.43 0.49
+intensity 0.6
+light L70
+position 4.50 0.32 9.83
+lighttype point
+color 0.47 0.55 0.59
+intensity 0.6
+light L71
+position -16.23 2.40 4.77
+lighttype point
+color 0.51 0.64 0.30
+intensity 0.6
+light L72
+position -12.61 0.55 9.26
+lighttype point
+color 0.91 0.93 0.28
+intensity 0.6
+light L73
+position 24.71 2.00 -7.04
+lighttype point
+color 0.81 0.44 0.74
+intensity 0.6
+light L74
+position 8.63 0.88 17.14
+lighttype point
+color 0.80 0.97 0.74
+intensity 0.6
+light L75
+position 2.03 1.39 -21.66
+lighttype point
+color 0.48 0.77 0.74
+intensity 0.6
+light L76
+position 3.72 1.72 -17.81
+lighttype point
+color 0.70 0.34 0.91
+intensity 0.6
+light L77
+position 8.70 2.35 -21.10
+lighttype point
+color 0.31 0.47 0.78
+intensity 0.6
+light L78
+position 5.46 1.72 3.08
+lighttype point
+color 0.57 0.45 0.34
+intensity 0.6
+light L79
+position -24.16 1.96 12.09
+lighttype point
+color 0.63 0.79 0.49
+intensity 0.6
+light L80
+position -13.11 2.22 -6.53
+lighttype point
+color 0.23 0.60 0.40
+intensity 0.6
+light L81
+position 15.06 1.03 -8.17
+lighttype point
+color 0.52 0.63 0.82
+intensity 0.6
+light L82
+position -8.24 0.55 19.43
+lighttype point
+color 0.42 0.28 0.29
+intensity 0.6
+light L83
+position 15.62 0.71 12.73
+lighttype point
+color 0.35 0.53 0.79
+intensity 0.6
+light L84
+position 17.68 1.60 13.93
+lighttype point
+color 0.32 0.52 0.35
+intensity 0.6
+light L85
+position 1.55 0.74 3.83
+lighttype point
+color 0.40 0.83 0.22
+intensity 0.6
+light L86
+position 16.98 2.39 21.91
+lighttype point
+color 0.51 0.64 0.67
+intensity 0.6
+light L87
+position 7.48 1.81 26.71
+lighttype point
+color 0.44 0.89 0.59
+intensity 0.6
+light L88
+position 5.68 0.31 12.70
+lighttype point
+color 0.82 0.73 0.59
+intensity 0.6
+light L89
+position 1.32 0.73 -2.21
+lighttype point
+color 0.62 0.23 0.60
+intensity 0.6
+light L90
+position 8.17 1.55 -3.12
+lighttype point
+color 0.97 0.91 0.31
+intensity 0.6
+light L91
+position 16.37 0.41 6.90
+lighttype point
+color 0.49 0.39 0.26
+intensity 0.6
+light L92
+position 2.18 1.01 24.07
+lighttype point
+color 0.90 0.76 0.31
+intensity 0.6
+light L93
+position 20.06 2.34 5.66
+lighttype point
+color 0.77 0.79 0.47
+intensity 0.6
+light L94
+position 17.17 2.20 24.18
+lighttype point
+color 0.55 0.81 0.59
+intensity 0.6
+light L95
+position -21.89 0.47 -25.61
+lighttype point
+color 0.36 0.33 0.60
+intensity 0.6
+light L96
+position 11.16 1.23 2.10
+lighttype point
+color 0.72 0.44 0.57
+intensity 0.6
+light L97
+position 14.40 0.70 -5.52
+lighttype point
+color 0.92 0.78 0.49
+intensity 0.6
+light L98
+position -7.23 1.61 1.64
+lighttype point
+color 0.38 0.20 0.37
+intensity 0.6
+light L99
+position 15.86 1.31 -19.97
+lighttype point
+color 0.36 0.37 0.34
+intensity 0.6
+light L100
+position -5.39 0.36 -18.58
+lighttype point
+color 0.29 0.33 0.59
+intensity 0.6
+light L101
+position -24.66 1.29 -26.74
+lighttype point
+color 0.53 0.76 0.24
+intensity 0.6
+light L102
+position -5.42 0.36 -5.79
+lighttype point
+color 0.97 0.38 0.28
+intensity 0.6
+light L103
+position -1.42 1.67 -18.77
+lighttype point
+color 0.48 0.30 0.24
+intensity 0.6
+light L104
+position 12.75 2.03 -12.60
+lighttype point
+color 0.57 0.95 0.44
+intensity 0.6
+light L105
+position -14.00 2.09 -13.11
+lighttype point
+color 0.70 0.48 0.27
+intensity 0.6
+light L106
+position 10.21 1.60 26.28
+lighttype point
+color 0.20 0.22 0.27
+intensity 0.6
+light L107
+position -18.46 0.42 -25.95
+lighttype point
+color 0.72 0.92 0.36
+intensity 0.6
+light L108
+position 26.54 2.07 -1.29
+lighttype point
+color 0.93 0.95 0.23
+intensity 0.6
+light L109
+position -10.94 2.38 5.99
+lighttype point
+color 0.27 0.43 0.88
+intensity 0.6
+light L110
+position -21.58 1.04 -6.17
+lighttype point
+color 0.74 0.94 0.34
+intensity 0.6
+light L111
+position 13.43 2.14 13.10
+lighttype point
+color 0.64 0.94 0.49
+intensity 0.6
+light L112
+position -4.78 2.01 -15.15
+lighttype point
+color 0.58 0.42 0.34
+intensity 0.6
+light L113
+position 12.36 1.86 5.92
+lighttype point
+color 0.51 0.59 0.32
+intensity 0.6
+light L114
+position 11.80 1.33 -26.71
+lighttype point
+color 0.81 0.74 0.28
+intensity 0.6
+light L115
+position -14.72 1.71 19.24
+lighttype point
+color 0.90 0.90 0.56
+intensity 0.6
+light L116
+position 22.23 1.03 13.04
+lighttype point
+color 0.50 0.26 0.52
+intensity 0.6
+light L117
+position 25.52 1.55 -22.12
+lighttype point
+color 0.29 0.26 0.72
+intensity 0.6
+light L118
+position -14.52 0.64 -25.27
+lighttype point
+color 0.72 0.67 0.21
+intensity 0.6
+light L119
+position -15.12 0.78 26.17
+lighttype point
+color 0.65 0.54 0.82
+intensity 0.6
+light L120
+position 5.84 1.48 16.16
+lighttype point
+color 0.35 0.34 0.26
+intensity 0.6
+light L121
+position 18.23 0.35 -21.70
+lighttype point
+color 0.97 0.36 0.91
+intensity 0.6
+light L122
+position -23.20 0.79 -1.95
+lighttype point
+color 0.86 0.69 0.71
+intensity 0.6
+light L123
+position 14.64 1.06 20.82
+lighttype point
+color 0.68 0.56 0.29
+intensity 0.6
+light L124
+position 18.78 2.09 5.29
+lighttype point
+color 0.36 0.63 0.57
+intensity 0.6
+light L125
+position 12.77 1.06 -23.67
+lighttype point
+color 0.59 0.26 0.64
+intensity 0.6
+light L126
+position 13.18 1.73 -4.32
+lighttype point
+color 0.68 0.37 0.48
+intensity 0.6
+light L127
+position 27.76 1.25 -9.23
+lighttype point
+color 0.27 0.37 0.33
+intensity 0.6
+light L128
+position 24.13 2.22 12.68
+lighttype point
+color 0.99 0.69 0.95
+intensity 0.6
+light L129
+position 2.00 2.39 -4.55
+lighttype point
+color 0.92 0.96 0.59
+intensity 0.6
+light L130
+position 15.31 2.49 -5.21
+lighttype point
+color 0.94 0.43 0.95
+intensity 0.6
+light L131
+position -17.66 1.89 -22.63
+lighttype point
+color 0.44 0.62 0.71
+intensity 0.6
+light L132
+position -25.73 0.91 13.73
+lighttype point
+color 0.55 0.48 0.79
+intensity 0.6
+light L133
+position 13.82 0.53 -11.91
+lighttype point
+color 0.44 0.53 0.26
+intensity 0.6
+light L134
+position -19.42 1.84 14.71
+lighttype point
+color 0.98 0.98 0.90
+intensity 0.6
+light L135
+position -7.14 0.99 -18.96
+lighttype point
+color 0.57 0.62 0.63
+intensity 0.6
+light L136
+position -7.86 0.93 19.75
+lighttype point
+color 0.57 0.91 0.85
+intensity 0.6
+light L137
+position -11.35 2.07 -14.41
+lighttype point
+color 0.21 0.31 0.62
+intensity 0.6
+light L138
+position 2.01 0.41 -18.72
+lighttype point
+color 0.36 0.82 0.57
+intensity 0.6
+light L139
+position 26.84 2.45 15.99
+lighttype point
+color 0.23 0.35 0.21
+intensity 0.6
+light L140
+position -3.79 0.41 -9.06
+lighttype point
+color 0.64 0.28 0.45
+intensity 0.6
+light L141
+position -14.15 1.22 16.92
+lighttype point
+color 0.41 0.24 0.54
+intensity 0.6
+light L142
+position 7.14 2.31 9.81
+lighttype point
+color 0.85 0.40 0.31
+intensity 0.6
+light L143
+position 14.47 1.42 16.21
+lighttype point
+color 0.86 0.64 0.42
+intensity 0.6
+light L144
+position -18.55 1.71 -27.05
+lighttype point
+color 0.92 0.92 0.57
+intensity 0.6
+light L145
+position 9.27 2.09 24.00
+lighttype point
+color 0.68 0.53 0.61
+intensity 0.6
+light L146
+position -18.44 1.80 -17.75
+lighttype point
+color 0.99 0.64 0.53
+intensity 0.6
+light L147
+position -8.29 2.07 -2.53
+lighttype point
+color 0.56 0.97 0.32
+intensity 0.6
+light L148
+position -10.37 1.21 1.23
+lighttype point
+color 0.88 0.86 0.95
+intensity 0.6
+light L149
+position 6.30 1.56 -26.29
+lighttype point
+color 0.64 0.59 0.42
+intensity 0.6
+light L150
+position 11.73 0.53 23.05
+lighttype point
+color 0.73 0.50 0.61
+intensity 0.6
+light L151
+position 22.16 1.72 25.78
+lighttype point
+color 0.36 0.94 0.34
+intensity 0.6
+light L152
+position -6.54 1.00 18.38
+lighttype point
+color 0.42 0.96 0.96
+intensity 0.6
+light L153
+position -10.23 0.92 -6.02
+lighttype point
+color 0.31 0.40 0.98
+intensity 0.6
+light L154
+position -23.56 0.74 -15.13
+lighttype point
+color 0.26 0.62 0.79
+intensity 0.6
+light L155
+position 18.94 2.10 7.34
+lighttype point
+color 0.20 0.43 0.97
+intensity 0.6
+light L156
+position -24.11 1.36 -13.01
+lighttype point
+color 0.41 0.64 0.24
+intensity 0.6
+light L157
+position -14.79 0.62 25.62
+lighttype point
+color 0.92 0.34 0.99
+intensity 0.6
+light L158
+position 9.78 0.61 8.23
+lighttype point
+color 0.24 0.81 0.34
+intensity 0.6
+light L159
+position -17.38 2.22 18.07
+lighttype point
+color 0.24 0.97 0.63
+intensity 0.6
+light L160
+position -6.59 1.16 -22.00
+lighttype point
+color 0.99 0.42 0.31
+intensity 0.6
+light L161
+position -19.87 1.08 -20.89
+lighttype point
+color 0.93 0.26 0.35
+intensity 0.6
+light L162
+position 24.60 2.46 27.83
+lighttype point
+color 0.40 0.48 0.96
+intensity 0.6
+light L163
+position -0.84 0.99 11.39
+lighttype point
+color 0.22 0.48 0.80
+intensity 0.6
+light L164
+position 15.79 1.32 3.86
+lighttype point
+color 0.63 0.55 0.63
+intensity 0.6
+light L165
+position 18.65 1.61 -16.77
+lighttype point
+color 0.95 0.88 0.34
+intensity 0.6
+light L166
+position 25.95 0.67 19.04
+lighttype point
+color 0.41 0.36 0.24
+intensity 0.6
+light L167
+position 26.79 2.22 -5.08
+lighttype point
+color 0.29 0.21 0.90
+intensity 0.6
+light L168
+position 16.46 1.81 27.53
+lighttype point
+color 0.62 0.81 0.27
+intensity 0.6
+light L169
+position 2.26 0.62 -3.29
+lighttype point
+color 0.68 0.46 0.61
+intensity 0.6
+light L170
+position -7.08 1.09 -10.18
+lighttype point
+color 0.68 0.98 0.95
+intensity 0.6
+light L171
+position 20.28 0.93 18.77
+lighttype point
+color 0.98 0.42 0.30
+intensity 0.6
+light L172
+position 0.05 1.05 13.00
+lighttype point
+color 0.72 0.43 0.97
+intensity 0.6
+light L173
+position -2.64 1.47 -1.24
+lighttype point
+color 0.90 0.99 0.62
+intensity 0.6
+light L174
+position -3.27 0.45 6.60
+lighttype point
+color 0.54 0.88 0.82
+intensity 0.6
+light L175
+position -24.68 1.14 19.85
+lighttype point
+color 0.99 0.49 0.37
+intensity 0.6
+light L176
+position 2.73 1.25 21.50
+lighttype point
+color 0.89 0.77 0.49
+intensity 0.6
+light L177
+position -11.17 1.18 0.30
+lighttype point
+color 0.50 0.72 0.90
+intensity 0.6
+light L178
+position 4.73 0.78 -19.81
+lighttype point
+color 0.50 0.69 0.31
+intensity 0.6
+light L179
+position -23.43 0.92 -10.04
+lighttype point
+color 0.22 0.63 0.94
+intensity 0.6
+light L180
+position 1.92 2.12 13.30
+lighttype point
+color 0.87 0.93 0.55
+intensity 0.6
+light L181
+position 10.22 2.24 -21.24
+lighttype point
+color 0.50 0.58 0.91
+intensity 0.6
+light L182
+position -11.94 2.11 -17.36
+lighttype point
+color 0.68 0.27 0.22
+intensity 0.6
+light L183
+position -8.33 2.13 -27.58
+lighttype point
+color 0.35 0.42 0.51
+intensity 0.6
+light L184
+position 0.66 1.68 -3.79
+lighttype point
+color 0.73 0.55 0.28
+intensity 0.6
+light L185
+position 26.83 0.48 10.71
+lighttype point
+color 0.55 0.80 0.99
+intensity 0.6
+light L186
+position -24.30 1.36 -27.47
+lighttype point
+color 0.54 0.92 0.86
+intensity 0.6
+light L187
+position -9.43 1.58 -4.55
+lighttype point
+color 0.91 0.36 0.51
+intensity 0.6
+light L188
+position -23.05 0.36 7.91
+lighttype point
+color 0.95 0.62 0.66
+intensity 0.6
+light L189
+position -23.22 1.33 -14.99
+lighttype point
+color 0.89 0.63 0.43
+intensity 0.6
+light L190
+position 27.00 1.46 9.04
+lighttype point
+color 0.36 0.44 0.92
+intensity 0.6
+light L191
+position -20.56 1.66 1.77
+lighttype point
+color 0.48 0.81 0.93
+intensity 0.6
+light L192
+position 20.02 0.75 13.33
+lighttype point
+color 0.25 0.55 0.45
+intensity 0.6
+light L193
+position -17.14 0.78 20.80
+lighttype point
+color 0.86 0.95 0.30
+intensity 0.6
+light L194
+position 23.16 0.77 -5.76
+lighttype point
+color 0.35 0.23 0.60
+intensity 0.6
+light L195
+position -6.48 2.13 19.68
+lighttype point
+color 0.25 0.52 0.51
+intensity 0.6
+light L196
+position -18.05 0.88 -13.96
+lighttype point
+color 0.76 0.47 0.29
+intensity 0.6
+light L197
+position -15.66 1.54 -3.24
+lighttype point
+color 0.40 0.76 0.37
+intensity 0.6
+light L198
+position 9.57 0.69 6.12
+lighttype point
+color 0.80 0.52 0.63
+intensity 0.6
+light L199
+position 5.48 1.27 7.18
+lighttype point
+color 0.24 0.83 0.89
+intensity 0.6
+light Sun
+position 0 10 0
+lighttype directional
+color 1 1 1
+intensity 0.3
+rotation -60 -20 0

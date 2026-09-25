@@ -41,6 +41,9 @@ public:
     // blit passes (then use the plain blitCommandEncoder() and the pass simply isn't listed).
     MTL::BlitPassDescriptor* blitDescriptor(const char* label);
 
+    // A compute pass descriptor that records timestamps under label (a plain one if timing is unsupported).
+    MTL::ComputePassDescriptor* computeDescriptor(const char* label);
+
     // Call from the frame's command buffer completion handler, before the frame's slot is freed for
     // reuse: reads the samples back and updates the smoothed results. Runs on a Metal thread.
     void endFrame(int slot, MTL::CommandBuffer* commandBuffer);

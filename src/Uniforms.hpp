@@ -3,8 +3,13 @@
 #include "Camera.hpp"
 #include "Scene.hpp" // LightType
 
-// Must match MAX_LIGHTS in Shader.metal
+// How many lights get a shadow map: the first kMaxLights lights of the scene (in scene order). Must match
+// MAX_LIGHTS in Shader.metal. Lights past these still shine - unshadowed - see kMaxClusteredLights.
 constexpr size_t kMaxLights = 4;
+
+// How many lights the renderer shades in total. All of them are handed to the GPU each frame and sorted
+// into the camera's cluster grid (see LightCulling.hpp); extras beyond this are ignored.
+constexpr size_t kMaxClusteredLights = 512;
 
 // CPU-side description of one active light, gathered from a SceneObject each frame (see Main.cpp).
 // Fields not used by a given type are harmless zero/default values, not special-cased away, so the
@@ -30,15 +35,8 @@ struct SceneLight {
 struct Uniforms {
     simd::float4x4 mvpMatrix;
     simd::float4x4 modelMatrix;
-    simd::float4x4 lightViewProj[kMaxLights];  // Directional/Spot shadow-map view-projection
-    simd::float4 lightPositions[kMaxLights];  // xyz = position (Point/Spot/Area)
-    simd::float4 lightDirections[kMaxLights]; // xyz = normalized emission direction (Directional/Spot/Area)
-    simd::float4 lightRight[kMaxLights];      // xyz = area light local right axis
-    simd::float4 lightUp[kMaxLights];         // xyz = area light local up axis
-    simd::float4 lightColors[kMaxLights];     // rgb = color, a = intensity
-    simd::float4 lightParams[kMaxLights];     // x=spotCosInner, y=spotCosOuter, z=areaHalfWidth, w=areaHalfHeight
-    simd::int4 lightTypes[kMaxLights];        // x = LightType of that light
-    simd::int4 lightMeta;                     // x = active light count
+    simd::float4x4 lightViewProj[kMaxLights];  // Directional/Spot shadow-map view-projection (the other light data lives in
+                                               // the shared GPULight buffer, see LightCulling.hpp)
     simd::float4 cameraPosition;
     simd::float4 materialAlbedo;              // rgb = albedo tint
     simd::float4 materialParams;              // x = metallic, y = roughness, z = ao, w = useTextures (0/1)
@@ -74,10 +72,11 @@ simd::float4x4 computeProjection(int width, int height, simd::float2 jitterNDC =
 // Main.cpp uses this directly for motion blur's frame-to-frame reprojection.
 simd::float4x4 computeViewProj(const Camera& cam, int width, int height, simd::float2 jitterNDC = {0.0f, 0.0f});
 
-// Builds the per-object Uniforms: projects/views objectModel through the camera, lit by up to
-// kMaxLights lights of any type (extras beyond that are ignored). Call once per object per frame
-// (objectModel = objectModelMatrix(obj)). Per-light shadow-map matrices are handled separately in
-// Main.cpp (see Shadow.hpp) - they change per light, not per object, so they don't belong here.
+// Builds the per-object Uniforms: projects/views objectModel through the camera and copies in the
+// Directional/Spot shadow-map matrices of the first kMaxLights lights, which the fragment shader needs
+// to look shadows up. The lights themselves (position, color, ...) are not per object - they go to the
+// GPU once per frame, see LightCulling.hpp. Call once per object per frame
+// (objectModel = objectModelMatrix(obj)).
 // material may be null (gizmo/markers, which don't use it) - a neutral default is written then.
 Uniforms computeUniforms(const Camera& cam, const simd::float4x4& objectModel,
                           const SceneLight* lights, int lightCount,

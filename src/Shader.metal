@@ -43,15 +43,7 @@ struct RasterData {
 struct Uniforms {
     float4x4 mvpMatrix;
     float4x4 modelMatrix;
-    float4x4 lightViewProj[MAX_LIGHTS]; // Directional/Spot shadow-map view-projection
-    float4 lightPositions[MAX_LIGHTS];  // xyz = position (Point/Spot/Area)
-    float4 lightDirections[MAX_LIGHTS]; // xyz = normalized emission direction (Directional/Spot/Area)
-    float4 lightRight[MAX_LIGHTS];      // xyz = area light local right axis
-    float4 lightUp[MAX_LIGHTS];         // xyz = area light local up axis
-    float4 lightColors[MAX_LIGHTS];     // rgb = color, a = intensity
-    float4 lightParams[MAX_LIGHTS];     // x=spotCosInner, y=spotCosOuter, z=areaHalfWidth, w=areaHalfHeight
-    int4 lightTypes[MAX_LIGHTS];        // x = LightType of that light
-    int4 lightMeta;                     // x = active light count
+    float4x4 lightViewProj[MAX_LIGHTS]; // Directional/Spot shadow-map view-projection (other light data: GPULight buffer)
     float4 cameraPosition;
     float4 materialAlbedo;              // rgb = albedo tint
     float4 materialParams;              // x = metallic, y = roughness, z = ao, w = useTextures (0/1)
@@ -68,6 +60,86 @@ struct MaterialParams {
     float4 transmissionParams; // x = transmission, y = thickness (mesh units), z = attenuation distance, w = IOR
     float4 attenuationColor;   // rgb = volume absorption color
 };
+
+// --- Clustered forward lighting (see LightCulling.hpp). The lights live in one buffer shared by every draw
+// (directional lights first, then the rest), and lightCullKernel sorts the non-directional ones into the
+// camera's cluster grid; fragmentMain then shades only its own cluster's list.
+
+// Must match GPULight in LightCulling.hpp.
+struct GPULight {
+    float4 positionRange;  // xyz = world position (Point/Spot/Area), w = cull radius (its reach)
+    float4 directionType;  // xyz = normalized emission direction, w = LightType
+    float4 colorIntensity; // rgb = color, a = intensity
+    float4 params;         // x=spotCosInner, y=spotCosOuter, z=areaHalfWidth, w=areaHalfHeight
+    float4 right;          // xyz = area light local right axis, w = shadow-map slot (-1 = none)
+    float4 up;             // xyz = area light local up axis, w = attenuation at the cull radius
+};
+
+// Must match ClusterParams in LightCulling.hpp.
+struct ClusterParams {
+    float4x4 view;
+    float4 projection; // x = proj[0][0], y = proj[1][1] (un-jittered), z = near, w = far
+    uint4 grid;        // x, y = tile counts, z = depth slices, w = tile size in pixels
+    uint4 lights;      // x = directional lights, y = clustered lights (after the directional ones)
+    float4 screen;     // x, y = width, height in pixels, z = slice scale, w = slice bias
+};
+
+#define MAX_LIGHTS_PER_CLUSTER 64 // must match kMaxLightsPerCluster in LightCulling.hpp
+
+// Depth slices are exponential: slice = floor(log(d) * scale + bias) for a view-space distance d in front of
+// the camera, so slice k spans near * (far/near)^(k/N) to near * (far/near)^((k+1)/N).
+static uint clusterSliceOf(float viewDepth, constant ClusterParams& cluster) {
+    float slice = log(max(viewDepth, 1e-4)) * cluster.screen.z + cluster.screen.w;
+    return uint(clamp(slice, 0.0, float(cluster.grid.z - 1)));
+}
+
+// One thread per cluster: builds its view-space bounding box from the tile's four corners at the slice's near
+// and far depth, and keeps every clustered light whose reach (a sphere) touches that box.
+kernel void lightCullKernel(constant ClusterParams& cluster [[buffer(0)]],
+                            constant GPULight* lights [[buffer(1)]],
+                            device uint* clusterCounts [[buffer(2)]],
+                            device ushort* clusterIndices [[buffer(3)]],
+                            uint3 gid [[thread_position_in_grid]]) {
+    if (any(gid >= cluster.grid.xyz)) return;
+
+    float tilePixels = float(cluster.grid.w);
+    float2 screenSize = cluster.screen.xy;
+    float2 tileMin = float2(gid.xy) * tilePixels;
+    float2 tileMax = min(tileMin + tilePixels, screenSize);
+    // Pixel -> NDC (pixel y grows downward, NDC y upward).
+    float2 ndcMin = float2(tileMin.x / screenSize.x * 2.0 - 1.0, 1.0 - tileMax.y / screenSize.y * 2.0);
+    float2 ndcMax = float2(tileMax.x / screenSize.x * 2.0 - 1.0, 1.0 - tileMin.y / screenSize.y * 2.0);
+
+    float nearPlane = cluster.projection.z;
+    float farPlane = cluster.projection.w;
+    float sliceCount = float(cluster.grid.z);
+    float depthNear = nearPlane * pow(farPlane / nearPlane, float(gid.z) / sliceCount);
+    float depthFar = nearPlane * pow(farPlane / nearPlane, float(gid.z + 1) / sliceCount);
+
+    // A point at NDC (x, y) and distance d ahead of the camera is (x*d/P00, y*d/P11, -d) in view space.
+    float3 boxMin = float3(INFINITY), boxMax = float3(-INFINITY);
+    for (uint corner = 0; corner < 8; corner++) {
+        float2 ndc = float2((corner & 1) ? ndcMax.x : ndcMin.x, (corner & 2) ? ndcMax.y : ndcMin.y);
+        float depth = (corner & 4) ? depthFar : depthNear;
+        float3 point = float3(ndc.x * depth / cluster.projection.x, ndc.y * depth / cluster.projection.y, -depth);
+        boxMin = min(boxMin, point);
+        boxMax = max(boxMax, point);
+    }
+
+    uint clusterIndex = (gid.z * cluster.grid.y + gid.y) * cluster.grid.x + gid.x;
+    uint count = 0;
+    uint first = cluster.lights.x;
+    for (uint i = first; i < first + cluster.lights.y && count < MAX_LIGHTS_PER_CLUSTER; i++) {
+        float3 center = (cluster.view * float4(lights[i].positionRange.xyz, 1.0)).xyz;
+        float radius = lights[i].positionRange.w;
+        float3 nearest = clamp(center, boxMin, boxMax); // the box's point closest to the light
+        if (distance_squared(center, nearest) <= radius * radius) {
+            clusterIndices[clusterIndex * MAX_LIGHTS_PER_CLUSTER + count] = ushort(i);
+            count++;
+        }
+    }
+    clusterCounts[clusterIndex] = count;
+}
 
 // Vertex Shader
 vertex RasterData vertexMain(VertexInput in [[stage_in]],
@@ -354,6 +426,10 @@ fragment SceneFragmentOut fragmentMain(RasterData in [[stage_in]],
                              texture2d<float> screenAOMap [[texture(11 + 2 * MAX_LIGHTS)]],
                              constant MaterialParams& material [[buffer(2)]],
                              constant float& environmentIntensity [[buffer(3)]],
+                             constant ClusterParams& cluster [[buffer(4)]],
+                             constant GPULight* lights [[buffer(5)]],
+                             constant uint* clusterCounts [[buffer(6)]],
+                             constant ushort* clusterIndices [[buffer(7)]],
                              sampler smp [[sampler(0)]],
                              sampler shadowSampler [[sampler(1)]],
                              sampler envSampler [[sampler(2)]],
@@ -472,12 +548,23 @@ fragment SceneFragmentOut fragmentMain(RasterData in [[stage_in]],
     float3 litColor = (kD_ibl * diffuseIBL * (1.0 - transmission) * diffuseAO + specularIBL * specularAO) * ao * environmentIntensity;
     litColor += transmission * (1.0 - metallic) * (1.0 - F_ibl) * transmitted;
 
-    int lightCount = uniforms.lightMeta.x;
+    // This pixel's cluster: the screen tile it is in, and the depth slice of its distance in front of the camera
+    // (see lightCullKernel). Its list holds every non-directional light that can reach it; directional lights,
+    // which reach everywhere, come first in the buffer and are not part of any list.
+    float viewDepth = -(cluster.view * float4(in.worldPosition, 1.0)).z;
+    uint2 tile = min(uint2(in.position.xy) / cluster.grid.w, cluster.grid.xy - 1);
+    uint clusterIndex = (clusterSliceOf(viewDepth, cluster) * cluster.grid.y + tile.y) * cluster.grid.x + tile.x;
+    uint directionalCount = cluster.lights.x;
+    uint lightCount = directionalCount + clusterCounts[clusterIndex];
+
     float2x2 pcfRot = pcfRotation(in.position.xy);
-    for (int i = 0; i < lightCount; i++) {
-        int lightType = uniforms.lightTypes[i].x;
-        float3 lightPos = uniforms.lightPositions[i].xyz;
-        float3 emitDir = uniforms.lightDirections[i].xyz; // direction the light travels outward
+    for (uint k = 0; k < lightCount; k++) {
+        uint lightIndex = k < directionalCount ? k : uint(clusterIndices[clusterIndex * MAX_LIGHTS_PER_CLUSTER + (k - directionalCount)]);
+        GPULight light = lights[lightIndex];
+        int lightType = int(light.directionType.w);
+        int shadowSlot = int(light.right.w); // -1: this light has no shadow map
+        float3 lightPos = light.positionRange.xyz;
+        float3 emitDir = light.directionType.xyz; // direction the light travels outward
 
         float3 lightDir;  // surface -> light, normalized
         float lightDist = 0.0;
@@ -490,9 +577,9 @@ fragment SceneFragmentOut fragmentMain(RasterData in [[stage_in]],
             // Closest point on the rectangle to the shading point ("most representative point"),
             // treated like a point light placed there. An approximation, not physically-based -
             // it doesn't reproduce the soft penumbra a real area light would cast.
-            float3 right = uniforms.lightRight[i].xyz;
-            float3 up = uniforms.lightUp[i].xyz;
-            float2 halfSize = uniforms.lightParams[i].zw;
+            float3 right = light.right.xyz;
+            float3 up = light.up.xyz;
+            float2 halfSize = light.params.zw;
             float3 toPoint = in.worldPosition - lightPos;
             float2 local = clamp(float2(dot(toPoint, right), dot(toPoint, up)), -halfSize, halfSize);
             float3 closest = lightPos + right * local.x + up * local.y;
@@ -508,16 +595,19 @@ fragment SceneFragmentOut fragmentMain(RasterData in [[stage_in]],
             lightDir = toLight / max(lightDist, 1e-4);
             if (lightType == LIGHT_TYPE_SPOT) {
                 float cosAngle = dot(-lightDir, emitDir);
-                float cosInner = uniforms.lightParams[i].x;
-                float cosOuter = uniforms.lightParams[i].y;
+                float cosInner = light.params.x;
+                float cosOuter = light.params.y;
                 attenuation = smoothstep(cosOuter, cosInner, cosAngle);
             }
         }
 
         // Standard constant/linear/quadratic falloff - not applicable to a directional light,
-        // which has no distance to the (infinitely far away) source.
+        // which has no distance to the (infinitely far away) source. The falloff never reaches zero, so the
+        // value it has at the light's cull radius (light.up.w) is subtracted and the rest renormalized: the
+        // light then ends exactly where the culling stops considering it, and the change is below the cutoff.
         if (lightType != LIGHT_TYPE_DIRECTIONAL) {
-            attenuation *= 1.0 / (1.0 + 0.09 * lightDist + 0.032 * lightDist * lightDist);
+            float falloff = 1.0 / (1.0 + 0.09 * lightDist + 0.032 * lightDist * lightDist);
+            attenuation *= max(falloff - light.up.w, 0.0) / (1.0 - light.up.w);
         }
 
         // A surface turned away from the light, or a light that has faded to nothing, gets nothing from it: every
@@ -529,7 +619,7 @@ fragment SceneFragmentOut fragmentMain(RasterData in [[stage_in]],
         float3 halfVector = normalize(lightDir + viewDir);
         // Multiplied by PI to cancel the Lambert BRDF's albedo/PI below, so light intensities keep
         // the pre-PBR meaning: intensity 1 = a white diffuse surface facing the light returns 1.0.
-        float3 radiance = uniforms.lightColors[i].rgb * uniforms.lightColors[i].a * attenuation * PI;
+        float3 radiance = light.colorIntensity.rgb * light.colorIntensity.a * attenuation * PI;
 
         float NdotH = max(dot(normal, halfVector), 0.0);
         float VdotH = max(dot(viewDir, halfVector), 0.0);
@@ -545,18 +635,21 @@ fragment SceneFragmentOut fragmentMain(RasterData in [[stage_in]],
 
         // Point lights use the cube shadow maps (no single frustum covers all directions);
         // Directional/Spot use a single projected shadow map. Area lights don't cast shadows yet
-        // (see Main.cpp's shadow pass) and read as always-lit.
+        // (see Main.cpp's shadow pass) and read as always-lit - as do all lights past the first
+        // kMaxLights, which have no shadow map slot.
         // The PCF disk reads neighbors at slightly different depths, so surfaces at grazing angles
         // to the light need a larger bias than face-on ones to avoid self-shadowing acne.
         float shadowBias = 0.05 + 0.1 * (1.0 - NdotL);
         float shadow = 1.0;
-        if (lightType == LIGHT_TYPE_POINT) {
-            shadow = sampleCubeShadow(in.worldPosition, lightPos, shadowCubes[i], shadowSampler, shadowBias, pcfRot);
-        } else if (lightType == LIGHT_TYPE_SPOT) {
-            shadow = sampleProjectedShadow(in.worldPosition, lightPos, uniforms.lightViewProj[i], shadow2DMaps[i], shadowSampler, shadowBias, pcfRot);
-        } else if (lightType == LIGHT_TYPE_DIRECTIONAL) {
-            float3 shadowEye = lightPos - emitDir * DIRECTIONAL_SHADOW_DISTANCE;
-            shadow = sampleProjectedShadow(in.worldPosition, shadowEye, uniforms.lightViewProj[i], shadow2DMaps[i], shadowSampler, shadowBias, pcfRot);
+        if (shadowSlot >= 0) {
+            if (lightType == LIGHT_TYPE_POINT) {
+                shadow = sampleCubeShadow(in.worldPosition, lightPos, shadowCubes[shadowSlot], shadowSampler, shadowBias, pcfRot);
+            } else if (lightType == LIGHT_TYPE_SPOT) {
+                shadow = sampleProjectedShadow(in.worldPosition, lightPos, uniforms.lightViewProj[shadowSlot], shadow2DMaps[shadowSlot], shadowSampler, shadowBias, pcfRot);
+            } else if (lightType == LIGHT_TYPE_DIRECTIONAL) {
+                float3 shadowEye = lightPos - emitDir * DIRECTIONAL_SHADOW_DISTANCE;
+                shadow = sampleProjectedShadow(in.worldPosition, shadowEye, uniforms.lightViewProj[shadowSlot], shadow2DMaps[shadowSlot], shadowSampler, shadowBias, pcfRot);
+            }
         }
 
         litColor += shadow * brdf * radiance * NdotL;

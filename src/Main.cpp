@@ -16,6 +16,7 @@
 #include "Environment.hpp"
 #include "Frustum.hpp"
 #include "GpuTimer.hpp"
+#include "LightCulling.hpp"
 #include "LightMarker.hpp"
 #include "MeshLoader.hpp"
 #include "Scene.hpp"
@@ -315,14 +316,13 @@ int main() {
     // One Uniforms slot per scene object per frame, plus one for the axis gizmo, one per possible
     // light marker, and one per possible light direction ray. 1024-byte stride is Metal's safe
     // alignment for per-draw buffer offsets, rounded up from sizeof(Uniforms) (which now holds up
-    // to kMaxLights lights, each with type/direction/area-axis/shadow-matrix data on top of
-    // position/color).
+    // to kMaxLights shadow matrices; the lights themselves are in LightCuller's buffer).
     constexpr NS::UInteger kUniformStride = 1024;
     static_assert(sizeof(Uniforms) <= kUniformStride, "Uniforms grew past the reserved per-object stride");
     constexpr NS::UInteger kGizmoUniformOffset = kMaxSceneObjects * kUniformStride;
     constexpr NS::UInteger kLightMarkerUniformOffset = kGizmoUniformOffset + kUniformStride;
-    constexpr NS::UInteger kLightRayUniformOffset = kLightMarkerUniformOffset + kMaxLights * kUniformStride;
-    constexpr NS::UInteger kTotalUniformSlots = kMaxSceneObjects + 1 + kMaxLights + kMaxLights;
+    constexpr NS::UInteger kLightRayUniformOffset = kLightMarkerUniformOffset + kMaxClusteredLights * kUniformStride;
+    constexpr NS::UInteger kTotalUniformSlots = kMaxSceneObjects + 1 + kMaxClusteredLights + kMaxClusteredLights;
 
     // The CPU writes this frame's Uniforms straight into mapped memory (ResourceStorageModeShared)
     // while the GPU may still be reading last frame's - or the frame before that's - draw calls out
@@ -346,6 +346,10 @@ int main() {
     // Compile the shader library
     NS::Error* error = nullptr;
     MTL::Library* library = device->newDefaultLibrary();
+
+    // Clustered forward lighting: sorts every light into the camera's cluster grid each frame (see LightCulling.hpp).
+    auto lightCullerPtr = std::make_unique<LightCuller>(device, library, kMaxFramesInFlight);
+    LightCuller& lightCuller = *lightCullerPtr;
 
     MTL::Function* vertFunc = library->newFunction(NS::String::string("vertexMain", NS::UTF8StringEncoding));
     MTL::Function* fragFunc = library->newFunction(NS::String::string("fragmentMain", NS::UTF8StringEncoding));
@@ -876,17 +880,17 @@ int main() {
                 }
             }
 
-            // Gather up to kMaxLights lights (of any type) from the scene. lightObjects[i] keeps
+            // Gather up to kMaxClusteredLights lights (of any type) from the scene. lightObjects[i] keeps
             // the originating SceneObject alongside lights[i] (same index) so the marker/ray pass
             // below can read its rotation.
             // A scene with no lights is lit by the environment alone (image-based lighting).
             constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
-            SceneLight lights[kMaxLights];
-            const SceneObject* lightObjects[kMaxLights] = {};
+            static SceneLight lights[kMaxClusteredLights];
+            static const SceneObject* lightObjects[kMaxClusteredLights];
             int lightCount = 0;
             for (const auto& obj : scene.objects) {
                 if (obj.type != SceneObjectType::Light) continue;
-                if (lightCount >= (int)kMaxLights) break;
+                if (lightCount >= (int)kMaxClusteredLights) break;
                 SceneLight& light = lights[lightCount];
                 light.type = obj.lightType;
                 light.position = simd_make_float3(obj.position[0], obj.position[1], obj.position[2]);
@@ -898,10 +902,12 @@ int main() {
                 light.spotCosInner = cosf(obj.spotInnerDegrees * kDegToRad);
                 light.spotCosOuter = cosf(obj.spotOuterDegrees * kDegToRad);
                 light.areaHalfSize = simd_make_float2(obj.areaSize[0] * 0.5f, obj.areaSize[1] * 0.5f);
-                if (light.type == LightType::Directional) {
+                // Only the first kMaxLights lights have shadow maps, so only they need a shadow matrix.
+                const bool hasShadowMap = lightCount < (int)kMaxLights;
+                if (hasShadowMap && light.type == LightType::Directional) {
                     light.shadowViewProj = computeDirectionalShadowMatrix(light.position, light.direction,
                                                                            light.right, light.up);
-                } else if (light.type == LightType::Spot) {
+                } else if (hasShadowMap && light.type == LightType::Spot) {
                     light.shadowViewProj = computeSpotShadowMatrix(light.position, light.direction,
                                                                      light.right, light.up, obj.spotOuterDegrees,
                                                                      kShadowNearPlane, kShadowFarPlane);
@@ -910,13 +916,17 @@ int main() {
                 lightCount++;
             }
 
-            // Every active Point light gets its own 6-face cube shadow map (see Shadow.hpp).
-            // Other light types don't cast shadows yet (see Shader.metal's fragmentMain).
+            // Every active Point light among the first kMaxLights gets its own 6-face cube shadow map (see
+            // Shadow.hpp). Other light types don't cast shadows yet (see Shader.metal's fragmentMain), and
+            // lights past the first kMaxLights are lit without shadows.
+            const int shadowedLightCount = std::min(lightCount, (int)kMaxLights);
             simd::float4x4 cubeFaceMatrices[kMaxLights][kCubeFaceCount];
-            for (int i = 0; i < lightCount; i++) {
+            for (int i = 0; i < shadowedLightCount; i++) {
                 if (lights[i].type != LightType::Point) continue;
                 computeCubeShadowMatrices(lights[i].position, kShadowNearPlane, kShadowFarPlane, cubeFaceMatrices[i]);
             }
+
+            lightCuller.prepare(frameIndex, lights, lightCount, camera, liveWidth, liveHeight);
 
             // One entry per drawable (non-Light) scene object this frame - Cube always, Mesh only
             // once its file has successfully loaded into meshCache. Built once and reused by the
@@ -1148,7 +1158,7 @@ int main() {
             // rendering for how a production renderer collapses this to one encoder per light;
             // this stays the simple, unoptimized version for now); Directional/Spot get one
             // encoder each into their single-frustum depth map; Area lights don't cast shadows yet.
-            for (int lightIndex = 0; lightIndex < lightCount; lightIndex++) {
+            for (int lightIndex = 0; lightIndex < shadowedLightCount; lightIndex++) {
                 LightType lightType = lights[lightIndex].type;
                 if (lightType != LightType::Point && lightType != LightType::Directional && lightType != LightType::Spot) continue;
 
@@ -1217,6 +1227,9 @@ int main() {
                     shadow2DEncoder->endEncoding();
                 }
             }
+
+            // Light culling: sorts the lights into the cluster grid, for the scene pass below to read.
+            lightCuller.encodeCulling(cmdBuffer, gpuTimer);
 
             // --- Ambient occlusion (GTAO or SSAO), before the scene pass so its fragment shader can read the
             // result: (1) a depth + world-normal prepass over the opaque geometry, (2) the occlusion
@@ -1333,6 +1346,7 @@ int main() {
                 encoder->setFragmentTexture(transmissionTexture, kTransmissionSourceSlot);
                 encoder->setFragmentTexture(screenAO, kAOTextureSlot);
                 encoder->setFragmentBytes(&scene.environmentIntensity, sizeof(float), 3);
+                lightCuller.bind(encoder); // fragment buffers 4-7: cluster grid, lights, per-cluster lists
             };
 
             MTL::RenderPassDescriptor* hdrRPD = MTL::RenderPassDescriptor::renderPassDescriptor();
