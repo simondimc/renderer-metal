@@ -48,6 +48,15 @@ struct Scene {
     // Which curve fragmentMain uses to compress exposed HDR radiance into [0, 1] before gamma
     // encoding - see ToneMapOperator above.
     ToneMapOperator toneMapOperator = ToneMapOperator::ACES;
+
+    // Post-processing (see postProcessFragmentMain in Shader.metal). All default to neutral/off so
+    // an existing scene's look doesn't change until these are dialed in from the Scene Editor.
+    float vignetteStrength = 0.0f;            // 0 = off, higher = darker/tighter screen edges
+    float chromaticAberrationStrength = 0.0f; // 0 = off, per-channel UV offset growing toward the edges
+    float filmGrainStrength = 0.0f;           // 0 = off, blended noise amount
+    float sharpenStrength = 0.0f;             // 0 = off, unsharp-mask amount
+    float colorGradingSaturation = 1.0f;      // 1 = neutral, 0 = grayscale
+    float colorGradingContrast = 1.0f;        // 1 = neutral
 };
 
 // Caps the per-frame GPU uniform buffer sizing in Main.cpp (each object gets its own aligned slot)

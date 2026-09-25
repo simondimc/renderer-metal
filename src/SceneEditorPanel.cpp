@@ -25,6 +25,16 @@ void drawSceneEditorPanel(Scene& scene, int& selectedIndex) {
     if (ImGui::Combo("Tone Map", &toneMapIndex, kToneMapOperatorNames, IM_ARRAYSIZE(kToneMapOperatorNames))) {
         scene.toneMapOperator = (ToneMapOperator)toneMapIndex;
     }
+
+    if (ImGui::TreeNode("Post-Processing")) {
+        ImGui::DragFloat("Vignette", &scene.vignetteStrength, 0.01f, 0.0f, 2.0f);
+        ImGui::DragFloat("Chromatic Aberration", &scene.chromaticAberrationStrength, 0.01f, 0.0f, 2.0f);
+        ImGui::DragFloat("Film Grain", &scene.filmGrainStrength, 0.001f, 0.0f, 0.5f);
+        ImGui::DragFloat("Sharpen", &scene.sharpenStrength, 0.01f, 0.0f, 2.0f);
+        ImGui::DragFloat("Saturation", &scene.colorGradingSaturation, 0.01f, 0.0f, 2.0f);
+        ImGui::DragFloat("Contrast", &scene.colorGradingContrast, 0.01f, 0.0f, 2.0f);
+        ImGui::TreePop();
+    }
     ImGui::Separator();
 
     ImGui::BeginDisabled(scene.objects.size() >= kMaxSceneObjects);

@@ -122,6 +122,11 @@ simd::float3 objectUp(const SceneObject& obj) {
 // File grammar - one block per object, in order:
 //   exposure <v>            (global, not tied to any object - see Scene::exposure)
 //   tonemap clamp|reinhard|aces|uncharted2  (global - see Scene::toneMapOperator)
+//   vignette <v>            (global - see Scene::vignetteStrength)
+//   chromaticaberration <v> (global - see Scene::chromaticAberrationStrength)
+//   filmgrain <v>           (global - see Scene::filmGrainStrength)
+//   sharpen <v>             (global - see Scene::sharpenStrength)
+//   colorgrading <saturation> <contrast>    (global - see Scene::colorGradingSaturation/Contrast)
 //   object <name>          (a Cube or Mesh) or  light <name>          (a Light)
 //   position <x> <y> <z>
 //   rotation <x> <y> <z>    (degrees; Cube/Mesh always, Light only for Directional/Spot/Area)
@@ -145,6 +150,11 @@ bool saveScene(const Scene& scene, const std::string& path) {
     out << "# renderer-metal scene file v1\n";
     out << "exposure " << scene.exposure << "\n";
     out << "tonemap " << toneMapOperatorName(scene.toneMapOperator) << "\n";
+    out << "vignette " << scene.vignetteStrength << "\n";
+    out << "chromaticaberration " << scene.chromaticAberrationStrength << "\n";
+    out << "filmgrain " << scene.filmGrainStrength << "\n";
+    out << "sharpen " << scene.sharpenStrength << "\n";
+    out << "colorgrading " << scene.colorGradingSaturation << " " << scene.colorGradingContrast << "\n";
     for (const auto& obj : scene.objects) {
         out << (obj.type == SceneObjectType::Light ? "light " : "object ") << obj.name << "\n";
         out << "position " << obj.position[0] << " " << obj.position[1] << " " << obj.position[2] << "\n";
@@ -195,6 +205,16 @@ bool loadScene(Scene& scene, const std::string& path) {
             std::string opName;
             ss >> opName;
             loaded.toneMapOperator = parseToneMapOperator(opName);
+        } else if (keyword == "vignette") {
+            ss >> loaded.vignetteStrength;
+        } else if (keyword == "chromaticaberration") {
+            ss >> loaded.chromaticAberrationStrength;
+        } else if (keyword == "filmgrain") {
+            ss >> loaded.filmGrainStrength;
+        } else if (keyword == "sharpen") {
+            ss >> loaded.sharpenStrength;
+        } else if (keyword == "colorgrading") {
+            ss >> loaded.colorGradingSaturation >> loaded.colorGradingContrast;
         } else if (keyword == "object" || keyword == "light") {
             SceneObject obj;
             obj.type = (keyword == "light") ? SceneObjectType::Light : SceneObjectType::Cube;

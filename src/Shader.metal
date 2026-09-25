@@ -313,18 +313,75 @@ vertex PostProcessVertexOut postProcessVertexMain(uint vertexID [[vertex_id]]) {
 
 struct PostProcessParams {
     float exposure;
-    float toneMapOperator; // cast to int - see ToneMapOperator in Scene.hpp
+    float toneMapOperator;            // cast to int - see ToneMapOperator in Scene.hpp
+    float vignetteStrength;           // 0 = off
+    float chromaticAberrationStrength; // 0 = off
+    float filmGrainStrength;          // 0 = off
+    float sharpenStrength;            // 0 = off
+    float colorGradingSaturation;     // 1 = neutral
+    float colorGradingContrast;       // 1 = neutral
+    float time;                       // seconds - animates the film grain so it doesn't look static
 };
+
+// Exposure -> tone map -> saturation/contrast grading -> gamma encode, applied to one HDR sample.
+// Pulled out of postProcessFragmentMain so the sharpen pass below can run it on each of its
+// neighborhood taps too, comparing everything in the same display-referred space the final image
+// is actually shown in (rather than sharpening raw, unbounded HDR values).
+static float3 resolveColor(float3 hdrColor, constant PostProcessParams& params) {
+    float3 exposed = hdrColor * params.exposure;
+    float3 toneMapped = toneMap(exposed, int(params.toneMapOperator));
+
+    // Saturation: blend toward the sample's own luminance (Rec.709 weights). Contrast: push away
+    // from/toward mid-gray. Both are simple, classic display-space grading controls, not a full
+    // LUT-based grade.
+    float luminance = dot(toneMapped, float3(0.2126, 0.7152, 0.0722));
+    float3 saturated = mix(float3(luminance), toneMapped, params.colorGradingSaturation);
+    float3 graded = saturate((saturated - 0.5) * params.colorGradingContrast + 0.5);
+
+    return pow(graded, 1.0 / 2.2);
+}
 
 fragment float4 postProcessFragmentMain(PostProcessVertexOut in [[stage_in]],
                                         texture2d<float> hdrTexture [[texture(0)]],
                                         constant PostProcessParams& params [[buffer(0)]],
                                         sampler smp [[sampler(0)]]) {
-    float3 hdrColor = hdrTexture.sample(smp, in.uv).rgb;
-    float3 exposed = hdrColor * params.exposure;
-    float3 toneMapped = toneMap(exposed, int(params.toneMapOperator));
-    float3 gammaEncoded = pow(toneMapped, 1.0 / 2.2);
-    return float4(gammaEncoded, 1.0);
+    float2 uv = in.uv;
+    float2 texelSize = 1.0 / float2(hdrTexture.get_width(), hdrTexture.get_height());
+    float2 centerOffset = uv - 0.5; // screen-center-relative, for vignette/aberration falloff
+
+    // Chromatic aberration: sample R/G/B at UVs offset outward from center, growing with distance
+    // from center - like a real lens, the fringe is worst at the edges and ~0 in the middle.
+    float2 aberrationOffset = centerOffset * params.chromaticAberrationStrength * 0.02;
+    float r = hdrTexture.sample(smp, uv - aberrationOffset).r;
+    float g = hdrTexture.sample(smp, uv).g;
+    float b = hdrTexture.sample(smp, uv + aberrationOffset).b;
+    float3 color = resolveColor(float3(r, g, b), params);
+
+    // Sharpen: unsharp mask - push the pixel away from a cheap 4-tap neighborhood average. Skipped
+    // entirely (rather than just multiplied by 0) when off, to avoid the 4 extra resolveColor
+    // evaluations on the common case - this is a uniform (non-per-pixel) branch, so it's a real
+    // cost saving, not just dead math.
+    if (params.sharpenStrength > 0.0) {
+        float3 up    = resolveColor(hdrTexture.sample(smp, uv + float2(0.0, -texelSize.y)).rgb, params);
+        float3 down  = resolveColor(hdrTexture.sample(smp, uv + float2(0.0, texelSize.y)).rgb, params);
+        float3 left  = resolveColor(hdrTexture.sample(smp, uv + float2(-texelSize.x, 0.0)).rgb, params);
+        float3 right = resolveColor(hdrTexture.sample(smp, uv + float2(texelSize.x, 0.0)).rgb, params);
+        float3 blurred = (up + down + left + right) * 0.25;
+        color += (color - blurred) * params.sharpenStrength;
+    }
+
+    // Vignette: darken toward the screen edges. Applied last (alongside grain) in display space,
+    // as a straightforward multiplicative falloff rather than something the tone curve should see.
+    float vignette = saturate(1.0 - params.vignetteStrength * dot(centerOffset, centerOffset) * 2.0);
+    color *= vignette;
+
+    // Film grain: cheap hash noise from screen position + time, so it flickers frame-to-frame
+    // instead of reading as a fixed print/overlay pattern.
+    float2 texSize = 1.0 / texelSize;
+    float noise = fract(sin(dot(uv * texSize + params.time, float2(12.9898, 78.233))) * 43758.5453);
+    color += (noise - 0.5) * params.filmGrainStrength;
+
+    return float4(saturate(color), 1.0);
 }
 
 // --- Axis gizmo: flat-colored lines, no lighting/texturing ---

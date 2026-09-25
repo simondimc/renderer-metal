@@ -25,6 +25,18 @@
 - Temporal Anti-Aliasing (TAA)
 - [x] HDR & Tone Mapping
 
+### Post-Processing
+- Bloom
+- [x] Vignette
+- [x] Chromatic Aberration
+- [x] Film Grain
+- [x] Color Grading (Saturation/Contrast - not LUT-based yet)
+- Depth of Field
+- Motion Blur
+- [x] Sharpening
+- Lens Flare
+- Outline / Edge Detection
+
 ### Materials & Shading
 - [x] Linear Color Space & Gamma Correction
 - Physically Based Rendering (PBR)

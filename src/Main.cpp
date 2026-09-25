@@ -663,8 +663,24 @@ int main() {
             postEncoder->setRenderPipelineState(postProcessPipelineState);
             postEncoder->setFragmentTexture(hdrColorTexture, 0);
             postEncoder->setFragmentSamplerState(postProcessSamplerState, 0);
-            struct { float exposure; float toneMapOperator; } postParams = {
-                scene.exposure, (float)(int)scene.toneMapOperator
+            // Field order/count must match PostProcessParams in Shader.metal exactly - this is a
+            // raw byte copy, not a described/reflected layout.
+            struct {
+                float exposure;
+                float toneMapOperator;
+                float vignetteStrength;
+                float chromaticAberrationStrength;
+                float filmGrainStrength;
+                float sharpenStrength;
+                float colorGradingSaturation;
+                float colorGradingContrast;
+                float time;
+            } postParams = {
+                scene.exposure, (float)(int)scene.toneMapOperator,
+                scene.vignetteStrength, scene.chromaticAberrationStrength,
+                scene.filmGrainStrength, scene.sharpenStrength,
+                scene.colorGradingSaturation, scene.colorGradingContrast,
+                currentTime
             };
             postEncoder->setFragmentBytes(&postParams, sizeof(postParams), 0);
             postEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, (NS::UInteger)3);
