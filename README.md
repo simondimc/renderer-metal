@@ -26,7 +26,7 @@
 - [x] HDR & Tone Mapping
 
 ### Post-Processing
-- Bloom
+- [x] Bloom
 - [x] Vignette
 - [x] Chromatic Aberration
 - [x] Film Grain

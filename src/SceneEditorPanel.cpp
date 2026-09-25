@@ -33,6 +33,8 @@ void drawSceneEditorPanel(Scene& scene, int& selectedIndex) {
         ImGui::DragFloat("Sharpen", &scene.sharpenStrength, 0.01f, 0.0f, 2.0f);
         ImGui::DragFloat("Saturation", &scene.colorGradingSaturation, 0.01f, 0.0f, 2.0f);
         ImGui::DragFloat("Contrast", &scene.colorGradingContrast, 0.01f, 0.0f, 2.0f);
+        ImGui::DragFloat("Bloom Threshold", &scene.bloomThreshold, 0.01f, 0.0f, 10.0f);
+        ImGui::DragFloat("Bloom Intensity", &scene.bloomIntensity, 0.01f, 0.0f, 5.0f);
         ImGui::TreePop();
     }
     ImGui::Separator();

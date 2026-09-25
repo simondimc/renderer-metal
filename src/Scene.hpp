@@ -57,6 +57,10 @@ struct Scene {
     float sharpenStrength = 0.0f;             // 0 = off, unsharp-mask amount
     float colorGradingSaturation = 1.0f;      // 1 = neutral, 0 = grayscale
     float colorGradingContrast = 1.0f;        // 1 = neutral
+    // Bloom: bright-pass threshold (linear HDR radiance above this value bleeds into the blur) and
+    // blend intensity (0 = off) - see the bloomExtract/blur passes in Main.cpp and Shader.metal.
+    float bloomThreshold = 1.0f;
+    float bloomIntensity = 0.0f;
 };
 
 // Caps the per-frame GPU uniform buffer sizing in Main.cpp (each object gets its own aligned slot)

@@ -1,6 +1,12 @@
 # renderer-metal scene file v1
 exposure 1
 tonemap aces
+vignette 1.26
+chromaticaberration 0
+filmgrain 0.087
+sharpen 0
+colorgrading 1 1
+bloom 0.03 0.57
 object Cube
 position 0 0 0
 rotation 0 0 0

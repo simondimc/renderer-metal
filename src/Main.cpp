@@ -111,6 +111,21 @@ int main() {
     hdrDesc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
     MTL::Texture* hdrColorTexture = device->newTexture(hdrDesc);
 
+    // Bloom ping-pong targets: bright-pass extract writes into A, then a horizontal blur reads A
+    // and writes B, then a vertical blur reads B and writes back into A (see Main.cpp's bloom pass
+    // chain and bloomExtractFragmentMain/blurFragmentMain in Shader.metal). Half the main HDR
+    // resolution - the blur only needs to be a soft, low-frequency glow, not full-res detail, and
+    // it's cheaper to extract/blur at quarter the pixel count.
+    NS::UInteger bloomWidth = (NS::UInteger)width / 2;
+    NS::UInteger bloomHeight = (NS::UInteger)height / 2;
+    MTL::TextureDescriptor* bloomDesc = MTL::TextureDescriptor::texture2DDescriptor(
+        MTL::PixelFormatRGBA16Float, bloomWidth, bloomHeight, false
+    );
+    bloomDesc->setStorageMode(MTL::StorageModePrivate);
+    bloomDesc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
+    MTL::Texture* bloomTextureA = device->newTexture(bloomDesc);
+    MTL::Texture* bloomTextureB = device->newTexture(bloomDesc);
+
     // Shadow cube maps: one 6-face cube texture per light slot, storing that light's distance to
     // the nearest occluder in every direction (see Shader.metal's cubeShadowFragmentMain). All
     // kMaxLights are allocated up front since the shader's fixed-size texture array (see
@@ -247,6 +262,23 @@ int main() {
     postProcessPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
     MTL::RenderPipelineState* postProcessPipelineState = device->newRenderPipelineState(postProcessPipeDesc, &error);
 
+    // Bloom PSOs: both reuse postProcessVertexMain's full-screen triangle, and both target
+    // bloomTextureA/B (RGBA16Float, not the drawable) - see bloomExtractFragmentMain/
+    // blurFragmentMain in Shader.metal and the 3-pass bloom chain in the render loop below.
+    MTL::Function* bloomExtractFragFunc = library->newFunction(NS::String::string("bloomExtractFragmentMain", NS::UTF8StringEncoding));
+    MTL::RenderPipelineDescriptor* bloomExtractPipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
+    bloomExtractPipeDesc->setVertexFunction(postProcessVertFunc);
+    bloomExtractPipeDesc->setFragmentFunction(bloomExtractFragFunc);
+    bloomExtractPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatRGBA16Float);
+    MTL::RenderPipelineState* bloomExtractPipelineState = device->newRenderPipelineState(bloomExtractPipeDesc, &error);
+
+    MTL::Function* blurFragFunc = library->newFunction(NS::String::string("blurFragmentMain", NS::UTF8StringEncoding));
+    MTL::RenderPipelineDescriptor* blurPipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
+    blurPipeDesc->setVertexFunction(postProcessVertFunc);
+    blurPipeDesc->setFragmentFunction(blurFragFunc);
+    blurPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatRGBA16Float);
+    MTL::RenderPipelineState* blurPipelineState = device->newRenderPipelineState(blurPipeDesc, &error);
+
     // Cube shadow pass PSO: outputs world-space distance-to-light as a color value (see
     // Shader.metal's cubeShadowFragmentMain) plus a scratch depth attachment for hidden-surface
     // removal within the pass.
@@ -355,6 +387,8 @@ int main() {
         if (liveWidth != width || liveHeight != height) {
             depthTexture->release();
             hdrColorTexture->release();
+            bloomTextureA->release();
+            bloomTextureB->release();
             width = liveWidth;
             height = liveHeight;
             cppMetalLayer->setDrawableSize(CGSizeMake(width, height));
@@ -372,6 +406,16 @@ int main() {
             newHdrDesc->setStorageMode(MTL::StorageModePrivate);
             newHdrDesc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
             hdrColorTexture = device->newTexture(newHdrDesc);
+
+            NS::UInteger newBloomWidth = (NS::UInteger)width / 2;
+            NS::UInteger newBloomHeight = (NS::UInteger)height / 2;
+            MTL::TextureDescriptor* newBloomDesc = MTL::TextureDescriptor::texture2DDescriptor(
+                MTL::PixelFormatRGBA16Float, newBloomWidth, newBloomHeight, false
+            );
+            newBloomDesc->setStorageMode(MTL::StorageModePrivate);
+            newBloomDesc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
+            bloomTextureA = device->newTexture(newBloomDesc);
+            bloomTextureB = device->newTexture(newBloomDesc);
         }
 
         // Fetch the canvas
@@ -650,6 +694,58 @@ int main() {
             }
             hdrEncoder->endEncoding();
 
+            // --- Bloom chain: bright-pass extract (hdrColorTexture -> bloomTextureA), then a
+            // horizontal blur (A -> B) and a vertical blur (B -> back into A) - see
+            // bloomExtractFragmentMain/blurFragmentMain in Shader.metal. Skipped whenever intensity
+            // is 0 (the default): bloomTextureA is left holding whatever stale/garbage bloom data
+            // it had, but postProcessFragmentMain multiplies it by bloomIntensity before adding it
+            // in, so a 0 intensity makes that content irrelevant.
+            if (scene.bloomIntensity > 0.0f) {
+                MTL::RenderPassDescriptor* bloomExtractRPD = MTL::RenderPassDescriptor::renderPassDescriptor();
+                auto bloomExtractColor = bloomExtractRPD->colorAttachments()->object(0);
+                bloomExtractColor->setLoadAction(MTL::LoadActionDontCare);
+                bloomExtractColor->setStoreAction(MTL::StoreActionStore);
+                bloomExtractColor->setTexture(bloomTextureA);
+
+                MTL::RenderCommandEncoder* bloomExtractEncoder = cmdBuffer->renderCommandEncoder(bloomExtractRPD);
+                bloomExtractEncoder->setRenderPipelineState(bloomExtractPipelineState);
+                bloomExtractEncoder->setFragmentTexture(hdrColorTexture, 0);
+                bloomExtractEncoder->setFragmentSamplerState(postProcessSamplerState, 0);
+                bloomExtractEncoder->setFragmentBytes(&scene.bloomThreshold, sizeof(float), 0);
+                bloomExtractEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, (NS::UInteger)3);
+                bloomExtractEncoder->endEncoding();
+
+                MTL::RenderPassDescriptor* blurHRPD = MTL::RenderPassDescriptor::renderPassDescriptor();
+                auto blurHColor = blurHRPD->colorAttachments()->object(0);
+                blurHColor->setLoadAction(MTL::LoadActionDontCare);
+                blurHColor->setStoreAction(MTL::StoreActionStore);
+                blurHColor->setTexture(bloomTextureB);
+
+                MTL::RenderCommandEncoder* blurHEncoder = cmdBuffer->renderCommandEncoder(blurHRPD);
+                blurHEncoder->setRenderPipelineState(blurPipelineState);
+                blurHEncoder->setFragmentTexture(bloomTextureA, 0);
+                blurHEncoder->setFragmentSamplerState(postProcessSamplerState, 0);
+                simd::float2 horizontalDirection = simd_make_float2(1.0f, 0.0f);
+                blurHEncoder->setFragmentBytes(&horizontalDirection, sizeof(simd::float2), 0);
+                blurHEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, (NS::UInteger)3);
+                blurHEncoder->endEncoding();
+
+                MTL::RenderPassDescriptor* blurVRPD = MTL::RenderPassDescriptor::renderPassDescriptor();
+                auto blurVColor = blurVRPD->colorAttachments()->object(0);
+                blurVColor->setLoadAction(MTL::LoadActionDontCare);
+                blurVColor->setStoreAction(MTL::StoreActionStore);
+                blurVColor->setTexture(bloomTextureA);
+
+                MTL::RenderCommandEncoder* blurVEncoder = cmdBuffer->renderCommandEncoder(blurVRPD);
+                blurVEncoder->setRenderPipelineState(blurPipelineState);
+                blurVEncoder->setFragmentTexture(bloomTextureB, 0);
+                blurVEncoder->setFragmentSamplerState(postProcessSamplerState, 0);
+                simd::float2 verticalDirection = simd_make_float2(0.0f, 1.0f);
+                blurVEncoder->setFragmentBytes(&verticalDirection, sizeof(simd::float2), 0);
+                blurVEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, (NS::UInteger)3);
+                blurVEncoder->endEncoding();
+            }
+
             // --- Pass B: post-process - resolves hdrColorTexture to the drawable via exposure +
             // tone mapping + gamma encoding, in one full-screen pass (see postProcessFragmentMain).
             // No depth attachment: this pass doesn't test/write depth, it just paints every pixel.
@@ -662,6 +758,7 @@ int main() {
             MTL::RenderCommandEncoder* postEncoder = cmdBuffer->renderCommandEncoder(postRPD);
             postEncoder->setRenderPipelineState(postProcessPipelineState);
             postEncoder->setFragmentTexture(hdrColorTexture, 0);
+            postEncoder->setFragmentTexture(bloomTextureA, 1);
             postEncoder->setFragmentSamplerState(postProcessSamplerState, 0);
             // Field order/count must match PostProcessParams in Shader.metal exactly - this is a
             // raw byte copy, not a described/reflected layout.
@@ -674,13 +771,14 @@ int main() {
                 float sharpenStrength;
                 float colorGradingSaturation;
                 float colorGradingContrast;
+                float bloomIntensity;
                 float time;
             } postParams = {
                 scene.exposure, (float)(int)scene.toneMapOperator,
                 scene.vignetteStrength, scene.chromaticAberrationStrength,
                 scene.filmGrainStrength, scene.sharpenStrength,
                 scene.colorGradingSaturation, scene.colorGradingContrast,
-                currentTime
+                scene.bloomIntensity, currentTime
             };
             postEncoder->setFragmentBytes(&postParams, sizeof(postParams), 0);
             postEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, (NS::UInteger)3);
@@ -745,6 +843,8 @@ int main() {
     shadowScratchDepth->release();
     shadow2DScratchDepth->release();
     hdrColorTexture->release();
+    bloomTextureA->release();
+    bloomTextureB->release();
     depthTexture->release();
     depthState->release();
     depthDesc->release();
@@ -756,6 +856,12 @@ int main() {
     postProcessPipeDesc->release();
     postProcessVertFunc->release();
     postProcessFragFunc->release();
+    bloomExtractPipelineState->release();
+    bloomExtractPipeDesc->release();
+    bloomExtractFragFunc->release();
+    blurPipelineState->release();
+    blurPipeDesc->release();
+    blurFragFunc->release();
     pipelineState->release();
     pipeDesc->release();
     vertFunc->release();

@@ -311,6 +311,41 @@ vertex PostProcessVertexOut postProcessVertexMain(uint vertexID [[vertex_id]]) {
     return out;
 }
 
+// --- Bloom: bright-pass extract + separable Gaussian blur, both run at half the main HDR
+// resolution (see Main.cpp's bloomTextureA/B) before postProcessFragmentMain samples the result
+// back in. All three passes reuse postProcessVertexMain's full-screen triangle.
+
+// Hard-threshold extract: only the linear radiance above the threshold survives (and only that
+// excess amount - the sub-threshold base stays out of the bloom buffer entirely), so bloom reads
+// as light spilling from genuinely bright regions rather than brightening the whole image.
+fragment float4 bloomExtractFragmentMain(PostProcessVertexOut in [[stage_in]],
+                                         texture2d<float> hdrTexture [[texture(0)]],
+                                         constant float& threshold [[buffer(0)]],
+                                         sampler smp [[sampler(0)]]) {
+    float3 color = hdrTexture.sample(smp, in.uv).rgb;
+    float3 bright = max(color - threshold, 0.0);
+    return float4(bright, 1.0);
+}
+
+// Separable 9-tap Gaussian blur (5 unique weights, symmetric) - run once with a horizontal
+// direction and once with a vertical direction (see Main.cpp) to approximate a full 2D blur at a
+// fraction of the cost of a single-pass 2D kernel.
+fragment float4 blurFragmentMain(PostProcessVertexOut in [[stage_in]],
+                                 texture2d<float> tex [[texture(0)]],
+                                 constant float2& direction [[buffer(0)]],
+                                 sampler smp [[sampler(0)]]) {
+    float2 texelSize = 1.0 / float2(tex.get_width(), tex.get_height());
+    float2 step = direction * texelSize;
+
+    constexpr float weights[5] = {0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216};
+    float3 result = tex.sample(smp, in.uv).rgb * weights[0];
+    for (int i = 1; i < 5; i++) {
+        result += tex.sample(smp, in.uv + step * float(i)).rgb * weights[i];
+        result += tex.sample(smp, in.uv - step * float(i)).rgb * weights[i];
+    }
+    return float4(result, 1.0);
+}
+
 struct PostProcessParams {
     float exposure;
     float toneMapOperator;            // cast to int - see ToneMapOperator in Scene.hpp
@@ -320,6 +355,7 @@ struct PostProcessParams {
     float sharpenStrength;            // 0 = off
     float colorGradingSaturation;     // 1 = neutral
     float colorGradingContrast;       // 1 = neutral
+    float bloomIntensity;             // 0 = off - blend amount of the blurred bright-pass buffer
     float time;                       // seconds - animates the film grain so it doesn't look static
 };
 
@@ -343,6 +379,7 @@ static float3 resolveColor(float3 hdrColor, constant PostProcessParams& params) 
 
 fragment float4 postProcessFragmentMain(PostProcessVertexOut in [[stage_in]],
                                         texture2d<float> hdrTexture [[texture(0)]],
+                                        texture2d<float> bloomTexture [[texture(1)]],
                                         constant PostProcessParams& params [[buffer(0)]],
                                         sampler smp [[sampler(0)]]) {
     float2 uv = in.uv;
@@ -355,7 +392,20 @@ fragment float4 postProcessFragmentMain(PostProcessVertexOut in [[stage_in]],
     float r = hdrTexture.sample(smp, uv - aberrationOffset).r;
     float g = hdrTexture.sample(smp, uv).g;
     float b = hdrTexture.sample(smp, uv + aberrationOffset).b;
-    float3 color = resolveColor(float3(r, g, b), params);
+    float3 hdrColor = float3(r, g, b);
+
+    // Bloom is added to the linear HDR color before tone mapping (not blended in afterward), so
+    // the same curve that compresses the rest of the image also softens the bloom's own highlights
+    // - bloomTexture is already the blurred bright-pass buffer (see Main.cpp's 3-pass bloom chain),
+    // sampled here with bilinear filtering to upscale it back from half resolution. Guarded (not
+    // just multiplied by 0) because Main.cpp skips the whole bloom chain when intensity is 0, so
+    // bloomTexture can hold stale/uninitialized data then - sampling it unconditionally could pull
+    // in a NaN that survives being multiplied by 0.
+    if (params.bloomIntensity > 0.0) {
+        hdrColor += bloomTexture.sample(smp, uv).rgb * params.bloomIntensity;
+    }
+
+    float3 color = resolveColor(hdrColor, params);
 
     // Sharpen: unsharp mask - push the pixel away from a cheap 4-tap neighborhood average. Skipped
     // entirely (rather than just multiplied by 0) when off, to avoid the 4 extra resolveColor

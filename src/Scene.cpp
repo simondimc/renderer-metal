@@ -127,6 +127,7 @@ simd::float3 objectUp(const SceneObject& obj) {
 //   filmgrain <v>           (global - see Scene::filmGrainStrength)
 //   sharpen <v>             (global - see Scene::sharpenStrength)
 //   colorgrading <saturation> <contrast>    (global - see Scene::colorGradingSaturation/Contrast)
+//   bloom <threshold> <intensity>           (global - see Scene::bloomThreshold/Intensity)
 //   object <name>          (a Cube or Mesh) or  light <name>          (a Light)
 //   position <x> <y> <z>
 //   rotation <x> <y> <z>    (degrees; Cube/Mesh always, Light only for Directional/Spot/Area)
@@ -155,6 +156,7 @@ bool saveScene(const Scene& scene, const std::string& path) {
     out << "filmgrain " << scene.filmGrainStrength << "\n";
     out << "sharpen " << scene.sharpenStrength << "\n";
     out << "colorgrading " << scene.colorGradingSaturation << " " << scene.colorGradingContrast << "\n";
+    out << "bloom " << scene.bloomThreshold << " " << scene.bloomIntensity << "\n";
     for (const auto& obj : scene.objects) {
         out << (obj.type == SceneObjectType::Light ? "light " : "object ") << obj.name << "\n";
         out << "position " << obj.position[0] << " " << obj.position[1] << " " << obj.position[2] << "\n";
@@ -215,6 +217,8 @@ bool loadScene(Scene& scene, const std::string& path) {
             ss >> loaded.sharpenStrength;
         } else if (keyword == "colorgrading") {
             ss >> loaded.colorGradingSaturation >> loaded.colorGradingContrast;
+        } else if (keyword == "bloom") {
+            ss >> loaded.bloomThreshold >> loaded.bloomIntensity;
         } else if (keyword == "object" || keyword == "light") {
             SceneObject obj;
             obj.type = (keyword == "light") ? SceneObjectType::Light : SceneObjectType::Cube;
