@@ -60,6 +60,7 @@ struct InstanceData {
     float4x4 model;
     float4 materialAlbedo; // rgb = albedo tint
     float4 materialParams; // x = metallic, y = roughness, z = ao, w = useTextures (0/1)
+    float4 materialAniso;  // x = anisotropy (0..1), y = rotation of the grain in radians
 };
 
 // Per-draw glTF material factors, bound at fragment buffer 2 - must match MaterialParams in
@@ -71,6 +72,7 @@ struct MaterialParams {
     float4 alphaParams;    // x = alpha mode (ALPHA_MODE_*), y = Mask cutoff
     float4 transmissionParams; // x = transmission, y = thickness (mesh units), z = attenuation distance, w = IOR
     float4 attenuationColor;   // rgb = volume absorption color
+    float4 anisotropyParams;   // x = strength, y = rotation of the grain (radians), w = anisotropy texture bound (0/1)
 };
 
 // --- Clustered forward lighting (see LightCulling.hpp). The lights live in one buffer shared by every draw
@@ -407,6 +409,25 @@ static float geometrySmith(float NdotV, float NdotL, float roughness) {
     return geometrySchlickGGX(NdotV, roughness) * geometrySchlickGGX(NdotL, roughness);
 }
 
+// Anisotropic GGX (Burley 2012; the form Filament and the glTF Sample Viewer use). Roughness is split in two, alphaT
+// along the grain direction T and alphaB across it, so the microfacet lobe is an ellipse: wide across the grain
+// (the streak of a brushed-metal highlight), narrow along it. With alphaT == alphaB it reduces to distributionGGX.
+static float distributionGGXAnisotropic(float NdotH, float ToH, float BoH, float alphaT, float alphaB) {
+    float a2 = alphaT * alphaB;
+    float3 f = float3(alphaB * ToH, alphaT * BoH, a2 * NdotH);
+    float w2 = a2 / dot(f, f);
+    return a2 * w2 * w2 / PI;
+}
+
+// Height-correlated Smith visibility for the anisotropic lobe. It already contains the 1 / (4 NdotV NdotL) of
+// the specular BRDF, so unlike the isotropic path the result is multiplied straight in.
+static float visibilityGGXAnisotropic(float alphaT, float alphaB, float ToV, float BoV, float ToL, float BoL,
+                                      float NdotV, float NdotL) {
+    float lambdaV = NdotL * length(float3(alphaT * ToV, alphaB * BoV, NdotV));
+    float lambdaL = NdotV * length(float3(alphaT * ToL, alphaB * BoL, NdotL));
+    return saturate(0.5 / max(lambdaV + lambdaL, 1e-5));
+}
+
 static float3 fresnelSchlick(float cosTheta, float3 F0) {
     return F0 + (1.0 - F0) * powr(saturate(1.0 - cosTheta), 5.0);
 }
@@ -446,6 +467,7 @@ fragment SceneFragmentOut fragmentMain(RasterData in [[stage_in]],
                              texture2d<float> thicknessMap [[texture(9 + 2 * MAX_LIGHTS)]],
                              texture2d<float> transmissionSource [[texture(10 + 2 * MAX_LIGHTS)]],
                              texture2d<float> screenAOMap [[texture(11 + 2 * MAX_LIGHTS)]],
+                             texture2d<float> anisotropyMap [[texture(12 + 2 * MAX_LIGHTS)]],
                              constant MaterialParams& material [[buffer(2)]],
                              constant float& environmentIntensity [[buffer(3)]],
                              constant ClusterParams& cluster [[buffer(4)]],
@@ -504,6 +526,34 @@ fragment SceneFragmentOut fragmentMain(RasterData in [[stage_in]],
     float3 F0 = mix(float3(dielectricF0), albedo, metallic);
     float NdotV = max(dot(normal, viewDir), 1e-4);
 
+    // Anisotropic reflection (KHR_materials_anisotropy). The grain direction starts as the vertex tangent turned by
+    // the rotation (the Scene Editor's plus the glTF material's) within the tangent plane; an anisotropy texture
+    // replaces it per texel (RG, as a normal map's xy would be) and scales the strength (B). The roughness is then
+    // split into alphaT along the grain and alphaB across it, per the glTF spec: only the tangent one grows with the
+    // strength, which stretches the highlight across the grain. At strength 0 the isotropic path below runs unchanged.
+    float anisotropyStrength = saturate(instance.materialAniso.x + material.anisotropyParams.x);
+    float anisotropyRotation = instance.materialAniso.y + material.anisotropyParams.y;
+    float2 grain = float2(cos(anisotropyRotation), sin(anisotropyRotation));
+    if (useTextures && material.anisotropyParams.w > 0.5) {
+        float3 anisotropyTexel = anisotropyMap.sample(smp, in.uv).rgb;
+        float2 texelDirection = anisotropyTexel.rg * 2.0 - 1.0;
+        grain = float2(texelDirection.x * grain.x - texelDirection.y * grain.y,
+                       texelDirection.x * grain.y + texelDirection.y * grain.x);
+        anisotropyStrength *= anisotropyTexel.b;
+    }
+    const bool anisotropic = anisotropyStrength > 1e-3;
+    float3 anisotropicT = float3(0.0), anisotropicB = float3(0.0);
+    float alphaT = 0.0, alphaB = 0.0;
+    if (anisotropic) {
+        float3 vertexTangent = normalize(in.worldTangent.xyz);
+        float3 tangent = normalize(vertexTangent - normal * dot(vertexTangent, normal)); // square to the shading normal
+        float3 bitangent = cross(normal, tangent) * (in.worldTangent.w < 0.0 ? -1.0 : 1.0);
+        anisotropicT = normalize(tangent * grain.x + bitangent * grain.y);
+        anisotropicB = cross(normal, anisotropicT);
+        alphaB = roughness * roughness;
+        alphaT = mix(alphaB, 1.0, anisotropyStrength * anisotropyStrength);
+    }
+
     // Image-based lighting (split-sum approximation): the environment is precomputed once (see
     // Environment.cpp and the *Kernel functions at the bottom of this file) into a diffuse irradiance
     // cube, a specular cube prefiltered per roughness (one mip per roughness step), and a 2D BRDF
@@ -515,6 +565,17 @@ fragment SceneFragmentOut fragmentMain(RasterData in [[stage_in]],
 
     float3 R = reflect(-viewDir, normal);
     float lod = roughness * float(prefilterMap.get_num_mip_levels() - 1);
+    if (anisotropic) {
+        // The prefiltered environment is isotropic, so a stretched reflection is faked the way the glTF Sample Viewer
+        // does: the reflection vector is bent toward a normal that leans along the grain (more so the stronger the
+        // anisotropy and the smoother the surface), and the blur level follows the rougher, tangent-direction lobe.
+        float3 grainTangent = cross(anisotropicB, viewDir);
+        float3 grainNormal = cross(grainTangent, anisotropicB);
+        float bend = 1.0 - anisotropyStrength * (1.0 - roughness);
+        float3 bentNormal = normalize(mix(grainNormal, normal, bend * bend * bend * bend));
+        R = reflect(-viewDir, bentNormal);
+        lod = mix(roughness, 1.0, anisotropyStrength * anisotropyStrength) * float(prefilterMap.get_num_mip_levels() - 1);
+    }
     float3 prefiltered = prefilterMap.sample(envSampler, R, level(lod)).rgb;
     float2 envBRDF = brdfLUT.sample(envSampler, float2(NdotV, roughness)).rg;
     float3 specularIBL = prefiltered * (F_ibl * envBRDF.x + envBRDF.y);
@@ -647,10 +708,21 @@ fragment SceneFragmentOut fragmentMain(RasterData in [[stage_in]],
         float NdotH = max(dot(normal, halfVector), 0.0);
         float VdotH = max(dot(viewDir, halfVector), 0.0);
 
-        float D = distributionGGX(NdotH, roughness);
-        float G = geometrySmith(NdotV, NdotL, roughness);
         float3 F = fresnelSchlick(VdotH, F0);
-        float3 specular = (D * G * F) / max(4.0 * NdotV * NdotL, 1e-4);
+        float3 specular;
+        if (anisotropic) {
+            float D = distributionGGXAnisotropic(NdotH, dot(anisotropicT, halfVector), dot(anisotropicB, halfVector),
+                                                 alphaT, alphaB);
+            float visibility = visibilityGGXAnisotropic(alphaT, alphaB,
+                                                        dot(anisotropicT, viewDir), dot(anisotropicB, viewDir),
+                                                        dot(anisotropicT, lightDir), dot(anisotropicB, lightDir),
+                                                        NdotV, NdotL);
+            specular = D * visibility * F;
+        } else {
+            float D = distributionGGX(NdotH, roughness);
+            float G = geometrySmith(NdotV, NdotL, roughness);
+            specular = (D * G * F) / max(4.0 * NdotV * NdotL, 1e-4);
+        }
         // Energy conservation: light reflected specularly (F) can't also be diffusely scattered, and
         // metals absorb whatever they don't reflect.
         float3 kD = (1.0 - F) * (1.0 - metallic);

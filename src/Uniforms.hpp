@@ -45,6 +45,7 @@ struct InstanceData {
     simd::float4x4 model;
     simd::float4 materialAlbedo;  // rgb = albedo tint
     simd::float4 materialParams;  // x = metallic, y = roughness, z = ao, w = useTextures (0/1)
+    simd::float4 materialAniso;   // x = anisotropy (0..1), y = rotation of the grain in radians
 };
 
 // Overlay draws (axis gizmo, light markers and rays) only need a transform. Must match Uniforms in Shader.metal.
@@ -69,6 +70,9 @@ struct MaterialParams {
     // in mesh units (scaled by the object's model matrix at draw time); 1e30 = no absorption.
     simd::float4 transmissionParams = {0.0f, 0.0f, 1e30f, 1.5f}; // x = transmission, y = thickness, z = attenuation distance, w = IOR
     simd::float4 attenuationColor = {1.0f, 1.0f, 1.0f, 0.0f};    // rgb = color the volume tints light toward over attenuation distance
+    // KHR_materials_anisotropy: strength (0 = isotropic), rotation of the grain in radians, and whether an
+    // anisotropy texture (RG = grain direction, B = strength) is bound.
+    simd::float4 anisotropyParams = {0.0f, 0.0f, 0.0f, 0.0f}; // x = strength, y = rotation, w = has texture (0/1)
 };
 
 // The camera's perspective projection alone (no view, no model) - see computeViewProj. Main.cpp reads

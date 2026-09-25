@@ -672,6 +672,9 @@ int main() {
     // and a straight-up tangent-space normal (leaves the vertex normal unperturbed).
     MTL::Texture* whiteTexture = createSolidTexture(device, 255, 255, 255, 255, /*isSRGB=*/false);
     MTL::Texture* flatNormalTexture = createSolidTexture(device, 128, 128, 255, 255, /*isSRGB=*/false);
+    // ... and the stand-in for a missing anisotropy texture: grain direction (1, 0) (RG = 255, 128) at full strength (B).
+    // Only sampled where a material says it has one, but the slot must always hold a texture.
+    MTL::Texture* neutralAnisotropyTexture = createSolidTexture(device, 255, 128, 255, 255, /*isSRGB=*/false);
 
     MTL::SamplerDescriptor* samplerDesc = MTL::SamplerDescriptor::alloc()->init();
     samplerDesc->setMinFilter(MTL::SamplerMinMagFilterLinear);
@@ -1233,6 +1236,7 @@ int main() {
             constexpr NS::UInteger kEmissiveTextureSlot = 7 + 2 * kMaxLights;
             constexpr NS::UInteger kTransmissionTextureSlot = 8 + 2 * kMaxLights;
             constexpr NS::UInteger kThicknessTextureSlot = 9 + 2 * kMaxLights;
+            constexpr NS::UInteger kAnisotropyTextureSlot = 12 + 2 * kMaxLights;
             constexpr NS::UInteger kTransmissionSourceSlot = 10 + 2 * kMaxLights;
             constexpr NS::UInteger kAOTextureSlot = 11 + 2 * kMaxLights;
             static const MaterialParams defaultParams;
@@ -1246,6 +1250,7 @@ int main() {
                 encoder->setFragmentTexture(mat.emissive ? mat.emissive : whiteTexture, kEmissiveTextureSlot);
                 encoder->setFragmentTexture(mat.transmission ? mat.transmission : whiteTexture, kTransmissionTextureSlot);
                 encoder->setFragmentTexture(mat.thickness ? mat.thickness : whiteTexture, kThicknessTextureSlot);
+                encoder->setFragmentTexture(mat.anisotropy ? mat.anisotropy : neutralAnisotropyTexture, kAnisotropyTextureSlot);
                 encoder->setFragmentBytes(&mat.params, sizeof(MaterialParams), 2);
             };
 
@@ -1617,6 +1622,7 @@ int main() {
                     hdrEncoder->setFragmentTexture(whiteTexture, kEmissiveTextureSlot);
                     hdrEncoder->setFragmentTexture(whiteTexture, kTransmissionTextureSlot);
                     hdrEncoder->setFragmentTexture(whiteTexture, kThicknessTextureSlot);
+                    hdrEncoder->setFragmentTexture(neutralAnisotropyTexture, kAnisotropyTextureSlot);
                     hdrEncoder->setFragmentBytes(set ? &set->params : &defaultParams, sizeof(MaterialParams), 2);
                     hdrEncoder->drawIndexedPrimitives(
                         MTL::PrimitiveTypeTriangle,

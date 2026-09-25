@@ -226,6 +226,8 @@ void drawSceneEditorPanel(Scene& scene, int& selectedIndex, TextureLibrary& text
                 ImGui::SliderFloat("Metallic", &m.metallic, 0.0f, 1.0f);
                 ImGui::SliderFloat("Roughness", &m.roughness, 0.0f, 1.0f);
                 ImGui::SliderFloat("AO", &m.ao, 0.0f, 1.0f);
+                ImGui::SliderFloat("Anisotropy", &m.anisotropy, 0.0f, 1.0f);
+                ImGui::SliderFloat("Aniso Rotation", &m.anisotropyRotation, 0.0f, 180.0f, "%.0f deg");
                 ImGui::TreePop();
             }
             if (obj.type == SceneObjectType::Mesh) {

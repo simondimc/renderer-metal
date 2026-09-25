@@ -46,6 +46,12 @@ struct Material {
     float ao = 1.0f;         // ambient occlusion multiplier on the image-based (ambient) lighting
     bool useTextures = true;
     std::string textureSet = kDefaultTextureSet;
+    // Anisotropic reflection (KHR_materials_anisotropy): 0 = the usual round highlight, up to 1 = a highlight
+    // stretched into a streak, as on brushed metal, hair or satin. The streak runs across the grain, whose direction
+    // is the mesh's tangent turned by anisotropyRotation degrees in the tangent plane. Added to what a glTF
+    // material brings itself, so a glTF mesh with its own anisotropy is untouched at 0.
+    float anisotropy = 0.0f;
+    float anisotropyRotation = 0.0f;
 };
 
 // A single instance in the scene - either a cube (mesh/textures are shared, only the transform

@@ -371,6 +371,17 @@ std::vector<MeshMaterial> loadGltfMaterials(MTL::Device* device, const cgltf_dat
             }
         }
 
+        // KHR_materials_anisotropy: a highlight stretched along a grain direction (brushed metal, hair, satin).
+        // The texture, when there is one, gives the direction per texel in RG and scales the strength with B.
+        if (src.has_anisotropy) {
+            dst.params.anisotropyParams.x = src.anisotropy.anisotropy_strength;
+            dst.params.anisotropyParams.y = src.anisotropy.anisotropy_rotation;
+            if (src.anisotropy.anisotropy_texture.texture) {
+                dst.anisotropy = loadGltfImage(device, data, src.anisotropy.anisotropy_texture.texture->image, false, gltfPath, cache);
+                dst.params.anisotropyParams.w = 1.0f;
+            }
+        }
+
         switch (src.alpha_mode) {
             case cgltf_alpha_mode_mask:  dst.params.alphaParams.x = (float)AlphaMode::Mask; break;
             case cgltf_alpha_mode_blend: dst.params.alphaParams.x = (float)AlphaMode::Blend; break;

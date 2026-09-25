@@ -23,6 +23,7 @@ struct MeshMaterial {
     MTL::Texture* emissive = nullptr;  // sRGB
     MTL::Texture* transmission = nullptr; // R = transmission amount
     MTL::Texture* thickness = nullptr;    // G = thickness (times the thickness factor)
+    MTL::Texture* anisotropy = nullptr;   // RG = grain direction in the tangent plane (as a normal map would), B = strength
     AlphaMode alphaMode() const { return (AlphaMode)(int)params.alphaParams.x; }
     bool isTransmissive() const { return params.transmissionParams.x > 0.0f; }
     DrawPass drawPass() const {

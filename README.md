@@ -44,7 +44,7 @@
 - [x] Normal Mapping
 - Bump/Parallax Mapping
 - [x] Image-Based Lighting (IBL)
-- Anisotropic Shading
+- [x] Anisotropic Shading
 - [x] Transmission & Volume (glass)
 - [x] Emissive Materials
 - [x] Alpha Modes (Mask/Blend)

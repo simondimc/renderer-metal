@@ -49,6 +49,7 @@ InstanceData computeInstanceData(const simd::float4x4& objectModel, const Materi
     data.model = objectModel;
     data.materialAlbedo = simd_make_float4(m.albedo[0], m.albedo[1], m.albedo[2], 1.0f);
     data.materialParams = simd_make_float4(m.metallic, m.roughness, m.ao, m.useTextures ? 1.0f : 0.0f);
+    data.materialAniso = simd_make_float4(m.anisotropy, m.anisotropyRotation * ((float)M_PI / 180.0f), 0.0f, 0.0f);
     return data;
 }
 
