@@ -10,6 +10,7 @@ bloom 0 0
 dof 0 0 0
 motionblur 0
 lensflare 0
+ambientocclusion 3 0.5 gtao
 environment 1 1
 environmentmap kloofendal_48d_partly_cloudy_puresky_4k
 object Cube

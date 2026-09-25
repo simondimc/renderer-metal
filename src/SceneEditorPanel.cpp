@@ -26,6 +26,8 @@ bool usesTextureSet(const SceneObject& obj) {
 
 // Order must match ToneMapOperator in Scene.hpp
 constexpr const char* kToneMapOperatorNames[] = {"Clamp", "Reinhard", "ACES", "Uncharted2"};
+// Order must match AmbientOcclusionMode in Scene.hpp
+constexpr const char* kAmbientOcclusionModeNames[] = {"GTAO", "SSAO"};
 } // namespace
 
 void drawSceneEditorPanel(Scene& scene, int& selectedIndex, TextureLibrary& textureLibrary,
@@ -57,6 +59,17 @@ void drawSceneEditorPanel(Scene& scene, int& selectedIndex, TextureLibrary& text
         ImGui::DragFloat("Intensity", &scene.environmentIntensity, 0.01f, 0.0f, 10.0f);
         ImGui::Checkbox("Show Sky", &scene.showSky);
         ImGui::TextDisabled("(.hdr/.exr panoramas in environment/)");
+        ImGui::TreePop();
+    }
+
+    if (ImGui::TreeNode("Ambient Occlusion")) {
+        int aoModeIndex = (int)scene.ambientOcclusionMode;
+        if (ImGui::Combo("AO Mode", &aoModeIndex, kAmbientOcclusionModeNames, IM_ARRAYSIZE(kAmbientOcclusionModeNames))) {
+            scene.ambientOcclusionMode = (AmbientOcclusionMode)aoModeIndex;
+        }
+        ImGui::DragFloat("AO Strength", &scene.ambientOcclusionStrength, 0.01f, 0.0f, 4.0f);
+        ImGui::DragFloat("AO Radius", &scene.ambientOcclusionRadius, 0.01f, 0.05f, 5.0f);
+        ImGui::TextDisabled("(0 strength = off)");
         ImGui::TreePop();
     }
 

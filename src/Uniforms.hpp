@@ -64,6 +64,10 @@ struct MaterialParams {
     simd::float4 attenuationColor = {1.0f, 1.0f, 1.0f, 0.0f};    // rgb = color the volume tints light toward over attenuation distance
 };
 
+// The camera's perspective projection alone (no view, no model) - see computeViewProj. Main.cpp reads
+// its [0][0]/[1][1] scales to reconstruct view-space positions from depth for ambient occlusion.
+simd::float4x4 computeProjection(int width, int height);
+
 // Camera-only view-projection (no object model matrix) - see its own comment in Uniforms.cpp.
 // Main.cpp uses this directly for motion blur's frame-to-frame reprojection.
 simd::float4x4 computeViewProj(const Camera& cam, int width, int height);

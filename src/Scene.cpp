@@ -88,6 +88,14 @@ const char* toneMapOperatorName(ToneMapOperator op) {
     }
 }
 
+const char* ambientOcclusionModeName(AmbientOcclusionMode mode) {
+    return mode == AmbientOcclusionMode::SSAO ? "ssao" : "gtao";
+}
+
+AmbientOcclusionMode parseAmbientOcclusionMode(const std::string& name) {
+    return name == "ssao" ? AmbientOcclusionMode::SSAO : AmbientOcclusionMode::GTAO;
+}
+
 ToneMapOperator parseToneMapOperator(const std::string& name) {
     if (name == "clamp")      return ToneMapOperator::Clamp;
     if (name == "reinhard")   return ToneMapOperator::Reinhard;
@@ -131,6 +139,8 @@ simd::float3 objectUp(const SceneObject& obj) {
 //   dof <focusDistance> <focusRange> <strength>  (global - see Scene::dofFocusDistance/Range/Strength)
 //   motionblur <strength>   (global - see Scene::motionBlurStrength)
 //   lensflare <strength>    (global - see Scene::lensFlareStrength)
+//   ambientocclusion <strength> <radius> [gtao|ssao]   (global - see Scene::ambientOcclusionStrength/
+//                            Radius/Mode; the mode is optional, absent = gtao)
 //   environment <intensity> <showSky 0|1>   (global - see Scene::environmentIntensity/showSky)
 //   environmentmap <name>   (global - .hdr file stem under environment/, see Scene::environment;
 //                            absent = kDefaultEnvironment, so old scene files load unchanged)
@@ -170,6 +180,8 @@ bool saveScene(const Scene& scene, const std::string& path) {
     out << "dof " << scene.dofFocusDistance << " " << scene.dofFocusRange << " " << scene.dofStrength << "\n";
     out << "motionblur " << scene.motionBlurStrength << "\n";
     out << "lensflare " << scene.lensFlareStrength << "\n";
+    out << "ambientocclusion " << scene.ambientOcclusionStrength << " " << scene.ambientOcclusionRadius << " "
+        << ambientOcclusionModeName(scene.ambientOcclusionMode) << "\n";
     out << "environment " << scene.environmentIntensity << " " << (scene.showSky ? 1 : 0) << "\n";
     out << "environmentmap " << scene.environment << "\n";
     for (const auto& obj : scene.objects) {
@@ -244,6 +256,10 @@ bool loadScene(Scene& scene, const std::string& path) {
             ss >> loaded.motionBlurStrength;
         } else if (keyword == "lensflare") {
             ss >> loaded.lensFlareStrength;
+        } else if (keyword == "ambientocclusion") {
+            std::string modeName;
+            ss >> loaded.ambientOcclusionStrength >> loaded.ambientOcclusionRadius >> modeName;
+            loaded.ambientOcclusionMode = parseAmbientOcclusionMode(modeName);
         } else if (keyword == "environment") {
             int showSky = 1;
             ss >> loaded.environmentIntensity >> showSky;

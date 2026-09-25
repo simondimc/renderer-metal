@@ -324,6 +324,7 @@ fragment float4 fragmentMain(RasterData in [[stage_in]],
                              texture2d<float> transmissionMap [[texture(8 + 2 * MAX_LIGHTS)]],
                              texture2d<float> thicknessMap [[texture(9 + 2 * MAX_LIGHTS)]],
                              texture2d<float> transmissionSource [[texture(10 + 2 * MAX_LIGHTS)]],
+                             texture2d<float> screenAOMap [[texture(11 + 2 * MAX_LIGHTS)]],
                              constant MaterialParams& material [[buffer(2)]],
                              constant float& environmentIntensity [[buffer(3)]],
                              sampler smp [[sampler(0)]],
@@ -426,7 +427,22 @@ fragment float4 fragmentMain(RasterData in [[stage_in]],
         transmitted = background * albedo * attenuation;
     }
 
-    float3 litColor = (kD_ibl * diffuseIBL * (1.0 - transmission) + specularIBL) * ao * environmentIntensity;
+    // Screen-space ambient occlusion (see aoFragmentMain): the visibility of this pixel's hemisphere,
+    // computed from nearby depth. It only dims ambient light - direct lights have their own shadow
+    // maps. Where AO is off (or for glass/blend draws, whose pixels the AO buffer doesn't describe)
+    // Main.cpp binds a white texture, so this reads 1 and changes nothing.
+    // The diffuse term uses Jimenez et al.'s multi-bounce fit, which brightens the occlusion of light
+    // surfaces (light bouncing between nearby walls); the specular term is Lagarde's specular
+    // occlusion, which depends on roughness and view angle since a mirror-like lobe is only blocked
+    // along its reflection direction.
+    float screenAO = screenAOMap.sample(screenSampler, in.position.xy / float2(screenAOMap.get_width(), screenAOMap.get_height())).r;
+    float3 aoA = 2.0404 * albedo - 0.3324;
+    float3 aoB = -4.7951 * albedo + 0.6417;
+    float3 aoC = 2.7552 * albedo + 0.6903;
+    float3 diffuseAO = saturate(max(float3(screenAO), ((screenAO * aoA + aoB) * screenAO + aoC) * screenAO));
+    float specularAO = saturate(pow(NdotV + screenAO, exp2(-16.0 * roughness - 1.0)) - 1.0 + screenAO);
+
+    float3 litColor = (kD_ibl * diffuseIBL * (1.0 - transmission) * diffuseAO + specularIBL * specularAO) * ao * environmentIntensity;
     litColor += transmission * (1.0 - metallic) * (1.0 - F_ibl) * transmitted;
 
     int lightCount = uniforms.lightMeta.x;
@@ -590,6 +606,248 @@ fragment float4 blurFragmentMain(PostProcessVertexOut in [[stage_in]],
         result += tex.sample(smp, in.uv - step * float(i)).rgb * weights[i];
     }
     return float4(result, 1.0);
+}
+
+// --- Ambient occlusion (GTAO by default: Jimenez et al., "Practical Real-Time Strategies for Accurate Indirect
+// Occlusion", 2016, in the form XeGTAO popularized). Three passes run before the main scene pass
+// (see Main.cpp): a depth + normal prepass, the occlusion estimate itself, and a depth-aware blur.
+// The main pass then multiplies the result into its ambient/image-based light (see fragmentMain).
+
+// Depth prepass: the opaque geometry's depth (hardware depth attachment) and world-space normal
+// (color). Mask materials discard exactly like the shadow pass does, so a cut-out leaf casts no
+// occlusion where it is transparent. Draws through the same lambda as the shadow casters, so it
+// binds the same slots: uniforms at vertex buffer 1, albedo at texture 0, material at buffer 4.
+struct AOPrepassRasterData {
+    float4 position [[position]];
+    float2 uv;
+    float3 worldNormal;
+};
+
+vertex AOPrepassRasterData aoPrepassVertexMain(VertexInput in [[stage_in]],
+                                               constant Uniforms& uniforms [[buffer(1)]]) {
+    AOPrepassRasterData out;
+    out.position = uniforms.mvpMatrix * float4(in.position, 1.0);
+    out.uv = in.uv;
+    out.worldNormal = (uniforms.modelMatrix * float4(in.normal, 0.0)).xyz;
+    return out;
+}
+
+fragment float4 aoPrepassFragmentMain(AOPrepassRasterData in [[stage_in]],
+                                      constant MaterialParams& material [[buffer(4)]],
+                                      texture2d<float> albedoMap [[texture(0)]]) {
+    if (int(material.alphaParams.x + 0.5) == ALPHA_MODE_MASK) {
+        constexpr sampler alphaSampler(filter::linear, mip_filter::linear, address::repeat);
+        float alpha = albedoMap.sample(alphaSampler, in.uv).a * material.baseColorFactor.a;
+        if (alpha < material.alphaParams.y) discard_fragment();
+    }
+    return float4(normalize(in.worldNormal), 0.0);
+}
+
+struct AOParams {
+    float4x4 viewMatrix; // world -> view, to bring the prepass's world normals into view space
+    float projScaleX;    // the projection matrix's [0][0] and [1][1] - reconstruct view position from depth
+    float projScaleY;
+    float radius;        // world-space reach of the occlusion search
+    float strength;      // power the visibility is raised to
+    float mode;          // AO_MODE_* (cast to int)
+};
+
+// Must match the AmbientOcclusionMode enum in Scene.hpp
+#define AO_MODE_GTAO 0
+#define AO_MODE_SSAO 1
+
+#define AO_SSAO_SAMPLES 16     // hemisphere taps per pixel in the classic SSAO mode
+#define AO_SLICES 3            // directions searched per pixel (each looks both ways along its line)
+#define AO_STEPS 6             // depth taps per direction per side
+#define AO_MAX_PIXEL_RADIUS 96.0 // cap on the screen-space search reach, so nearby surfaces stay cache-friendly
+
+// Hardware depth ([0,1]) -> positive distance along the view axis (reverses the projection matrix,
+// same formula the post-process pass uses for Depth of Field).
+static float aoLinearDepth(float rawDepth) {
+    return (CAMERA_FAR_PLANE * CAMERA_NEAR_PLANE)
+         / (CAMERA_FAR_PLANE - rawDepth * (CAMERA_FAR_PLANE - CAMERA_NEAR_PLANE));
+}
+
+// View-space position (x right, y up, camera looks down -Z) of a pixel centre at the given depth.
+static float3 aoViewPosition(float2 pixelCenter, float rawDepth, float2 size, constant AOParams& params) {
+    float2 ndc = float2(pixelCenter.x / size.x * 2.0 - 1.0, 1.0 - pixelCenter.y / size.y * 2.0);
+    float z = aoLinearDepth(rawDepth);
+    return float3(ndc.x * z / params.projScaleX, ndc.y * z / params.projScaleY, -z);
+}
+
+// Classic SSAO (Crytek-style, normal-oriented hemisphere): scatter AO_SSAO_SAMPLES points through the
+// hemisphere above the surface, project each back to the screen, and count it as occluded when the
+// depth buffer there is in front of it. Cosine-weighted directions with lengths that bunch up near the
+// surface, the whole pattern spun about the normal by per-pixel noise (the blur pass averages that
+// away). A range check fades an occluder out when it sits far in front of the sample rather than
+// close to it, so a distant foreground object doesn't darken what's behind it.
+static float aoClassicSSAO(uint2 pixel, float3 P, float3 N, float2 size, float noise,
+                           depth2d<float> depthTexture, constant AOParams& params) {
+    float3 helper = abs(N.y) < 0.99 ? float3(0.0, 1.0, 0.0) : float3(1.0, 0.0, 0.0);
+    float3 tangent = normalize(cross(helper, N));
+    float3 bitangent = cross(N, tangent);
+
+    float bias = 0.05 * params.radius;
+    float occlusion = 0.0;
+    for (int i = 0; i < AO_SSAO_SAMPLES; i++) {
+        float u = (float(i) + 0.5) / float(AO_SSAO_SAMPLES);
+        float phi = float(i) * 2.39996323 + noise * 2.0 * PI; // golden angle spiral, rotated per pixel
+        float r = sqrt(u);
+        float3 local = float3(r * cos(phi), r * sin(phi), sqrt(1.0 - u)); // z = along the normal
+        float scale = mix(0.1, 1.0, u * u);
+        float3 samplePos = P + (tangent * local.x + bitangent * local.y + N * local.z) * (params.radius * scale);
+
+        float sampleDist = -samplePos.z; // positive distance along the view axis
+        if (sampleDist <= 0.0) continue;
+        float2 ndc = float2(samplePos.x * params.projScaleX, samplePos.y * params.projScaleY) / sampleDist;
+        float2 samplePixel = float2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5) * size;
+        if (any(samplePixel < 0.0) || any(samplePixel >= size)) continue;
+
+        float d = depthTexture.read(uint2(samplePixel));
+        if (d >= 1.0) continue; // sky: nothing there
+        float sceneDist = aoLinearDepth(d);
+        float rangeCheck = smoothstep(0.0, 1.0, params.radius / max(abs(-P.z - sceneDist), 1e-4));
+        occlusion += (sceneDist <= sampleDist - bias ? 1.0 : 0.0) * rangeCheck;
+    }
+    return 1.0 - occlusion / float(AO_SSAO_SAMPLES);
+}
+
+fragment float aoFragmentMain(PostProcessVertexOut in [[stage_in]],
+                              depth2d<float> depthTexture [[texture(0)]],
+                              texture2d<float> normalTexture [[texture(1)]],
+                              constant AOParams& params [[buffer(0)]]) {
+    uint2 pixel = uint2(in.position.xy);
+    float rawDepth = depthTexture.read(pixel);
+    if (rawDepth >= 1.0) return 1.0; // sky / nothing drawn: nothing to occlude
+
+    float2 size = float2(depthTexture.get_width(), depthTexture.get_height());
+    float3 P = aoViewPosition(float2(pixel) + 0.5, rawDepth, size, params);
+    // Nudge toward the camera a hair so a flat surface's own neighbours (whose reconstructed depth
+    // wobbles by a few ulp) don't read as occluders sitting slightly in front of it.
+    P *= 0.9992;
+    float3 V = normalize(-P);
+
+    float3 N = normalize((params.viewMatrix * float4(normalTexture.read(pixel).xyz, 0.0)).xyz);
+    if (dot(N, V) < 0.0) N = -N; // back face seen from inside: shade it as facing the camera
+
+    float pixelRadius = params.radius * 0.5 * params.projScaleY * size.y / -P.z;
+    if (pixelRadius < 1.5) return 1.0; // too far away for the search to reach a neighbouring pixel
+    pixelRadius = min(pixelRadius, AO_MAX_PIXEL_RADIUS);
+
+    // Two decorrelated per-pixel noise values: a rotation of the slice pattern and a jitter of the
+    // tap distances. The blur pass below averages the resulting noise away.
+    float noiseSlice = fract(0.5 + dot(float2(pixel), float2(0.7548776662, 0.5698402910)));
+    float noiseStep = fract(52.9829189 * fract(dot(float2(pixel), float2(0.06711056, 0.00583715))));
+
+    // Samples fade out toward the edge of the radius so an occluder entering/leaving the search
+    // sphere doesn't pop.
+    constexpr float falloffRange = 0.615;
+    float falloffMul = -1.0 / (falloffRange * params.radius);
+    float falloffAdd = (1.0 - falloffRange) / falloffRange + 1.0;
+    float minS = 1.3 / pixelRadius; // keep even the nearest tap out of the centre pixel
+
+    if (int(params.mode + 0.5) == AO_MODE_SSAO) {
+        return max(pow(aoClassicSSAO(pixel, P, N, size, noiseStep, depthTexture, params), params.strength), 0.03);
+    }
+
+    float visibility = 0.0;
+    for (int slice = 0; slice < AO_SLICES; slice++) {
+        float phi = (float(slice) + noiseSlice) / float(AO_SLICES) * PI;
+        float cosPhi = cos(phi), sinPhi = sin(phi);
+        float2 omega = float2(cosPhi, -sinPhi); // pixel space: +y is down, so flip against view-space y
+        float3 directionVec = float3(cosPhi, sinPhi, 0.0);
+
+        // The slice's plane contains V and directionVec. Project the normal into it: the angle
+        // between that projection and V ("n") is what bounds the visible arc on each side.
+        float3 orthoDirectionVec = directionVec - dot(directionVec, V) * V;
+        float3 axisVec = normalize(cross(directionVec, V));
+        float3 projectedNormal = N - axisVec * dot(N, axisVec);
+        float projectedNormalLength = length(projectedNormal);
+        float signNorm = sign(dot(orthoDirectionVec, projectedNormal));
+        float cosNorm = saturate(dot(projectedNormal, V) / max(projectedNormalLength, 1e-5));
+        float n = signNorm * acos(cosNorm);
+
+        // Start each side at the tangent plane's horizon (nothing occludes below it), then raise it to
+        // the highest occluder found marching outward.
+        float lowHorizonCos0 = cos(n + PI * 0.5);
+        float lowHorizonCos1 = cos(n - PI * 0.5);
+        float horizonCos0 = lowHorizonCos0;
+        float horizonCos1 = lowHorizonCos1;
+
+        for (int tap = 0; tap < AO_STEPS; tap++) {
+            float s = (float(tap) + noiseStep) / float(AO_STEPS);
+            s *= s; // more taps near the centre, where occlusion changes fastest
+            s = s + minS - s * minS;
+            float2 offset = round(omega * (s * pixelRadius));
+
+            float2 samplePixel0 = float2(pixel) + offset;
+            float2 samplePixel1 = float2(pixel) - offset;
+
+            if (all(samplePixel0 >= 0.0) && all(samplePixel0 < size)) {
+                float d = depthTexture.read(uint2(samplePixel0));
+                if (d < 1.0) {
+                    float3 delta = aoViewPosition(floor(samplePixel0) + 0.5, d, size, params) - P;
+                    float dist = length(delta);
+                    float shc = dot(delta, V) / max(dist, 1e-5);
+                    shc = mix(lowHorizonCos0, shc, saturate(dist * falloffMul + falloffAdd));
+                    horizonCos0 = max(horizonCos0, shc);
+                }
+            }
+            if (all(samplePixel1 >= 0.0) && all(samplePixel1 < size)) {
+                float d = depthTexture.read(uint2(samplePixel1));
+                if (d < 1.0) {
+                    float3 delta = aoViewPosition(floor(samplePixel1) + 0.5, d, size, params) - P;
+                    float dist = length(delta);
+                    float shc = dot(delta, V) / max(dist, 1e-5);
+                    shc = mix(lowHorizonCos1, shc, saturate(dist * falloffMul + falloffAdd));
+                    horizonCos1 = max(horizonCos1, shc);
+                }
+            }
+        }
+
+        // Horizon angles, clamped to the hemisphere around the normal, integrated analytically
+        // (cosine-weighted) over the visible arc between them.
+        float h0 = -acos(clamp(horizonCos1, -1.0, 1.0));
+        float h1 = acos(clamp(horizonCos0, -1.0, 1.0));
+        h0 = n + clamp(h0 - n, -PI * 0.5, PI * 0.5);
+        h1 = n + clamp(h1 - n, -PI * 0.5, PI * 0.5);
+        float iarc0 = (cosNorm + 2.0 * h0 * sin(n) - cos(2.0 * h0 - n)) * 0.25;
+        float iarc1 = (cosNorm + 2.0 * h1 * sin(n) - cos(2.0 * h1 - n)) * 0.25;
+        visibility += projectedNormalLength * (iarc0 + iarc1);
+    }
+
+    visibility = saturate(visibility / float(AO_SLICES));
+    return max(pow(visibility, params.strength), 0.03);
+}
+
+// Separable 7-tap bilateral blur (run horizontally, then vertically): averages away the per-pixel
+// noise aoFragmentMain leaves, but weights each tap down when its depth differs from the centre's,
+// so the occlusion of a near object doesn't bleed onto the far surface behind its silhouette.
+fragment float aoBlurFragmentMain(PostProcessVertexOut in [[stage_in]],
+                                  texture2d<float> aoTexture [[texture(0)]],
+                                  depth2d<float> depthTexture [[texture(1)]],
+                                  constant float2& direction [[buffer(0)]]) {
+    int2 pixel = int2(in.position.xy);
+    int2 maxPixel = int2(aoTexture.get_width() - 1, aoTexture.get_height() - 1);
+    float centerRaw = depthTexture.read(uint2(pixel));
+    if (centerRaw >= 1.0) return 1.0;
+    float centerDepth = aoLinearDepth(centerRaw);
+
+    float sum = 0.0;
+    float weightSum = 0.0;
+    for (int i = -3; i <= 3; i++) {
+        int2 p = clamp(pixel + int2(direction) * i, int2(0), maxPixel);
+        float rawDepth = depthTexture.read(uint2(p));
+        float spatial = exp(-float(i * i) / 8.0);
+        // Sky taps count as infinitely far away (weight 0); otherwise the weight falls off linearly
+        // to 0 at a 4% relative depth difference.
+        float depthWeight = rawDepth >= 1.0 ? 0.0
+            : saturate(1.0 - abs(aoLinearDepth(rawDepth) - centerDepth) / (0.04 * centerDepth));
+        float w = spatial * depthWeight;
+        sum += aoTexture.read(uint2(p)).r * w;
+        weightSum += w;
+    }
+    return sum / max(weightSum, 1e-4);
 }
 
 struct PostProcessParams {

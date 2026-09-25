@@ -26,6 +26,12 @@ constexpr const char* kDefaultTextureSet = "metal_plate_4k";
 // scene files without an "environmentmap" line use it.
 constexpr const char* kDefaultEnvironment = "procedural";
 
+// Which estimator the ambient occlusion passes use (see aoFragmentMain in Shader.metal). GTAO searches
+// for the horizon in a few screen-space directions and integrates the visible arc analytically -
+// cleaner and closer to ground truth. SSAO is the classic normal-oriented hemisphere sampler: cheaper
+// to reason about, but noisier and it tends to over-darken. Must match AO_MODE_* in Shader.metal.
+enum class AmbientOcclusionMode { GTAO = 0, SSAO = 1 };
+
 // Metallic-roughness PBR material (see fragmentMain in Shader.metal). Cubes and .obj meshes take
 // their albedo/normal/roughness/metallic maps from the texture set named by textureSet (glTF meshes
 // bring their own materials instead); useTextures chooses between those maps and flat scalar values.
@@ -98,6 +104,14 @@ struct Scene {
     // Lens Flare: 0 = off - glow + ghost artifacts for lights on-screen and unoccluded. See
     // LensFlareLight in Shader.metal and Main.cpp's per-light screen projection.
     float lensFlareStrength = 0.0f;
+    // Ambient occlusion (GTAO or SSAO - see aoFragmentMain in Shader.metal and Main.cpp's AO passes): darkens
+    // the ambient/image-based light where nearby geometry blocks it (creases, contact points).
+    // Strength is the power the raw visibility is raised to (0 = off and the AO passes are skipped
+    // entirely, 1 = physically plausible, higher = darker); radius is the world-space reach of the
+    // occlusion search.
+    float ambientOcclusionStrength = 0.0f;
+    float ambientOcclusionRadius = 0.5f;
+    AmbientOcclusionMode ambientOcclusionMode = AmbientOcclusionMode::GTAO;
     // Image-based lighting (see fragmentMain in Shader.metal): the environment lights every surface
     // from all directions and is what metals reflect. environment names an entry of the
     // EnvironmentLibrary; intensity scales both the lighting and the visible sky; showSky = false

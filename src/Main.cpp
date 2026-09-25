@@ -201,6 +201,21 @@ int main() {
     selectionMaskDesc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
     MTL::Texture* selectionMaskTexture = device->newTexture(selectionMaskDesc);
 
+    // Ambient occlusion targets (see the AO passes in the render loop and aoFragmentMain in
+    // Shader.metal), all full resolution. The prepass writes world-space normals into aoNormalTexture
+    // (its depth goes into the shared depthTexture, which the main pass then clears and redraws);
+    // the GTAO pass writes visibility into aoTextureA, and the two blur passes bounce it A -> B -> A
+    // so the main pass reads the final result from A.
+    auto makeAOTexture = [&](MTL::PixelFormat format, NS::UInteger w, NS::UInteger h) {
+        MTL::TextureDescriptor* d = MTL::TextureDescriptor::texture2DDescriptor(format, w, h, false);
+        d->setStorageMode(MTL::StorageModePrivate);
+        d->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
+        return device->newTexture(d);
+    };
+    MTL::Texture* aoNormalTexture = makeAOTexture(MTL::PixelFormatRGBA16Float, (NS::UInteger)width, (NS::UInteger)height);
+    MTL::Texture* aoTextureA = makeAOTexture(MTL::PixelFormatR16Float, (NS::UInteger)width, (NS::UInteger)height);
+    MTL::Texture* aoTextureB = makeAOTexture(MTL::PixelFormatR16Float, (NS::UInteger)width, (NS::UInteger)height);
+
     // Shadow cube maps: one 6-face cube texture per light slot, storing that light's distance to
     // the nearest occluder in every direction (see Shader.metal's cubeShadowFragmentMain). All
     // kMaxLights are allocated up front since the shader's fixed-size texture array (see
@@ -388,6 +403,33 @@ int main() {
     blurPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatRGBA16Float);
     MTL::RenderPipelineState* blurPipelineState = device->newRenderPipelineState(blurPipeDesc, &error);
 
+    // Ambient occlusion PSOs: the depth + normal prepass (same vertex layout as the scene, writes
+    // the normal as color and depth as usual), then the GTAO estimate and its bilateral blur, both
+    // full-screen passes into R16Float - see the AO section of Shader.metal.
+    MTL::Function* aoPrepassVertFunc = library->newFunction(NS::String::string("aoPrepassVertexMain", NS::UTF8StringEncoding));
+    MTL::Function* aoPrepassFragFunc = library->newFunction(NS::String::string("aoPrepassFragmentMain", NS::UTF8StringEncoding));
+    MTL::RenderPipelineDescriptor* aoPrepassPipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
+    aoPrepassPipeDesc->setVertexFunction(aoPrepassVertFunc);
+    aoPrepassPipeDesc->setFragmentFunction(aoPrepassFragFunc);
+    aoPrepassPipeDesc->setVertexDescriptor(vertexDesc);
+    aoPrepassPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatRGBA16Float);
+    aoPrepassPipeDesc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
+    MTL::RenderPipelineState* aoPrepassPipelineState = device->newRenderPipelineState(aoPrepassPipeDesc, &error);
+
+    MTL::Function* aoFragFunc = library->newFunction(NS::String::string("aoFragmentMain", NS::UTF8StringEncoding));
+    MTL::RenderPipelineDescriptor* aoPipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
+    aoPipeDesc->setVertexFunction(postProcessVertFunc);
+    aoPipeDesc->setFragmentFunction(aoFragFunc);
+    aoPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatR16Float);
+    MTL::RenderPipelineState* aoPipelineState = device->newRenderPipelineState(aoPipeDesc, &error);
+
+    MTL::Function* aoBlurFragFunc = library->newFunction(NS::String::string("aoBlurFragmentMain", NS::UTF8StringEncoding));
+    MTL::RenderPipelineDescriptor* aoBlurPipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
+    aoBlurPipeDesc->setVertexFunction(postProcessVertFunc);
+    aoBlurPipeDesc->setFragmentFunction(aoBlurFragFunc);
+    aoBlurPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatR16Float);
+    MTL::RenderPipelineState* aoBlurPipelineState = device->newRenderPipelineState(aoBlurPipeDesc, &error);
+
     // Cube shadow pass PSO: outputs world-space distance-to-light as a color value (see
     // Shader.metal's cubeShadowFragmentMain) plus a scratch depth attachment for hidden-surface
     // removal within the pass.
@@ -568,6 +610,9 @@ int main() {
             bloomTextureA->release();
             bloomTextureB->release();
             selectionMaskTexture->release();
+            aoNormalTexture->release();
+            aoTextureA->release();
+            aoTextureB->release();
             width = liveWidth;
             height = liveHeight;
             cppMetalLayer->setDrawableSize(CGSizeMake(width, height));
@@ -603,6 +648,10 @@ int main() {
             newSelectionMaskDesc->setStorageMode(MTL::StorageModePrivate);
             newSelectionMaskDesc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
             selectionMaskTexture = device->newTexture(newSelectionMaskDesc);
+
+            aoNormalTexture = makeAOTexture(MTL::PixelFormatRGBA16Float, (NS::UInteger)width, (NS::UInteger)height);
+            aoTextureA = makeAOTexture(MTL::PixelFormatR16Float, (NS::UInteger)width, (NS::UInteger)height);
+            aoTextureB = makeAOTexture(MTL::PixelFormatR16Float, (NS::UInteger)width, (NS::UInteger)height);
         }
 
         // Fetch the canvas
@@ -854,6 +903,7 @@ int main() {
             constexpr NS::UInteger kTransmissionTextureSlot = 8 + 2 * kMaxLights;
             constexpr NS::UInteger kThicknessTextureSlot = 9 + 2 * kMaxLights;
             constexpr NS::UInteger kTransmissionSourceSlot = 10 + 2 * kMaxLights;
+            constexpr NS::UInteger kAOTextureSlot = 11 + 2 * kMaxLights;
             static const MaterialParams defaultParams;
 
             // Binds one glTF material's textures and factors (missing maps get the neutral stand-ins).
@@ -956,6 +1006,77 @@ int main() {
                 }
             }
 
+            // --- Ambient occlusion (GTAO or SSAO), before the scene pass so its fragment shader can read the
+            // result: (1) a depth + world-normal prepass over the opaque geometry, (2) the occlusion
+            // estimate itself (GTAO or SSAO, per scene.ambientOcclusionMode) from that depth/normal, (3) a horizontal then vertical depth-aware blur
+            // that removes the estimate's per-pixel noise. The prepass reuses depthTexture - the scene
+            // pass just below clears and refills it, so nothing here leaks into it. All skipped at
+            // strength 0; aoTextureA then holds stale data, but the scene pass is handed a white
+            // texture instead (see bindSceneState's use below).
+            const bool aoActive = scene.ambientOcclusionStrength > 0.0f;
+            if (aoActive) {
+                MTL::RenderPassDescriptor* aoPrepassRPD = MTL::RenderPassDescriptor::renderPassDescriptor();
+                auto aoPrepassNormals = aoPrepassRPD->colorAttachments()->object(0);
+                aoPrepassNormals->setTexture(aoNormalTexture);
+                aoPrepassNormals->setLoadAction(MTL::LoadActionClear);
+                aoPrepassNormals->setClearColor({0.0, 0.0, 0.0, 0.0});
+                aoPrepassNormals->setStoreAction(MTL::StoreActionStore);
+                aoPrepassRPD->depthAttachment()->setTexture(depthTexture);
+                aoPrepassRPD->depthAttachment()->setLoadAction(MTL::LoadActionClear);
+                aoPrepassRPD->depthAttachment()->setClearDepth(1.0);
+                aoPrepassRPD->depthAttachment()->setStoreAction(MTL::StoreActionStore);
+
+                MTL::RenderCommandEncoder* aoPrepassEncoder = cmdBuffer->renderCommandEncoder(aoPrepassRPD);
+                aoPrepassEncoder->setDepthStencilState(depthState);
+                aoPrepassEncoder->setRenderPipelineState(aoPrepassPipelineState);
+                drawShadowCasters(aoPrepassEncoder); // same geometry selection: opaque + Mask, no glass/blend
+                aoPrepassEncoder->endEncoding();
+
+                simd::float4x4 projection = computeProjection(liveWidth, liveHeight);
+                struct {
+                    simd::float4x4 viewMatrix;
+                    float projScaleX;
+                    float projScaleY;
+                    float radius;
+                    float strength;
+                    float mode; // AmbientOcclusionMode, cast to float - see AO_MODE_* in Shader.metal
+                } aoParams = {
+                    viewMatrix(camera), projection.columns[0].x, projection.columns[1].y,
+                    scene.ambientOcclusionRadius, scene.ambientOcclusionStrength,
+                    (float)(int)scene.ambientOcclusionMode
+                };
+
+                MTL::RenderPassDescriptor* aoRPD = MTL::RenderPassDescriptor::renderPassDescriptor();
+                auto aoColor = aoRPD->colorAttachments()->object(0);
+                aoColor->setTexture(aoTextureA);
+                aoColor->setLoadAction(MTL::LoadActionDontCare);
+                aoColor->setStoreAction(MTL::StoreActionStore);
+                MTL::RenderCommandEncoder* aoEncoder = cmdBuffer->renderCommandEncoder(aoRPD);
+                aoEncoder->setRenderPipelineState(aoPipelineState);
+                aoEncoder->setFragmentTexture(depthTexture, 0);
+                aoEncoder->setFragmentTexture(aoNormalTexture, 1);
+                aoEncoder->setFragmentBytes(&aoParams, sizeof(aoParams), 0);
+                aoEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, (NS::UInteger)3);
+                aoEncoder->endEncoding();
+
+                MTL::Texture* blurSources[2] = {aoTextureA, aoTextureB};
+                simd::float2 blurDirections[2] = {simd_make_float2(1.0f, 0.0f), simd_make_float2(0.0f, 1.0f)};
+                for (int pass = 0; pass < 2; pass++) {
+                    MTL::RenderPassDescriptor* aoBlurRPD = MTL::RenderPassDescriptor::renderPassDescriptor();
+                    auto aoBlurColor = aoBlurRPD->colorAttachments()->object(0);
+                    aoBlurColor->setTexture(blurSources[1 - pass]); // A -> B, then B -> A
+                    aoBlurColor->setLoadAction(MTL::LoadActionDontCare);
+                    aoBlurColor->setStoreAction(MTL::StoreActionStore);
+                    MTL::RenderCommandEncoder* aoBlurEncoder = cmdBuffer->renderCommandEncoder(aoBlurRPD);
+                    aoBlurEncoder->setRenderPipelineState(aoBlurPipelineState);
+                    aoBlurEncoder->setFragmentTexture(blurSources[pass], 0);
+                    aoBlurEncoder->setFragmentTexture(depthTexture, 1);
+                    aoBlurEncoder->setFragmentBytes(&blurDirections[pass], sizeof(simd::float2), 0);
+                    aoBlurEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, (NS::UInteger)3);
+                    aoBlurEncoder->endEncoding();
+                }
+            }
+
             // --- Pass A: HDR scene pass - cube/mesh objects only, lit in linear space, written
             // unclamped into hdrColorTexture (see fragmentMain's comment). depthAttachment uses
             // StoreActionStore (not DontCare, unlike every other depth-only pass here) because the
@@ -966,8 +1087,9 @@ int main() {
             // blended submeshes on top of A1's output (Load, not Clear).
             const Environment& environment = environmentLibrary.get(scene.environment);
             // The per-frame state every scene draw shares: shadow maps, samplers, the IBL inputs and
-            // the transmission source (only sampled by glass - stale contents in A1 are never read).
-            auto bindSceneState = [&](MTL::RenderCommandEncoder* encoder) {
+            // the transmission source (only sampled by glass - stale contents in A1 are never read),
+            // and the screen-space AO (a white stand-in - "unoccluded" - where it doesn't apply).
+            auto bindSceneState = [&](MTL::RenderCommandEncoder* encoder, MTL::Texture* screenAO) {
                 for (size_t i = 0; i < kMaxLights; i++) {
                     encoder->setFragmentTexture(shadowCubeMaps[i], 2 + i);
                 }
@@ -982,6 +1104,7 @@ int main() {
                 encoder->setFragmentTexture(environment.prefiltered, 4 + 2 * kMaxLights);
                 encoder->setFragmentTexture(environmentLibrary.brdfLUT(), 5 + 2 * kMaxLights);
                 encoder->setFragmentTexture(transmissionTexture, kTransmissionSourceSlot);
+                encoder->setFragmentTexture(screenAO, kAOTextureSlot);
                 encoder->setFragmentBytes(&scene.environmentIntensity, sizeof(float), 3);
             };
 
@@ -999,7 +1122,7 @@ int main() {
             MTL::RenderCommandEncoder* hdrEncoder = cmdBuffer->renderCommandEncoder(hdrRPD);
             hdrEncoder->setDepthStencilState(depthState);
             hdrEncoder->setRenderPipelineState(pipelineState);
-            bindSceneState(hdrEncoder);
+            bindSceneState(hdrEncoder, aoActive ? aoTextureA : whiteTexture);
 
             // Glass and blended submeshes, found up front: they wait for A2 below.
             struct TransparentDraw {
@@ -1101,7 +1224,9 @@ int main() {
                 hdr2RPD->depthAttachment()->setLoadAction(MTL::LoadActionLoad);
                 hdr2RPD->depthAttachment()->setStoreAction(MTL::StoreActionStore);
                 MTL::RenderCommandEncoder* transparentEncoder = cmdBuffer->renderCommandEncoder(hdr2RPD);
-                bindSceneState(transparentEncoder);
+                // Glass/blend pixels aren't what the AO buffer describes (it holds the opaque
+                // surface behind them), so they get the unoccluded stand-in.
+                bindSceneState(transparentEncoder, whiteTexture);
 
                 auto drawTransparent = [&](const TransparentDraw& draw) {
                     const auto& r = renderables[draw.renderableIndex];
@@ -1376,6 +1501,9 @@ int main() {
     bloomTextureA->release();
     bloomTextureB->release();
     selectionMaskTexture->release();
+    aoNormalTexture->release();
+    aoTextureA->release();
+    aoTextureB->release();
     depthTexture->release();
     depthState->release();
     depthDesc->release();
@@ -1404,6 +1532,16 @@ int main() {
     blurPipelineState->release();
     blurPipeDesc->release();
     blurFragFunc->release();
+    aoPrepassPipelineState->release();
+    aoPrepassPipeDesc->release();
+    aoPrepassVertFunc->release();
+    aoPrepassFragFunc->release();
+    aoPipelineState->release();
+    aoPipeDesc->release();
+    aoFragFunc->release();
+    aoBlurPipelineState->release();
+    aoBlurPipeDesc->release();
+    aoBlurFragFunc->release();
     selectionMaskPipelineState->release();
     selectionMaskPipeDesc->release();
     selectionMaskFragFunc->release();

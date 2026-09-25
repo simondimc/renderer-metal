@@ -50,7 +50,7 @@
 - [x] Separate Ambient Occlusion Texture
 
 ### Global Illumination
-- Ambient Occlusion (SSAO/HBAO/GTAO)
+- [x] Ambient Occlusion
 - Screen-Space Reflections (SSR)
 - Precomputed/Baked GI (Lightmaps, Light Probes)
 - Voxel Cone Tracing / ReSTIR
