@@ -795,6 +795,7 @@ int main() {
             overlayRPD->depthAttachment()->setStoreAction(MTL::StoreActionDontCare);
 
             beginUIFrame(overlayRPD);
+            drawFpsCounter(deltaTime);
             if (camera.uiMode) {
                 drawSceneEditorPanel(scene, selectedObjectIndex, textureLibrary, environmentLibrary);
             }
