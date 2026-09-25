@@ -66,7 +66,7 @@
 
 ### Optimization
 - Spatial Partitioning
-- Frustum Culling
+- [x] Frustum Culling
 - Occlusion Culling (Hi-Z / GPU-Driven)
 - Level of Detail (LOD)
 - GPU-Driven Rendering / Indirect Draw Calls
