@@ -20,12 +20,17 @@ struct SceneLight {
     float spotCosInner = 0.965f; // cos(~15deg)
     float spotCosOuter = 0.906f; // cos(~25deg)
     simd::float2 areaHalfSize = {0.5f, 0.5f};
+    // Directional/Spot only: light-space view-projection for the single-frustum shadow map (see
+    // Shadow.hpp's computeDirectionalShadowMatrix/computeSpotShadowMatrix). Unused by Point (which
+    // uses the cube shadow maps instead) and Area (no shadows yet).
+    simd::float4x4 shadowViewProj = matrix_identity_float4x4;
 };
 
 // Must stay layout-compatible with the Uniforms struct in Shader.metal, field for field.
 struct Uniforms {
     simd::float4x4 mvpMatrix;
     simd::float4x4 modelMatrix;
+    simd::float4x4 lightViewProj[kMaxLights];  // Directional/Spot shadow-map view-projection
     simd::float4 lightPositions[kMaxLights];  // xyz = position (Point/Spot/Area)
     simd::float4 lightDirections[kMaxLights]; // xyz = normalized emission direction (Directional/Spot/Area)
     simd::float4 lightRight[kMaxLights];      // xyz = area light local right axis

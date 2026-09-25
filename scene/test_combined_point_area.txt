@@ -1,0 +1,23 @@
+# renderer-metal scene file v1
+# Shadow regression test: Point (hard-shadow key light) + Area (soft fill, no shadow) on a shared
+# caster - a common practical pairing, and checks the two lights' contributions blend correctly.
+object Floor
+position 0 -1 0
+rotation 0 0 0
+scale 14 0.2 14
+object Caster
+position 0 0.5 -1
+rotation 0 0 0
+scale 1 1 1
+light KeyLight
+position 2 3 1
+lighttype point
+color 1 1 1
+intensity 6
+light FillLight
+position -3 2 -2
+lighttype area
+color 0.5 0.6 1
+intensity 4
+rotation -20 60 0
+areasize 2 2

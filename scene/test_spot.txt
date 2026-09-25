@@ -1,0 +1,25 @@
+# renderer-metal scene file v1
+# Shadow regression test: single Spot light, near + far casters. Exercises the perspective
+# shadow-map path (computeSpotShadowMatrix in Shadow.cpp). Two casters at different distances from
+# the light catch a past bug where a fixed depth-space bias, made huge in world space by the
+# perspective projection's non-linearity far from the light, detached the far caster's shadow from
+# its base ("peter-panning") while the near caster looked fine.
+object Floor
+position 0 -1 0
+rotation 0 0 0
+scale 14 0.2 14
+object CasterNear
+position -1 0.5 1
+rotation 0 0 0
+scale 1 1 1
+object CasterFar
+position 1.5 0.5 -3
+rotation 0 0 0
+scale 1 1 1
+light Spot1
+position 0 5 3
+lighttype spot
+color 1 1 1
+intensity 10
+rotation -65 0 0
+spotangles 25 40

@@ -1,0 +1,20 @@
+# renderer-metal scene file v1
+# Shadow regression test: single Area light, one caster. Area lights don't cast shadows yet (see
+# Shader.metal's fragmentMain - LIGHT_TYPE_AREA always reads as unshadowed), so this scene is
+# mainly here to confirm the "closest point on rectangle" lighting falloff (sampleAreaLight-style
+# code in fragmentMain) still looks reasonable without one.
+object Floor
+position 0 -1 0
+rotation 0 0 0
+scale 14 0.2 14
+object Caster
+position 0 0.5 -1
+rotation 0 0 0
+scale 1 1 1
+light AreaLight
+position 0 3 0.5
+lighttype area
+color 1 1 1
+intensity 6
+rotation -60 0 0
+areasize 2.5 1.2

@@ -1,0 +1,52 @@
+# renderer-metal scene file v1
+# Shadow regression test: all four light types active together, each with its own caster spread
+# out along X so their shadows don't overlap and can be checked independently in one scene.
+object Floor
+position 0 -1 0
+rotation 0 0 0
+scale 20 0.2 20
+object PointCaster
+position -8 0.5 0
+rotation 0 0 0
+scale 1 1 1
+object DirCaster
+position -3 0.5 0
+rotation 0 0 0
+scale 1 1 1
+object SpotCasterNear
+position 3 0.5 2
+rotation 0 0 0
+scale 1 1 1
+object SpotCasterFar
+position 3 0.5 -3
+rotation 0 0 0
+scale 1 1 1
+object AreaCaster
+position 8 0.5 0
+rotation 0 0 0
+scale 1 1 1
+light PointLight
+position -8 3 3
+lighttype point
+color 1 0.3 0.3
+intensity 8
+light Sun
+position -3 3 3
+lighttype directional
+color 1 1 1
+intensity 1.0
+rotation -50 -30 0
+light Spot1
+position 3 5 4
+lighttype spot
+color 1 1 1
+intensity 10
+rotation -60 0 0
+spotangles 25 40
+light AreaLight
+position 8 3 3
+lighttype area
+color 0.4 1 0.4
+intensity 6
+rotation -50 -30 0
+areasize 2 2

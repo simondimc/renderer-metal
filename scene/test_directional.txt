@@ -1,0 +1,19 @@
+# renderer-metal scene file v1
+# Shadow regression test: single Directional light, one caster. Exercises the orthographic
+# shadow-map path (computeDirectionalShadowMatrix in Shadow.cpp) - the shadow should land on the
+# floor in the direction opposite `rotation` and not be clipped away (a past bug: a sign error in
+# the ortho projection's Z column clipped the entire shadow pass, so no shadow ever appeared).
+object Floor
+position 0 -1 0
+rotation 0 0 0
+scale 14 0.2 14
+object Caster
+position 0 0.5 -1
+rotation 0 0 0
+scale 1 1 1
+light Sun
+position 0 3 -1
+lighttype directional
+color 1 1 1
+intensity 1.0
+rotation -50 -30 0

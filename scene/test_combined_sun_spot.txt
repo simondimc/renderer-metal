@@ -1,0 +1,29 @@
+# renderer-metal scene file v1
+# Shadow regression test: Directional ("sun") + Spot ("flashlight") both lighting the same two
+# casters from different angles - checks that each caster receives two independently-projected
+# shadows (one per light) that composite correctly rather than one overwriting the other.
+object Floor
+position 0 -1 0
+rotation 0 0 0
+scale 10 0.2 10
+object CasterA
+position -1.5 0.5 -1
+rotation 0 0 0
+scale 1 1 1
+object CasterB
+position 1.5 0.5 -3
+rotation 0 0 0
+scale 1 1 1
+light Sun
+position 0 3 2
+lighttype directional
+color 1 0.95 0.8
+intensity 0.8
+rotation -50 -40 0
+light Flashlight
+position -2 4 3
+lighttype spot
+color 0.6 0.7 1
+intensity 10
+rotation -55 25 0
+spotangles 20 35

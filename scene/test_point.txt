@@ -1,0 +1,16 @@
+# renderer-metal scene file v1
+# Shadow regression test: single Point light, one caster. Cube shadow map (6 faces) should give a
+# clean hard shadow all the way around the caster.
+object Floor
+position 0 -1 0
+rotation 0 0 0
+scale 14 0.2 14
+object Caster
+position 0 0.5 -1
+rotation 0 0 0
+scale 1 1 1
+light PointLight
+position 1.5 3 0.5
+lighttype point
+color 1 1 1
+intensity 6

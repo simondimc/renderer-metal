@@ -27,6 +27,7 @@ struct RasterData {
 struct Uniforms {
     float4x4 mvpMatrix;
     float4x4 modelMatrix;
+    float4x4 lightViewProj[MAX_LIGHTS]; // Directional/Spot shadow-map view-projection
     float4 lightPositions[MAX_LIGHTS];  // xyz = position (Point/Spot/Area)
     float4 lightDirections[MAX_LIGHTS]; // xyz = normalized emission direction (Directional/Spot/Area)
     float4 lightRight[MAX_LIGHTS];      // xyz = area light local right axis
@@ -90,12 +91,48 @@ static float sampleCubeShadow(float3 worldPosition, float3 lightPosition,
     return (currentDistance - bias > closestDistance) ? 0.0 : 1.0;
 }
 
+// Single-frustum shadow pass for Directional/Spot lights: reuses cubeShadowVertexMain/
+// cubeShadowFragmentMain above unchanged (they just need *some* lightViewProj and reference
+// point, cube or not) - rendered into a plain 2D texture instead of one cube face. Kept as
+// world-space distance, like the cube shadow, rather than hardware depth: hardware depth from a
+// perspective (Spot) projection is extremely non-linear, so a fixed depth-space bias would need to
+// be tiny near the light and huge far from it - no single value works across the frustum. A flat
+// world-space distance bias (the same value sampleCubeShadow already uses) doesn't have that
+// problem.
+//
+// Must match kDirectionalShadowDistance in Shadow.hpp - see computeDirectionalShadowMatrix. A
+// directional light has no true position, so its shadow pass renders from a virtual eye this far
+// behind the light object's `position` (reused as the shadow volume's anchor); sampling needs that
+// same eye as its distance reference point, so it's rederived here rather than passed through.
+#define DIRECTIONAL_SHADOW_DISTANCE 25.0
+
+// 1.0 = fully lit, 0.0 = fully in shadow, via classic projective shadow mapping: reproject the
+// shading point into the light's clip space to find where it landed in the shadow map, then
+// compare distances-from-eye (not depth) for the reason above. Points outside the frustum (or
+// behind the camera, for a spot) read as lit rather than shadowed, since nothing was rendered
+// there to compare against.
+static float sampleProjectedShadow(float3 worldPosition, float3 shadowEye, float4x4 lightViewProj,
+                                   texture2d<float> shadowMap, sampler shadowSampler) {
+    float4 lightSpace = lightViewProj * float4(worldPosition, 1.0);
+    if (lightSpace.w <= 0.0) return 1.0;
+    float3 ndc = lightSpace.xyz / lightSpace.w;
+    if (abs(ndc.x) > 1.0 || abs(ndc.y) > 1.0) return 1.0;
+
+    float2 uv = float2(ndc.x * 0.5 + 0.5, ndc.y * -0.5 + 0.5); // NDC +Y up -> texture V down
+    float closestDistance = shadowMap.sample(shadowSampler, uv).r;
+    float currentDistance = length(worldPosition - shadowEye);
+
+    constexpr float bias = 0.05; // world-space units, same as sampleCubeShadow's
+    return (currentDistance - bias > closestDistance) ? 0.0 : 1.0;
+}
+
 // Fragment Shader
 fragment float4 fragmentMain(RasterData in [[stage_in]],
                              constant Uniforms& uniforms [[buffer(1)]],
                              texture2d<float> tex [[texture(0)]],
                              texture2d<float> normalMap [[texture(1)]],
                              array<texturecube<float>, MAX_LIGHTS> shadowCubes [[texture(2)]],
+                             array<texture2d<float>, MAX_LIGHTS> shadow2DMaps [[texture(2 + MAX_LIGHTS)]],
                              sampler smp [[sampler(0)]],
                              sampler shadowSampler [[sampler(1)]]) {
     constexpr float ambientStrength = 0.15;
@@ -168,11 +205,18 @@ fragment float4 fragmentMain(RasterData in [[stage_in]],
         float diffuse = max(dot(normal, lightDir), 0.0);
         float specular = powr(max(dot(normal, halfVector), 0.0), shininess) * specularStrength;
 
-        // Only point lights currently cast shadows (see Main.cpp's shadow pass) - the other types
-        // read as always-lit.
-        float shadow = (lightType == LIGHT_TYPE_POINT)
-            ? sampleCubeShadow(in.worldPosition, lightPos, shadowCubes[i], shadowSampler)
-            : 1.0;
+        // Point lights use the cube shadow maps (no single frustum covers all directions);
+        // Directional/Spot use a single projected shadow map. Area lights don't cast shadows yet
+        // (see Main.cpp's shadow pass) and read as always-lit.
+        float shadow = 1.0;
+        if (lightType == LIGHT_TYPE_POINT) {
+            shadow = sampleCubeShadow(in.worldPosition, lightPos, shadowCubes[i], shadowSampler);
+        } else if (lightType == LIGHT_TYPE_SPOT) {
+            shadow = sampleProjectedShadow(in.worldPosition, lightPos, uniforms.lightViewProj[i], shadow2DMaps[i], shadowSampler);
+        } else if (lightType == LIGHT_TYPE_DIRECTIONAL) {
+            float3 shadowEye = lightPos - emitDir * DIRECTIONAL_SHADOW_DISTANCE;
+            shadow = sampleProjectedShadow(in.worldPosition, shadowEye, uniforms.lightViewProj[i], shadow2DMaps[i], shadowSampler);
+        }
 
         litColor += shadow * (texColor.rgb * diffuse + specular) * radiance;
     }

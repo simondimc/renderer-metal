@@ -31,6 +31,7 @@ Uniforms computeUniforms(const Camera& cam, const simd::float4x4& objectModel,
     int count = std::min(lightCount, (int)kMaxLights);
     for (int i = 0; i < count; i++) {
         const SceneLight& light = lights[i];
+        u.lightViewProj[i] = light.shadowViewProj;
         u.lightPositions[i] = simd_make_float4(light.position.x, light.position.y, light.position.z, 1.0f);
         u.lightDirections[i] = simd_make_float4(light.direction.x, light.direction.y, light.direction.z, 0.0f);
         u.lightRight[i] = simd_make_float4(light.right.x, light.right.y, light.right.z, 0.0f);

@@ -106,16 +106,44 @@ int main() {
     shadowDepthDesc->setUsage(MTL::TextureUsageRenderTarget);
     MTL::Texture* shadowScratchDepth = device->newTexture(shadowDepthDesc);
 
+    // Single-frustum shadow maps for Directional/Spot lights: one real (sampled) texture per light
+    // slot, unlike the cube shadow's scratch depth buffer below - this one *is* what gets sampled
+    // back in fragmentMain (see sampleProjectedShadow in Shader.metal), so it can't be shared/
+    // reused across lights within a frame. R32Float world-space distance, same scheme as the cube
+    // shadow maps and for the same reason - see sampleProjectedShadow's comment. Allocated for all
+    // kMaxLights slots for the same fixed-size-texture-array reason as shadowCubeMaps; unused by
+    // Point/Area lights.
+    MTL::TextureDescriptor* shadow2DDesc = MTL::TextureDescriptor::texture2DDescriptor(
+        MTL::PixelFormatR32Float, (NS::UInteger)kShadow2DMapSize, (NS::UInteger)kShadow2DMapSize, false
+    );
+    shadow2DDesc->setStorageMode(MTL::StorageModePrivate);
+    shadow2DDesc->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
+    MTL::Texture* shadow2DMaps[kMaxLights];
+    for (size_t i = 0; i < kMaxLights; i++) {
+        shadow2DMaps[i] = device->newTexture(shadow2DDesc);
+    }
+
+    // Scratch depth buffer for the 2D shadow pass's own hidden-surface removal, sized to match
+    // shadow2DMaps - never sampled afterward, same role as shadowScratchDepth above but a
+    // different size so it can't just reuse that one.
+    MTL::TextureDescriptor* shadow2DScratchDepthDesc = MTL::TextureDescriptor::texture2DDescriptor(
+        MTL::PixelFormatDepth32Float, (NS::UInteger)kShadow2DMapSize, (NS::UInteger)kShadow2DMapSize, false
+    );
+    shadow2DScratchDepthDesc->setStorageMode(MTL::StorageModePrivate);
+    shadow2DScratchDepthDesc->setUsage(MTL::TextureUsageRenderTarget);
+    MTL::Texture* shadow2DScratchDepth = device->newTexture(shadow2DScratchDepthDesc);
+
     // Create GPU buffers
     MTL::Buffer* vertexBuffer = device->newBuffer(CubeMesh::vertices, sizeof(CubeMesh::vertices), MTL::ResourceStorageModeShared);
     MTL::Buffer* indexBuffer = device->newBuffer(CubeMesh::indices, sizeof(CubeMesh::indices), MTL::ResourceStorageModeShared);
     constexpr NS::UInteger indexCount = sizeof(CubeMesh::indices) / sizeof(CubeMesh::indices[0]);
 
     // One Uniforms slot per scene object per frame, plus one for the axis gizmo, one per possible
-    // light marker, and one per possible light direction ray. 640-byte stride is Metal's safe
+    // light marker, and one per possible light direction ray. 1024-byte stride is Metal's safe
     // alignment for per-draw buffer offsets, rounded up from sizeof(Uniforms) (which now holds up
-    // to kMaxLights lights, each with type/direction/area-axis data on top of position/color).
-    constexpr NS::UInteger kUniformStride = 640;
+    // to kMaxLights lights, each with type/direction/area-axis/shadow-matrix data on top of
+    // position/color).
+    constexpr NS::UInteger kUniformStride = 1024;
     static_assert(sizeof(Uniforms) <= kUniformStride, "Uniforms grew past the reserved per-object stride");
     constexpr NS::UInteger kGizmoUniformOffset = kMaxSceneObjects * kUniformStride;
     constexpr NS::UInteger kLightMarkerUniformOffset = kGizmoUniformOffset + kUniformStride;
@@ -172,6 +200,9 @@ int main() {
     shadowPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatR32Float);
     shadowPipeDesc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
     MTL::RenderPipelineState* shadowPipelineState = device->newRenderPipelineState(shadowPipeDesc, &error);
+    // Directional/Spot lights' single-frustum shadow pass reuses this same PSO (cubeShadowVertexMain/
+    // cubeShadowFragmentMain don't care whether the target is one cube face or a plain 2D texture -
+    // see Shader.metal's comment on sampleProjectedShadow for why it stays a distance encoding).
 
     AxisGizmo axisGizmo = createAxisGizmo(device, library);
     LightMarker lightMarker = createLightMarker(device, library);
@@ -304,6 +335,14 @@ int main() {
                 light.spotCosInner = cosf(obj.spotInnerDegrees * kDegToRad);
                 light.spotCosOuter = cosf(obj.spotOuterDegrees * kDegToRad);
                 light.areaHalfSize = simd_make_float2(obj.areaSize[0] * 0.5f, obj.areaSize[1] * 0.5f);
+                if (light.type == LightType::Directional) {
+                    light.shadowViewProj = computeDirectionalShadowMatrix(light.position, light.direction,
+                                                                           light.right, light.up);
+                } else if (light.type == LightType::Spot) {
+                    light.shadowViewProj = computeSpotShadowMatrix(light.position, light.direction,
+                                                                     light.right, light.up, obj.spotOuterDegrees,
+                                                                     kShadowNearPlane, kShadowFarPlane);
+                }
                 lightObjects[lightCount] = &obj;
                 lightCount++;
             }
@@ -367,39 +406,74 @@ int main() {
             // Request a command buffer from the queue
             MTL::CommandBuffer* cmdBuffer = cmdQueue->commandBuffer();
 
-            // Shadow pass: render every cube's distance-from-light into each face of each active
-            // light's cube shadow map, before the main color pass that will sample them all. One
-            // encoder per light per face (6x lightCount total) - see the earlier conversation on
-            // instanced/layered rendering for how a production renderer collapses this to one
-            // encoder per light; this stays the simple, unoptimized version for now.
+            // Shadow pass: render every cube's depth/distance-from-light into each active light's
+            // shadow map(s), before the main color pass that will sample them all. Point lights
+            // get 6 encoders (one per cube face, see the earlier conversation on instanced/layered
+            // rendering for how a production renderer collapses this to one encoder per light;
+            // this stays the simple, unoptimized version for now); Directional/Spot get one
+            // encoder each into their single-frustum depth map; Area lights don't cast shadows yet.
             for (int lightIndex = 0; lightIndex < lightCount; lightIndex++) {
-                if (lights[lightIndex].type != LightType::Point) continue;
-                for (int face = 0; face < kCubeFaceCount; face++) {
-                    MTL::RenderPassDescriptor* shadowRPD = MTL::RenderPassDescriptor::renderPassDescriptor();
-                    auto shadowColor = shadowRPD->colorAttachments()->object(0);
-                    shadowColor->setTexture(shadowCubeMaps[lightIndex]);
-                    shadowColor->setSlice(face);
-                    shadowColor->setLoadAction(MTL::LoadActionClear);
-                    shadowColor->setClearColor({(double)kShadowFarPlane, (double)kShadowFarPlane, (double)kShadowFarPlane, 1.0});
-                    shadowColor->setStoreAction(MTL::StoreActionStore);
-                    shadowRPD->depthAttachment()->setTexture(shadowScratchDepth);
-                    shadowRPD->depthAttachment()->setLoadAction(MTL::LoadActionClear);
-                    shadowRPD->depthAttachment()->setClearDepth(1.0);
-                    shadowRPD->depthAttachment()->setStoreAction(MTL::StoreActionDontCare);
+                LightType lightType = lights[lightIndex].type;
+                if (lightType == LightType::Point) {
+                    for (int face = 0; face < kCubeFaceCount; face++) {
+                        MTL::RenderPassDescriptor* shadowRPD = MTL::RenderPassDescriptor::renderPassDescriptor();
+                        auto shadowColor = shadowRPD->colorAttachments()->object(0);
+                        shadowColor->setTexture(shadowCubeMaps[lightIndex]);
+                        shadowColor->setSlice(face);
+                        shadowColor->setLoadAction(MTL::LoadActionClear);
+                        shadowColor->setClearColor({(double)kShadowFarPlane, (double)kShadowFarPlane, (double)kShadowFarPlane, 1.0});
+                        shadowColor->setStoreAction(MTL::StoreActionStore);
+                        shadowRPD->depthAttachment()->setTexture(shadowScratchDepth);
+                        shadowRPD->depthAttachment()->setLoadAction(MTL::LoadActionClear);
+                        shadowRPD->depthAttachment()->setClearDepth(1.0);
+                        shadowRPD->depthAttachment()->setStoreAction(MTL::StoreActionDontCare);
 
-                    MTL::RenderCommandEncoder* shadowEncoder = cmdBuffer->renderCommandEncoder(shadowRPD);
-                    shadowEncoder->setDepthStencilState(depthState);
-                    shadowEncoder->setRenderPipelineState(shadowPipelineState);
-                    shadowEncoder->setVertexBuffer(vertexBuffer, 0, 0);
-                    shadowEncoder->setVertexBytes(&cubeFaceMatrices[lightIndex][face], sizeof(simd::float4x4), 2);
-                    shadowEncoder->setFragmentBytes(&lights[lightIndex].position, sizeof(simd::float3), 3);
+                        MTL::RenderCommandEncoder* shadowEncoder = cmdBuffer->renderCommandEncoder(shadowRPD);
+                        shadowEncoder->setDepthStencilState(depthState);
+                        shadowEncoder->setRenderPipelineState(shadowPipelineState);
+                        shadowEncoder->setVertexBuffer(vertexBuffer, 0, 0);
+                        shadowEncoder->setVertexBytes(&cubeFaceMatrices[lightIndex][face], sizeof(simd::float4x4), 2);
+                        shadowEncoder->setFragmentBytes(&lights[lightIndex].position, sizeof(simd::float3), 3);
+                        for (NS::UInteger i = 0; i < cubeCount; i++) {
+                            shadowEncoder->setVertexBuffer(uniformBuffer, i * kUniformStride, 1);
+                            shadowEncoder->drawIndexedPrimitives(
+                                MTL::PrimitiveTypeTriangle, indexCount, MTL::IndexTypeUInt16, indexBuffer, 0
+                            );
+                        }
+                        shadowEncoder->endEncoding();
+                    }
+                } else if (lightType == LightType::Directional || lightType == LightType::Spot) {
+                    // The distance reference point the shadow pass renders from - must match what
+                    // sampleProjectedShadow in Shader.metal uses at sampling time. Spot has a true
+                    // position; Directional's virtual eye is rederived there too (see its comment).
+                    simd::float3 shadowEye = (lightType == LightType::Directional)
+                        ? lights[lightIndex].position - lights[lightIndex].direction * kDirectionalShadowDistance
+                        : lights[lightIndex].position;
+
+                    MTL::RenderPassDescriptor* shadow2DRPD = MTL::RenderPassDescriptor::renderPassDescriptor();
+                    auto shadow2DColor = shadow2DRPD->colorAttachments()->object(0);
+                    shadow2DColor->setTexture(shadow2DMaps[lightIndex]);
+                    shadow2DColor->setLoadAction(MTL::LoadActionClear);
+                    shadow2DColor->setClearColor({1000.0, 1000.0, 1000.0, 1.0});
+                    shadow2DColor->setStoreAction(MTL::StoreActionStore);
+                    shadow2DRPD->depthAttachment()->setTexture(shadow2DScratchDepth);
+                    shadow2DRPD->depthAttachment()->setLoadAction(MTL::LoadActionClear);
+                    shadow2DRPD->depthAttachment()->setClearDepth(1.0);
+                    shadow2DRPD->depthAttachment()->setStoreAction(MTL::StoreActionDontCare);
+
+                    MTL::RenderCommandEncoder* shadow2DEncoder = cmdBuffer->renderCommandEncoder(shadow2DRPD);
+                    shadow2DEncoder->setDepthStencilState(depthState);
+                    shadow2DEncoder->setRenderPipelineState(shadowPipelineState);
+                    shadow2DEncoder->setVertexBuffer(vertexBuffer, 0, 0);
+                    shadow2DEncoder->setVertexBytes(&lights[lightIndex].shadowViewProj, sizeof(simd::float4x4), 2);
+                    shadow2DEncoder->setFragmentBytes(&shadowEye, sizeof(simd::float3), 3);
                     for (NS::UInteger i = 0; i < cubeCount; i++) {
-                        shadowEncoder->setVertexBuffer(uniformBuffer, i * kUniformStride, 1);
-                        shadowEncoder->drawIndexedPrimitives(
+                        shadow2DEncoder->setVertexBuffer(uniformBuffer, i * kUniformStride, 1);
+                        shadow2DEncoder->drawIndexedPrimitives(
                             MTL::PrimitiveTypeTriangle, indexCount, MTL::IndexTypeUInt16, indexBuffer, 0
                         );
                     }
-                    shadowEncoder->endEncoding();
+                    shadow2DEncoder->endEncoding();
                 }
             }
 
@@ -425,6 +499,9 @@ int main() {
             encoder->setFragmentTexture(normalTexture, 1);
             for (size_t i = 0; i < kMaxLights; i++) {
                 encoder->setFragmentTexture(shadowCubeMaps[i], 2 + i);
+            }
+            for (size_t i = 0; i < kMaxLights; i++) {
+                encoder->setFragmentTexture(shadow2DMaps[i], 2 + kMaxLights + i);
             }
             encoder->setFragmentSamplerState(samplerState, 0);
             encoder->setFragmentSamplerState(shadowSamplerState, 1);
@@ -468,7 +545,11 @@ int main() {
     for (size_t i = 0; i < kMaxLights; i++) {
         shadowCubeMaps[i]->release();
     }
+    for (size_t i = 0; i < kMaxLights; i++) {
+        shadow2DMaps[i]->release();
+    }
     shadowScratchDepth->release();
+    shadow2DScratchDepth->release();
     depthTexture->release();
     depthState->release();
     depthDesc->release();

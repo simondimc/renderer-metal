@@ -55,3 +55,64 @@ void computeCubeShadowMatrices(simd::float3 lightPos, float nearPlane, float far
         outMatrices[i] = proj * view;
     }
 }
+
+namespace {
+// Shared by computeDirectionalShadowMatrix/computeSpotShadowMatrix - same right-handed lookAt
+// construction as the cube shadow matrices and Camera.cpp's viewMatrix (view space looks down -Z).
+simd::float4x4 lookAtMatrix(simd::float3 eye, simd::float3 front, simd::float3 right, simd::float3 up) {
+    return simd_matrix(
+        simd_make_float4(right.x, up.x, -front.x, 0.0f),
+        simd_make_float4(right.y, up.y, -front.y, 0.0f),
+        simd_make_float4(right.z, up.z, -front.z, 0.0f),
+        simd_make_float4(-simd_dot(right, eye), -simd_dot(up, eye), simd_dot(front, eye), 1.0f)
+    );
+}
+} // namespace
+
+simd::float4x4 computeDirectionalShadowMatrix(simd::float3 center, simd::float3 direction,
+                                               simd::float3 right, simd::float3 up) {
+    simd::float3 eye = center - direction * kDirectionalShadowDistance;
+    simd::float4x4 view = lookAtMatrix(eye, direction, right, up);
+
+    // Orthographic projection (Metal depth 0..1): no perspective divide, so unlike the point/spot
+    // projections f/aspect don't apply - width/height are set directly from the half-extent.
+    // Z column is -1/zRange, not +1/zRange: lookAtMatrix (like Camera.cpp's viewMatrix) puts
+    // view-space Z negative in front of the eye, and every perspective projection in this codebase
+    // negates it back (see the farPlane/-zRange terms below and in Uniforms.cpp) - an orthographic
+    // projection needs that same flip, just without a perspective divide to hide a missing one.
+    // Getting this wrong sends NDC.z negative for the whole scene, which Metal's clip test rejects
+    // outright, so nothing ever reaches the shadow map.
+    float r = kDirectionalShadowHalfExtent;
+    float nearPlane = kDirectionalShadowNearPlane, farPlane = kDirectionalShadowFarPlane;
+    float zRange = farPlane - nearPlane;
+    simd::float4x4 proj = simd_matrix(
+        simd_make_float4(1.0f / r, 0.0f,     0.0f,                 0.0f),
+        simd_make_float4(0.0f,     1.0f / r, 0.0f,                 0.0f),
+        simd_make_float4(0.0f,     0.0f,     -1.0f / zRange,       0.0f),
+        simd_make_float4(0.0f,     0.0f,     -nearPlane / zRange,  1.0f)
+    );
+
+    return proj * view;
+}
+
+simd::float4x4 computeSpotShadowMatrix(simd::float3 position, simd::float3 direction,
+                                        simd::float3 right, simd::float3 up,
+                                        float outerAngleDegrees, float nearPlane, float farPlane) {
+    simd::float4x4 view = lookAtMatrix(position, direction, right, up);
+
+    // Same projection formula as the main camera (Uniforms.cpp) / cube shadow matrices above, but
+    // with the FOV set from the cone's outer angle instead of the camera's fixed 60 degrees / a
+    // fixed 90 degrees, so the frustum exactly covers the cone.
+    constexpr float kDegToRad = 3.14159265358979323846f / 180.0f;
+    float fov = fmin(2.0f * outerAngleDegrees * kDegToRad, 3.05f); // clamp shy of 180 deg
+    float f = 1.0f / tanf(fov * 0.5f);
+    float zRange = farPlane - nearPlane;
+    simd::float4x4 proj = simd_matrix(
+        simd_make_float4(f,    0.0f, 0.0f,                              0.0f),
+        simd_make_float4(0.0f, f,    0.0f,                              0.0f),
+        simd_make_float4(0.0f, 0.0f, farPlane / -zRange,               -1.0f),
+        simd_make_float4(0.0f, 0.0f, -(farPlane * nearPlane) / zRange,  0.0f)
+    );
+
+    return proj * view;
+}
