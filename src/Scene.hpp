@@ -18,6 +18,21 @@ enum class LightType { Point, Directional, Spot, Area };
 // the order of TONE_MAP_* defines in Shader.metal.
 enum class ToneMapOperator { Clamp, Reinhard, ACES, Uncharted2 };
 
+// Metallic-roughness PBR material (see fragmentMain in Shader.metal). There is a single global
+// albedo/normal/roughness/metallic texture set for now (loaded in Main.cpp), so materials don't pick
+// textures per object yet - useTextures just chooses between that set and flat scalar values.
+//   useTextures = true:  final albedo = texture * albedo, metallic = metalTexture * metallic,
+//                        roughness = roughTexture * roughness, and the normal map is applied. The
+//                        defaults (all 1) therefore leave the textures untouched.
+//   useTextures = false: albedo/metallic/roughness are used as-is, and the normal map is skipped.
+struct Material {
+    float albedo[3] = {1.0f, 1.0f, 1.0f};
+    float metallic = 1.0f;   // 0 = dielectric, 1 = metal
+    float roughness = 1.0f;  // 0 = mirror-smooth, 1 = fully rough
+    float ao = 1.0f;         // ambient occlusion multiplier on the (still constant) ambient term
+    bool useTextures = true;
+};
+
 // A single instance in the scene - either a cube (mesh/textures are shared, only the transform
 // differs) or a light (no mesh; see LightType for the supported kinds).
 // Plain float[3] (not simd::float3) so ImGui::DragFloat3 can take its address directly -
@@ -35,6 +50,7 @@ struct SceneObject {
     float spotInnerDegrees = 15.0f;                 // Spot only: half-angle of the full-bright cone
     float spotOuterDegrees = 25.0f;                 // Spot only: half-angle where light reaches zero
     float areaSize[2] = {1.0f, 1.0f};               // Area only: width/height of the rectangle
+    Material material;                              // Cube/Mesh only
     std::string name = "Cube";
     std::string meshPath;                           // Mesh only: .obj/.gltf/.glb path, relative to build/
 };

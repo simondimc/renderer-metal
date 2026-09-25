@@ -3,7 +3,7 @@ exposure 1
 tonemap aces
 vignette 1.26
 chromaticaberration 0
-filmgrain 0.087
+filmgrain 0
 sharpen 0
 colorgrading 1 1
 bloom 0.03 0.57
@@ -14,14 +14,17 @@ object Cube
 position 0 0 0
 rotation 0 0 0
 scale 1 1 1
+material 1 1 1 1 1 1 1
 object Cube 2
 position 0 -1 0
 rotation 0 0 0
 scale 100 1 100
+material 1 1 1 1 1 1 1
 object Cube 3
 position 4.15 -0.2 2.8
 rotation 0 0 0
 scale 1 1 1
+material 1 1 1 1 1 1 1
 light Light 1
 position -2.95 0.3 2
 lighttype point
@@ -31,7 +34,7 @@ light Light 2
 position 0 0 0
 lighttype directional
 color 1 1 1
-intensity 0.3
+intensity 1.8
 rotation -73 -34 10
 light Light 3
 position 2 2 2
@@ -51,9 +54,11 @@ object Mesh 1
 position -4.4 -0.65 3
 rotation 0 0 0
 scale 1 1 1
+material 1 1 1 1 1 1 1
 meshpath ../model/Duck.glb
 object Mesh 2
 position 0 -0.5 9
 rotation 0 34 0
 scale 10 10 10
+material 1 1 1 1 1 1 1
 meshpath ../model/ABeautifulGame.glb

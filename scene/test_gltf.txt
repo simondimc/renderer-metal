@@ -1,0 +1,35 @@
+# renderer-metal scene file v1
+exposure 1
+tonemap aces
+vignette 0
+chromaticaberration 0
+filmgrain 0
+sharpen 0
+colorgrading 1 1
+bloom 1 0
+dof 10 5 0
+motionblur 0
+lensflare 0
+object Chess
+position 0 -0.9 -3
+rotation 0 34 0
+scale 10 10 10
+material 1 1 1 1 1 1 1
+meshpath ../model/ABeautifulGame.glb
+object Duck
+position 1.6 -0.4 -1.2
+rotation 0 -30 0
+scale 0.5 0.5 0.5
+material 1 1 1 1 1 1 1
+meshpath ../model/Duck.glb
+light Light 1
+position 0 3 -3
+lighttype directional
+color 1 1 1
+intensity 1.6
+rotation -50 -30 0
+light Light 2
+position 1 2 0
+lighttype point
+color 1 0.9 0.8
+intensity 5

@@ -39,11 +39,15 @@
 
 ### Materials & Shading
 - [x] Linear Color Space & Gamma Correction
-- Physically Based Rendering (PBR)
+- [x] Physically Based Rendering (PBR)
 - [x] Normal Mapping
 - Bump/Parallax Mapping
 - Image-Based Lighting (IBL)
 - Anisotropic Shading
+- Transmission & Volume (glass)
+- Emissive Materials
+- Alpha Modes (Mask/Blend)
+- Separate Ambient Occlusion Texture
 
 ### Global Illumination
 - Ambient Occlusion (SSAO/HBAO/GTAO)

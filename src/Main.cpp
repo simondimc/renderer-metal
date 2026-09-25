@@ -293,8 +293,8 @@ int main() {
     vertexDesc->attributes()->object(2)->setFormat(MTL::VertexFormatFloat3);
     vertexDesc->attributes()->object(2)->setOffset(5 * sizeof(float));
     vertexDesc->attributes()->object(2)->setBufferIndex(0);
-    // Tangent attribute (Offset matches 3 Position + 2 UV + 3 Normal floats)
-    vertexDesc->attributes()->object(3)->setFormat(MTL::VertexFormatFloat3);
+    // Tangent attribute (Offset matches 3 Position + 2 UV + 3 Normal floats); xyz = tangent, w = handedness
+    vertexDesc->attributes()->object(3)->setFormat(MTL::VertexFormatFloat4);
     vertexDesc->attributes()->object(3)->setOffset(8 * sizeof(float));
     vertexDesc->attributes()->object(3)->setBufferIndex(0);
     vertexDesc->layouts()->object(0)->setStride(CubeMesh::vertexStrideFloats * sizeof(float));
@@ -393,7 +393,16 @@ int main() {
     // Converted offline from the source EXR (DWAA compression, unsupported by stb_image) via ffmpeg.
     // Normal maps store linear tangent-space vectors, not color, so this one stays non-sRGB.
     MTL::Texture* normalTexture = loadTexture(device, "../texture/metal_plate_4k/textures/metal_plate_nor_gl_4k.png", /*isSRGB=*/false);
-    if (!colorTexture || !normalTexture) return -1;
+    // Roughness/metallic are also converted offline from EXR; both are linear scalar data (not
+    // color). Packed into one glTF-style ORM texture so this default set and glTF materials go
+    // through the same shader path.
+    MTL::Texture* ormTexture = loadPackedORMTexture(device, "../texture/metal_plate_4k/textures/metal_plate_rough_4k.png",
+                                                    "../texture/metal_plate_4k/textures/metal_plate_metal_4k.png");
+    if (!colorTexture || !normalTexture || !ormTexture) return -1;
+    // Stand-ins for a glTF material's missing maps: white (albedo/ORM - leaves the factors as-is)
+    // and a straight-up tangent-space normal (leaves the vertex normal unperturbed).
+    MTL::Texture* whiteTexture = createSolidTexture(device, 255, 255, 255, 255, /*isSRGB=*/false);
+    MTL::Texture* flatNormalTexture = createSolidTexture(device, 128, 128, 255, 255, /*isSRGB=*/false);
 
     MTL::SamplerDescriptor* samplerDesc = MTL::SamplerDescriptor::alloc()->init();
     samplerDesc->setMinFilter(MTL::SamplerMinMagFilterLinear);
@@ -651,17 +660,18 @@ int main() {
                 MTL::Buffer* indexBuffer;
                 NS::UInteger indexCount;
                 MTL::IndexType indexType;
+                const MeshData* mesh; // null for Cube; only used for glTF's per-material submeshes
             };
             std::vector<RenderableObject> renderables;
             for (const auto& obj : scene.objects) {
                 if (renderables.size() >= kMaxSceneObjects) break;
                 if (obj.type == SceneObjectType::Cube) {
-                    renderables.push_back({&obj, vertexBuffer, indexBuffer, indexCount, MTL::IndexTypeUInt16});
+                    renderables.push_back({&obj, vertexBuffer, indexBuffer, indexCount, MTL::IndexTypeUInt16, nullptr});
                 } else if (obj.type == SceneObjectType::Mesh && !obj.meshPath.empty()) {
                     auto it = meshCache.find(obj.meshPath);
                     if (it != meshCache.end() && it->second.indexCount > 0) {
                         const MeshData& m = it->second;
-                        renderables.push_back({&obj, m.vertexBuffer, m.indexBuffer, m.indexCount, m.indexType});
+                        renderables.push_back({&obj, m.vertexBuffer, m.indexBuffer, m.indexCount, m.indexType, &m});
                     }
                 }
             }
@@ -736,7 +746,7 @@ int main() {
             // it yet, so overwriting the same slot before commit would corrupt earlier draws' data.
             for (NS::UInteger i = 0; i < renderables.size(); i++) {
                 Uniforms uniforms = computeUniforms(camera, objectModelMatrix(*renderables[i].obj), lights, lightCount,
-                                                     liveWidth, liveHeight);
+                                                     liveWidth, liveHeight, &renderables[i].obj->material);
                 memcpy((uint8_t*)uniformBuffer->contents() + i * kUniformStride, &uniforms, sizeof(Uniforms));
             }
             if (camera.uiMode) {
@@ -863,8 +873,7 @@ int main() {
             MTL::RenderCommandEncoder* hdrEncoder = cmdBuffer->renderCommandEncoder(hdrRPD);
             hdrEncoder->setDepthStencilState(depthState);
             hdrEncoder->setRenderPipelineState(pipelineState);
-            hdrEncoder->setFragmentTexture(colorTexture, 0);
-            hdrEncoder->setFragmentTexture(normalTexture, 1);
+            constexpr NS::UInteger kOrmTextureSlot = 2 + 2 * kMaxLights;
             for (size_t i = 0; i < kMaxLights; i++) {
                 hdrEncoder->setFragmentTexture(shadowCubeMaps[i], 2 + i);
             }
@@ -880,13 +889,35 @@ int main() {
                 hdrEncoder->setVertexBuffer(r.vertexBuffer, 0, 0);
                 hdrEncoder->setVertexBuffer(uniformBuffer, offset, 1);
                 hdrEncoder->setFragmentBuffer(uniformBuffer, offset, 1);
-                hdrEncoder->drawIndexedPrimitives(
-                    MTL::PrimitiveTypeTriangle,
-                    r.indexCount,
-                    r.indexType,
-                    r.indexBuffer,
-                    0
-                );
+
+                if (r.mesh && !r.mesh->submeshes.empty()) {
+                    // glTF: one draw per material run, each with the file's own textures/factors.
+                    for (const MeshSubmesh& sub : r.mesh->submeshes) {
+                        const MeshMaterial& mat = r.mesh->materials[sub.materialIndex];
+                        hdrEncoder->setFragmentTexture(mat.albedo ? mat.albedo : whiteTexture, 0);
+                        hdrEncoder->setFragmentTexture(mat.normal ? mat.normal : flatNormalTexture, 1);
+                        hdrEncoder->setFragmentTexture(mat.orm ? mat.orm : whiteTexture, kOrmTextureSlot);
+                        hdrEncoder->setFragmentBytes(&mat.params, sizeof(MaterialParams), 2);
+                        hdrEncoder->drawIndexedPrimitives(
+                            MTL::PrimitiveTypeTriangle, sub.indexCount, r.indexType, r.indexBuffer,
+                            sub.indexOffset * sizeof(uint32_t) // glTF meshes always use 32-bit indices
+                        );
+                    }
+                } else {
+                    // Cube / .obj: the default (metal plate) texture set with neutral factors.
+                    static const MaterialParams defaultParams;
+                    hdrEncoder->setFragmentTexture(colorTexture, 0);
+                    hdrEncoder->setFragmentTexture(normalTexture, 1);
+                    hdrEncoder->setFragmentTexture(ormTexture, kOrmTextureSlot);
+                    hdrEncoder->setFragmentBytes(&defaultParams, sizeof(MaterialParams), 2);
+                    hdrEncoder->drawIndexedPrimitives(
+                        MTL::PrimitiveTypeTriangle,
+                        r.indexCount,
+                        r.indexType,
+                        r.indexBuffer,
+                        0
+                    );
+                }
             }
             hdrEncoder->endEncoding();
 

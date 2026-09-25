@@ -28,7 +28,7 @@ simd::float4x4 computeViewProj(const Camera& cam, int width, int height) {
 
 Uniforms computeUniforms(const Camera& cam, const simd::float4x4& objectModel,
                           const SceneLight* lights, int lightCount,
-                          int width, int height) {
+                          int width, int height, const Material* material) {
     Uniforms u;
 
     simd::float4x4 viewProj = computeViewProj(cam, width, height);
@@ -50,6 +50,11 @@ Uniforms computeUniforms(const Camera& cam, const simd::float4x4& objectModel,
         u.lightTypes[i] = simd_make_int4((int)light.type, 0, 0, 0);
     }
     u.lightMeta = simd_make_int4(count, 0, 0, 0);
+
+    Material fallback;
+    const Material& m = material ? *material : fallback;
+    u.materialAlbedo = simd_make_float4(m.albedo[0], m.albedo[1], m.albedo[2], 1.0f);
+    u.materialParams = simd_make_float4(m.metallic, m.roughness, m.ao, m.useTextures ? 1.0f : 0.0f);
 
     return u;
 }

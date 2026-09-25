@@ -40,6 +40,16 @@ struct Uniforms {
     simd::int4 lightTypes[kMaxLights];        // x = LightType of that light
     simd::int4 lightMeta;                     // x = active light count
     simd::float4 cameraPosition;
+    simd::float4 materialAlbedo;              // rgb = albedo tint
+    simd::float4 materialParams;              // x = metallic, y = roughness, z = ao, w = useTextures (0/1)
+};
+
+// Per-draw glTF material factors (one per submesh - see MeshLoader.hpp), bound at fragment buffer 2
+// and multiplied with the Scene Editor's per-object Material. Must stay layout-compatible with
+// MaterialParams in Shader.metal. The defaults are neutral, which is what non-glTF meshes use.
+struct MaterialParams {
+    simd::float4 baseColorFactor = {1.0f, 1.0f, 1.0f, 1.0f};
+    simd::float4 factors = {1.0f, 1.0f, 0.0f, 0.0f}; // x = metallic, y = roughness, z = occlusion strength
 };
 
 // Camera-only view-projection (no object model matrix) - see its own comment in Uniforms.cpp.
@@ -50,6 +60,7 @@ simd::float4x4 computeViewProj(const Camera& cam, int width, int height);
 // kMaxLights lights of any type (extras beyond that are ignored). Call once per object per frame
 // (objectModel = objectModelMatrix(obj)). Per-light shadow-map matrices are handled separately in
 // Main.cpp (see Shadow.hpp) - they change per light, not per object, so they don't belong here.
+// material may be null (gizmo/markers, which don't use it) - a neutral default is written then.
 Uniforms computeUniforms(const Camera& cam, const simd::float4x4& objectModel,
                           const SceneLight* lights, int lightCount,
-                          int width, int height);
+                          int width, int height, const Material* material = nullptr);

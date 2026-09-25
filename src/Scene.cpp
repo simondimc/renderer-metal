@@ -135,6 +135,8 @@ simd::float3 objectUp(const SceneObject& obj) {
 //   position <x> <y> <z>
 //   rotation <x> <y> <z>    (degrees; Cube/Mesh always, Light only for Directional/Spot/Area)
 //   scale <x> <y> <z>       (Cube/Mesh only)
+//   material <r> <g> <b> <metallic> <roughness> <ao> <useTextures 0|1>   (Cube/Mesh only - see
+//                            Material in Scene.hpp; absent = defaults, so old scene files load unchanged)
 //   meshpath <path>         (Mesh only - presence of this line is what makes an "object" block a
 //                            Mesh rather than a Cube, so old scene files without it still load as
 //                            Cube unchanged)
@@ -182,6 +184,9 @@ bool saveScene(const Scene& scene, const std::string& path) {
         } else {
             out << "rotation " << obj.rotationDegrees[0] << " " << obj.rotationDegrees[1] << " " << obj.rotationDegrees[2] << "\n";
             out << "scale " << obj.scale[0] << " " << obj.scale[1] << " " << obj.scale[2] << "\n";
+            const Material& m = obj.material;
+            out << "material " << m.albedo[0] << " " << m.albedo[1] << " " << m.albedo[2] << " "
+                << m.metallic << " " << m.roughness << " " << m.ao << " " << (m.useTextures ? 1 : 0) << "\n";
             if (obj.type == SceneObjectType::Mesh) {
                 out << "meshpath " << obj.meshPath << "\n";
             }
@@ -248,6 +253,11 @@ bool loadScene(Scene& scene, const std::string& path) {
         } else if (haveCurrent && keyword == "scale") {
             float* s = loaded.objects.back().scale;
             ss >> s[0] >> s[1] >> s[2];
+        } else if (haveCurrent && keyword == "material") {
+            Material& m = loaded.objects.back().material;
+            int useTextures = 1;
+            ss >> m.albedo[0] >> m.albedo[1] >> m.albedo[2] >> m.metallic >> m.roughness >> m.ao >> useTextures;
+            m.useTextures = useTextures != 0;
         } else if (haveCurrent && keyword == "color") {
             float* c = loaded.objects.back().color;
             ss >> c[0] >> c[1] >> c[2];

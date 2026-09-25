@@ -137,6 +137,15 @@ void drawSceneEditorPanel(Scene& scene, int& selectedIndex) {
         } else {
             ImGui::DragFloat3("Rotation", obj.rotationDegrees, 1.0f);
             ImGui::DragFloat3("Scale", obj.scale, 0.05f, 0.01f, 10.0f);
+            if (ImGui::TreeNodeEx("Material", ImGuiTreeNodeFlags_DefaultOpen)) {
+                Material& m = obj.material;
+                ImGui::Checkbox("Use Textures", &m.useTextures);
+                ImGui::ColorEdit3("Albedo", m.albedo);
+                ImGui::SliderFloat("Metallic", &m.metallic, 0.0f, 1.0f);
+                ImGui::SliderFloat("Roughness", &m.roughness, 0.0f, 1.0f);
+                ImGui::SliderFloat("AO", &m.ao, 0.0f, 1.0f);
+                ImGui::TreePop();
+            }
             if (obj.type == SceneObjectType::Mesh) {
                 char pathBuf[256];
                 strncpy(pathBuf, obj.meshPath.c_str(), sizeof(pathBuf) - 1);

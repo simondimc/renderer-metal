@@ -2,9 +2,28 @@
 #include <Metal/Metal.hpp>
 #include <simd/simd.h>
 #include <string>
+#include <vector>
+#include "Uniforms.hpp" // MaterialParams
+
+// One glTF material as the renderer understands it (metallic-roughness only - emissive, alpha modes
+// and KHR_materials_* extensions such as transmission are ignored, so e.g. glass renders opaque).
+// A null texture means "the material has none": Main.cpp substitutes a neutral 1x1 stand-in.
+struct MeshMaterial {
+    MaterialParams params;
+    MTL::Texture* albedo = nullptr;  // sRGB
+    MTL::Texture* normal = nullptr;  // tangent-space, OpenGL (+Y up) convention as in glTF
+    MTL::Texture* orm = nullptr;     // glTF packing: R = occlusion, G = roughness, B = metallic
+};
+
+// A contiguous run of the mesh's index buffer drawn with one material.
+struct MeshSubmesh {
+    NS::UInteger indexOffset = 0; // in indices, not bytes
+    NS::UInteger indexCount = 0;
+    size_t materialIndex = 0;     // into MeshData::materials
+};
 
 // GPU buffers for one loaded mesh. Vertex layout matches CubeMesh::vertexStrideFloats exactly:
-// pos3, uv2, normal3, tangent3 (11 floats/vertex) - so it slots into the existing vertex
+// pos3, uv2, normal3, tangent4 = xyz + handedness (12 floats/vertex) - so it slots into the existing vertex
 // descriptor/pipeline unchanged. indexCount == 0 (buffers left null) signals a failed load.
 struct MeshData {
     MTL::Buffer* vertexBuffer = nullptr;
@@ -16,9 +35,14 @@ struct MeshData {
     // per-triangle, since the CPU-side vertex data itself isn't kept around after upload.
     simd::float3 localMin = {0.0f, 0.0f, 0.0f};
     simd::float3 localMax = {0.0f, 0.0f, 0.0f};
+    // glTF only: the file's own materials and how the index buffer splits across them. Empty for
+    // .obj, which is drawn in one call with the renderer's default texture set.
+    std::vector<MeshMaterial> materials;
+    std::vector<MeshSubmesh> submeshes;
 };
 
 // Loads a mesh from disk into GPU buffers, dispatching on file extension:
-// .obj -> tinyobjloader, .gltf/.glb -> cgltf. Only the first mesh/primitive is read.
+// .obj -> tinyobjloader, .gltf/.glb -> cgltf. glTF loads every node's mesh, merged (world-
+// transformed) into one buffer split into per-material submeshes, plus its textures.
 // Returns a MeshData with indexCount == 0 and logs to stderr on failure.
 MeshData loadMesh(MTL::Device* device, const std::string& path);

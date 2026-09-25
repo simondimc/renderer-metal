@@ -24,7 +24,7 @@ struct VertexInput {
     float3 position [[attribute(0)]];
     float2 uv       [[attribute(1)]];
     float3 normal   [[attribute(2)]];
-    float3 tangent  [[attribute(3)]];
+    float4 tangent  [[attribute(3)]]; // xyz = tangent, w = bitangent handedness (+1/-1)
 };
 
 struct RasterData {
@@ -32,7 +32,7 @@ struct RasterData {
     float2 uv;
     float3 worldPosition;
     float3 worldNormal;
-    float3 worldTangent;
+    float4 worldTangent; // xyz = world-space tangent, w = handedness
 };
 
 struct Uniforms {
@@ -48,6 +48,15 @@ struct Uniforms {
     int4 lightTypes[MAX_LIGHTS];        // x = LightType of that light
     int4 lightMeta;                     // x = active light count
     float4 cameraPosition;
+    float4 materialAlbedo;              // rgb = albedo tint
+    float4 materialParams;              // x = metallic, y = roughness, z = ao, w = useTextures (0/1)
+};
+
+// Per-draw glTF material factors, bound at fragment buffer 2 - must match MaterialParams in
+// Uniforms.hpp. Neutral (all 1, occlusion strength 0) for anything that isn't a glTF submesh.
+struct MaterialParams {
+    float4 baseColorFactor;
+    float4 factors; // x = metallic, y = roughness, z = occlusion strength
 };
 
 // Vertex Shader
@@ -58,7 +67,7 @@ vertex RasterData vertexMain(VertexInput in [[stage_in]],
     out.uv = in.uv;
     out.worldPosition = (uniforms.modelMatrix * float4(in.position, 1.0)).xyz;
     out.worldNormal = (uniforms.modelMatrix * float4(in.normal, 0.0)).xyz;
-    out.worldTangent = (uniforms.modelMatrix * float4(in.tangent, 0.0)).xyz;
+    out.worldTangent = float4((uniforms.modelMatrix * float4(in.tangent.xyz, 0.0)).xyz, in.tangent.w);
     return out;
 }
 
@@ -193,6 +202,35 @@ static float3 toneMap(float3 color, int op) {
     return acesFilmicToneMap(color); // TONE_MAP_ACES, and the default for any unrecognized value
 }
 
+// --- Cook-Torrance microfacet BRDF (GGX / Smith / Schlick), the standard metallic-roughness model.
+// alpha = roughness^2 is the perceptually-linear remapping used by all three terms below.
+
+constant float PI = 3.14159265358979;
+
+// GGX / Trowbridge-Reitz normal distribution: how many microfacets point along the half vector.
+static float distributionGGX(float NdotH, float roughness) {
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float d = NdotH * NdotH * (a2 - 1.0) + 1.0;
+    return a2 / (PI * d * d);
+}
+
+// Schlick-GGX geometry term for one direction (view or light), with the direct-lighting remap of k.
+static float geometrySchlickGGX(float NdotX, float roughness) {
+    float r = roughness + 1.0;
+    float k = (r * r) / 8.0;
+    return NdotX / (NdotX * (1.0 - k) + k);
+}
+
+// Smith's method: shadowing/masking is the product of the light-side and view-side terms.
+static float geometrySmith(float NdotV, float NdotL, float roughness) {
+    return geometrySchlickGGX(NdotV, roughness) * geometrySchlickGGX(NdotL, roughness);
+}
+
+static float3 fresnelSchlick(float cosTheta, float3 F0) {
+    return F0 + (1.0 - F0) * powr(saturate(1.0 - cosTheta), 5.0);
+}
+
 // Fragment Shader
 fragment float4 fragmentMain(RasterData in [[stage_in]],
                              constant Uniforms& uniforms [[buffer(1)]],
@@ -200,24 +238,53 @@ fragment float4 fragmentMain(RasterData in [[stage_in]],
                              texture2d<float> normalMap [[texture(1)]],
                              array<texturecube<float>, MAX_LIGHTS> shadowCubes [[texture(2)]],
                              array<texture2d<float>, MAX_LIGHTS> shadow2DMaps [[texture(2 + MAX_LIGHTS)]],
+                             texture2d<float> ormMap [[texture(2 + 2 * MAX_LIGHTS)]],
+                             constant MaterialParams& material [[buffer(2)]],
                              sampler smp [[sampler(0)]],
                              sampler shadowSampler [[sampler(1)]]) {
+    // Placeholder for image-based lighting: a constant ambient term, scaled by the material's AO.
     constexpr float ambientStrength = 0.15;
-    constexpr float specularStrength = 0.5;
-    constexpr float shininess = 32.0;
 
-    // Build the TBN basis and use it to rotate the tangent-space normal map sample into world space
+    bool useTextures = uniforms.materialParams.w > 0.5;
+
     float3 N = normalize(in.worldNormal);
-    float3 T = normalize(in.worldTangent);
-    float3 B = cross(N, T);
-    float3x3 TBN = float3x3(T, B, N);
-
-    float3 tangentNormal = normalMap.sample(smp, in.uv).rgb * 2.0 - 1.0;
-    float3 normal = normalize(TBN * tangentNormal);
+    float3 normal = N;
+    if (useTextures) {
+        // Build the TBN basis and use it to rotate the tangent-space normal map sample into world space
+        float3 T = normalize(in.worldTangent.xyz);
+        // w = -1 on mirrored UVs flips the bitangent (glTF: B = cross(N, T) * w); sign() so
+        // interpolating between vertices can't produce a fractional handedness.
+        float3 B = cross(N, T) * (in.worldTangent.w < 0.0 ? -1.0 : 1.0);
+        float3x3 TBN = float3x3(T, B, N);
+        float3 tangentNormal = normalMap.sample(smp, in.uv).rgb * 2.0 - 1.0;
+        normal = normalize(TBN * tangentNormal);
+    }
 
     float3 viewDir = normalize(uniforms.cameraPosition.xyz - in.worldPosition);
-    float4 texColor = tex.sample(smp, in.uv);
-    float3 litColor = texColor.rgb * ambientStrength;
+    // Scene Editor material (uniforms.material*) x the draw's glTF factors and textures (see
+    // Material in Scene.hpp). ORM = glTF packing: R = occlusion, G = roughness, B = metallic.
+    float3 albedo = uniforms.materialAlbedo.rgb;
+    float metallic = uniforms.materialParams.x;
+    float roughness = uniforms.materialParams.y;
+    float ao = uniforms.materialParams.z;
+    if (useTextures) {
+        albedo *= tex.sample(smp, in.uv).rgb * material.baseColorFactor.rgb;
+        float3 orm = ormMap.sample(smp, in.uv).rgb;
+        metallic *= material.factors.x * orm.b;
+        roughness *= material.factors.y * orm.g;
+        ao *= mix(1.0, orm.r, material.factors.z);
+    }
+    metallic = saturate(metallic);
+    // A perfectly smooth surface makes the GGX lobe infinitely narrow (a point light would vanish
+    // or blow out to a single pixel), so keep a small floor.
+    roughness = clamp(roughness, 0.04, 1.0);
+
+    // Reflectance at normal incidence: ~4% for dielectrics, the albedo itself (tinted) for metals.
+    float3 F0 = mix(float3(0.04), albedo, metallic);
+    float NdotV = max(dot(normal, viewDir), 1e-4);
+
+    // Metals have no diffuse term; ambient diffuse + a crude ambient specular (F0) stand in for IBL.
+    float3 litColor = ambientStrength * ao * (albedo * (1.0 - metallic) + F0);
 
     int lightCount = uniforms.lightMeta.x;
     for (int i = 0; i < lightCount; i++) {
@@ -267,10 +334,22 @@ fragment float4 fragmentMain(RasterData in [[stage_in]],
         }
 
         float3 halfVector = normalize(lightDir + viewDir);
-        float3 radiance = uniforms.lightColors[i].rgb * uniforms.lightColors[i].a * attenuation;
+        // Multiplied by PI to cancel the Lambert BRDF's albedo/PI below, so light intensities keep
+        // the pre-PBR meaning: intensity 1 = a white diffuse surface facing the light returns 1.0.
+        float3 radiance = uniforms.lightColors[i].rgb * uniforms.lightColors[i].a * attenuation * PI;
 
-        float diffuse = max(dot(normal, lightDir), 0.0);
-        float specular = powr(max(dot(normal, halfVector), 0.0), shininess) * specularStrength;
+        float NdotL = max(dot(normal, lightDir), 0.0);
+        float NdotH = max(dot(normal, halfVector), 0.0);
+        float VdotH = max(dot(viewDir, halfVector), 0.0);
+
+        float D = distributionGGX(NdotH, roughness);
+        float G = geometrySmith(NdotV, NdotL, roughness);
+        float3 F = fresnelSchlick(VdotH, F0);
+        float3 specular = (D * G * F) / max(4.0 * NdotV * NdotL, 1e-4);
+        // Energy conservation: light reflected specularly (F) can't also be diffusely scattered, and
+        // metals absorb whatever they don't reflect.
+        float3 kD = (1.0 - F) * (1.0 - metallic);
+        float3 brdf = kD * albedo / PI + specular;
 
         // Point lights use the cube shadow maps (no single frustum covers all directions);
         // Directional/Spot use a single projected shadow map. Area lights don't cast shadows yet
@@ -285,14 +364,14 @@ fragment float4 fragmentMain(RasterData in [[stage_in]],
             shadow = sampleProjectedShadow(in.worldPosition, shadowEye, uniforms.lightViewProj[i], shadow2DMaps[i], shadowSampler);
         }
 
-        litColor += shadow * (texColor.rgb * diffuse + specular) * radiance;
+        litColor += shadow * brdf * radiance * NdotL;
     }
 
     // litColor is unbounded linear HDR radiance (bright/overlapping lights can push it well past
     // 1.0) - written straight into the offscreen HDR color target, untouched. Exposure, tone
     // mapping, and gamma encoding all happen once, screen-space, in postProcessFragmentMain below,
     // rather than per-object here - see Main.cpp's HDR scene / post-process / overlay pass split.
-    return float4(litColor, texColor.a);
+    return float4(litColor, 1.0);
 }
 
 // --- Selection mask: renders just the Scene Editor's currently-selected object as flat white
