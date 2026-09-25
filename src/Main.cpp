@@ -14,6 +14,7 @@
 #include "Camera.hpp"
 #include "CubeMesh.hpp"
 #include "Environment.hpp"
+#include "GpuTimer.hpp"
 #include "LightMarker.hpp"
 #include "MeshLoader.hpp"
 #include "Scene.hpp"
@@ -314,6 +315,11 @@ int main() {
         uniformBuffers[i] = device->newBuffer(kTotalUniformSlots * kUniformStride, MTL::ResourceStorageModeShared);
     }
     dispatch_semaphore_t frameBoundarySemaphore = dispatch_semaphore_create(kMaxFramesInFlight);
+    // Per-pass and whole-frame GPU timing shown in the overlay (see GpuTimer.hpp); F3 hides the
+    // per-pass breakdown.
+    GpuTimer gpuTimer(device, kMaxFramesInFlight);
+    bool showGpuBreakdown = true;
+    bool f3WasPressed = false;
     int frameIndex = 0;
 
     // Compile the shader library
@@ -648,6 +654,10 @@ int main() {
         }
         toggleKeyWasPressed = toggleKeyIsPressed;
 
+        bool f3IsPressed = glfwGetKey(window, GLFW_KEY_F3) == GLFW_PRESS;
+        if (f3IsPressed && !f3WasPressed) showGpuBreakdown = !showGpuBreakdown;
+        f3WasPressed = f3IsPressed;
+
         if (!camera.uiMode) {
             processCameraInput(window, camera, deltaTime);
         }
@@ -795,7 +805,7 @@ int main() {
             overlayRPD->depthAttachment()->setStoreAction(MTL::StoreActionDontCare);
 
             beginUIFrame(overlayRPD);
-            drawFpsCounter(deltaTime);
+            drawPerformanceOverlay(deltaTime, gpuTimer, showGpuBreakdown);
             if (camera.uiMode) {
                 drawSceneEditorPanel(scene, selectedObjectIndex, textureLibrary, environmentLibrary);
             }
@@ -982,6 +992,16 @@ int main() {
 
             // Request a command buffer from the queue
             MTL::CommandBuffer* cmdBuffer = cmdQueue->commandBuffer();
+            gpuTimer.beginFrame(frameIndex);
+            // Every pass below goes through these so GpuTimer can time it under the given label.
+            auto beginRenderPass = [&](MTL::RenderPassDescriptor* descriptor, const char* label) {
+                gpuTimer.attach(descriptor, label);
+                return cmdBuffer->renderCommandEncoder(descriptor);
+            };
+            auto beginBlitPass = [&](const char* label) {
+                MTL::BlitPassDescriptor* descriptor = gpuTimer.blitDescriptor(label);
+                return descriptor ? cmdBuffer->blitCommandEncoder(descriptor) : cmdBuffer->blitCommandEncoder();
+            };
 
             // Fragment texture slots past the shadow maps/ORM/IBL inputs (see fragmentMain).
             constexpr NS::UInteger kOrmTextureSlot = 2 + 2 * kMaxLights;
@@ -1056,7 +1076,7 @@ int main() {
                         shadowRPD->depthAttachment()->setClearDepth(1.0);
                         shadowRPD->depthAttachment()->setStoreAction(MTL::StoreActionDontCare);
 
-                        MTL::RenderCommandEncoder* shadowEncoder = cmdBuffer->renderCommandEncoder(shadowRPD);
+                        MTL::RenderCommandEncoder* shadowEncoder = beginRenderPass(shadowRPD, "Shadow (point)");
                         shadowEncoder->setDepthStencilState(depthState);
                         shadowEncoder->setRenderPipelineState(shadowPipelineState);
                         shadowEncoder->setVertexBytes(&cubeFaceMatrices[lightIndex][face], sizeof(simd::float4x4), 2);
@@ -1083,7 +1103,7 @@ int main() {
                     shadow2DRPD->depthAttachment()->setClearDepth(1.0);
                     shadow2DRPD->depthAttachment()->setStoreAction(MTL::StoreActionDontCare);
 
-                    MTL::RenderCommandEncoder* shadow2DEncoder = cmdBuffer->renderCommandEncoder(shadow2DRPD);
+                    MTL::RenderCommandEncoder* shadow2DEncoder = beginRenderPass(shadow2DRPD, "Shadow (spot/directional)");
                     shadow2DEncoder->setDepthStencilState(depthState);
                     shadow2DEncoder->setRenderPipelineState(shadowPipelineState);
                     shadow2DEncoder->setVertexBytes(&lights[lightIndex].shadowViewProj, sizeof(simd::float4x4), 2);
@@ -1113,7 +1133,7 @@ int main() {
                 aoPrepassRPD->depthAttachment()->setClearDepth(1.0);
                 aoPrepassRPD->depthAttachment()->setStoreAction(MTL::StoreActionStore);
 
-                MTL::RenderCommandEncoder* aoPrepassEncoder = cmdBuffer->renderCommandEncoder(aoPrepassRPD);
+                MTL::RenderCommandEncoder* aoPrepassEncoder = beginRenderPass(aoPrepassRPD, "AO prepass");
                 aoPrepassEncoder->setDepthStencilState(depthState);
                 aoPrepassEncoder->setRenderPipelineState(aoPrepassPipelineState);
                 drawShadowCasters(aoPrepassEncoder); // same geometry selection: opaque + Mask, no glass/blend
@@ -1139,7 +1159,7 @@ int main() {
                 aoColor->setTexture(aoTextureA);
                 aoColor->setLoadAction(MTL::LoadActionDontCare);
                 aoColor->setStoreAction(MTL::StoreActionStore);
-                MTL::RenderCommandEncoder* aoEncoder = cmdBuffer->renderCommandEncoder(aoRPD);
+                MTL::RenderCommandEncoder* aoEncoder = beginRenderPass(aoRPD, "AO");
                 aoEncoder->setRenderPipelineState(aoPipelineState);
                 aoEncoder->setFragmentTexture(depthTexture, 0);
                 aoEncoder->setFragmentTexture(aoNormalTexture, 1);
@@ -1155,7 +1175,7 @@ int main() {
                     aoBlurColor->setTexture(blurSources[1 - pass]); // A -> B, then B -> A
                     aoBlurColor->setLoadAction(MTL::LoadActionDontCare);
                     aoBlurColor->setStoreAction(MTL::StoreActionStore);
-                    MTL::RenderCommandEncoder* aoBlurEncoder = cmdBuffer->renderCommandEncoder(aoBlurRPD);
+                    MTL::RenderCommandEncoder* aoBlurEncoder = beginRenderPass(aoBlurRPD, "AO blur");
                     aoBlurEncoder->setRenderPipelineState(aoBlurPipelineState);
                     aoBlurEncoder->setFragmentTexture(blurSources[pass], 0);
                     aoBlurEncoder->setFragmentTexture(depthTexture, 1);
@@ -1218,7 +1238,7 @@ int main() {
             hdrRPD->depthAttachment()->setClearDepth(1.0);
             hdrRPD->depthAttachment()->setStoreAction(MTL::StoreActionStore);
 
-            MTL::RenderCommandEncoder* hdrEncoder = cmdBuffer->renderCommandEncoder(hdrRPD);
+            MTL::RenderCommandEncoder* hdrEncoder = beginRenderPass(hdrRPD, "Scene");
             hdrEncoder->setDepthStencilState(depthState);
             hdrEncoder->setRenderPipelineState(pipelineState);
             bindSceneState(hdrEncoder, aoActive ? aoTextureA : whiteTexture);
@@ -1306,7 +1326,7 @@ int main() {
                 if (!transmissiveDraws.empty()) {
                     // Copy the opaque scene + sky and build its mip chain (the blurrier levels are
                     // what rough glass samples).
-                    MTL::BlitCommandEncoder* blit = cmdBuffer->blitCommandEncoder();
+                    MTL::BlitCommandEncoder* blit = beginBlitPass("Glass copy");
                     blit->copyFromTexture(hdrColorTexture, 0, 0, MTL::Origin(0, 0, 0),
                                           MTL::Size(hdrColorTexture->width(), hdrColorTexture->height(), 1),
                                           transmissionTexture, 0, 0, MTL::Origin(0, 0, 0));
@@ -1330,7 +1350,7 @@ int main() {
                 hdr2RPD->depthAttachment()->setTexture(depthTexture);
                 hdr2RPD->depthAttachment()->setLoadAction(MTL::LoadActionLoad);
                 hdr2RPD->depthAttachment()->setStoreAction(MTL::StoreActionStore);
-                MTL::RenderCommandEncoder* transparentEncoder = cmdBuffer->renderCommandEncoder(hdr2RPD);
+                MTL::RenderCommandEncoder* transparentEncoder = beginRenderPass(hdr2RPD, "Glass / blend");
                 // Glass/blend pixels aren't what the AO buffer describes (it holds the opaque
                 // surface behind them), so they get the unoccluded stand-in.
                 bindSceneState(transparentEncoder, whiteTexture);
@@ -1375,7 +1395,7 @@ int main() {
             // by now, and the two are never needed at the same time. Skipped at strength 0, when the
             // G-buffer was never stored either.
             if (ssrActive) {
-                MTL::BlitCommandEncoder* ssrBlit = cmdBuffer->blitCommandEncoder();
+                MTL::BlitCommandEncoder* ssrBlit = beginBlitPass("SSR copy");
                 ssrBlit->copyFromTexture(hdrColorTexture, 0, 0, MTL::Origin(0, 0, 0),
                                          MTL::Size(hdrColorTexture->width(), hdrColorTexture->height(), 1),
                                          transmissionTexture, 0, 0, MTL::Origin(0, 0, 0));
@@ -1403,7 +1423,7 @@ int main() {
                 ssrColor->setTexture(hdrColorTexture);
                 ssrColor->setLoadAction(MTL::LoadActionLoad);
                 ssrColor->setStoreAction(MTL::StoreActionStore);
-                MTL::RenderCommandEncoder* ssrEncoder = cmdBuffer->renderCommandEncoder(ssrRPD);
+                MTL::RenderCommandEncoder* ssrEncoder = beginRenderPass(ssrRPD, "SSR");
                 ssrEncoder->setRenderPipelineState(ssrPipelineState);
                 ssrEncoder->setFragmentTexture(depthTexture, 0);
                 ssrEncoder->setFragmentTexture(ssrNormalTexture, 1);
@@ -1439,7 +1459,7 @@ int main() {
                 taaColor->setTexture(taaOutput);
                 taaColor->setLoadAction(MTL::LoadActionDontCare);
                 taaColor->setStoreAction(MTL::StoreActionStore);
-                MTL::RenderCommandEncoder* taaEncoder = cmdBuffer->renderCommandEncoder(taaRPD);
+                MTL::RenderCommandEncoder* taaEncoder = beginRenderPass(taaRPD, "TAA");
                 taaEncoder->setRenderPipelineState(taaPipelineState);
                 taaEncoder->setFragmentTexture(hdrColorTexture, 0);
                 taaEncoder->setFragmentTexture(taaHistory, 1);
@@ -1469,7 +1489,7 @@ int main() {
             selectionMaskRPD->depthAttachment()->setLoadAction(MTL::LoadActionLoad);
             selectionMaskRPD->depthAttachment()->setStoreAction(MTL::StoreActionStore);
 
-            MTL::RenderCommandEncoder* selectionMaskEncoder = cmdBuffer->renderCommandEncoder(selectionMaskRPD);
+            MTL::RenderCommandEncoder* selectionMaskEncoder = beginRenderPass(selectionMaskRPD, "Selection mask");
             if (camera.uiMode && selectedObjectIndex >= 0 && selectedObjectIndex < (int)scene.objects.size()) {
                 const SceneObject* selectedObj = &scene.objects[selectedObjectIndex];
                 for (NS::UInteger i = 0; i < renderables.size(); i++) {
@@ -1501,7 +1521,7 @@ int main() {
                 bloomExtractColor->setStoreAction(MTL::StoreActionStore);
                 bloomExtractColor->setTexture(bloomTextureA);
 
-                MTL::RenderCommandEncoder* bloomExtractEncoder = cmdBuffer->renderCommandEncoder(bloomExtractRPD);
+                MTL::RenderCommandEncoder* bloomExtractEncoder = beginRenderPass(bloomExtractRPD, "Bloom");
                 bloomExtractEncoder->setRenderPipelineState(bloomExtractPipelineState);
                 bloomExtractEncoder->setFragmentTexture(finalSceneColor, 0);
                 bloomExtractEncoder->setFragmentSamplerState(postProcessSamplerState, 0);
@@ -1515,7 +1535,7 @@ int main() {
                 blurHColor->setStoreAction(MTL::StoreActionStore);
                 blurHColor->setTexture(bloomTextureB);
 
-                MTL::RenderCommandEncoder* blurHEncoder = cmdBuffer->renderCommandEncoder(blurHRPD);
+                MTL::RenderCommandEncoder* blurHEncoder = beginRenderPass(blurHRPD, "Bloom");
                 blurHEncoder->setRenderPipelineState(blurPipelineState);
                 blurHEncoder->setFragmentTexture(bloomTextureA, 0);
                 blurHEncoder->setFragmentSamplerState(postProcessSamplerState, 0);
@@ -1530,7 +1550,7 @@ int main() {
                 blurVColor->setStoreAction(MTL::StoreActionStore);
                 blurVColor->setTexture(bloomTextureA);
 
-                MTL::RenderCommandEncoder* blurVEncoder = cmdBuffer->renderCommandEncoder(blurVRPD);
+                MTL::RenderCommandEncoder* blurVEncoder = beginRenderPass(blurVRPD, "Bloom");
                 blurVEncoder->setRenderPipelineState(blurPipelineState);
                 blurVEncoder->setFragmentTexture(bloomTextureB, 0);
                 blurVEncoder->setFragmentSamplerState(postProcessSamplerState, 0);
@@ -1549,7 +1569,7 @@ int main() {
             postColorAttachment->setStoreAction(MTL::StoreActionStore);
             postColorAttachment->setTexture(drawable->texture());
 
-            MTL::RenderCommandEncoder* postEncoder = cmdBuffer->renderCommandEncoder(postRPD);
+            MTL::RenderCommandEncoder* postEncoder = beginRenderPass(postRPD, "Post-process");
             postEncoder->setRenderPipelineState(postProcessPipelineState);
             postEncoder->setFragmentTexture(finalSceneColor, 0);
             postEncoder->setFragmentTexture(bloomTextureA, 1);
@@ -1632,7 +1652,7 @@ int main() {
             // geometry Pass A already wrote) plus ImGui, drawn on top of Pass B's tone-mapped
             // result. overlayRPD was already built above (beginUIFrame needed it before any
             // ImGui:: widget calls this frame).
-            MTL::RenderCommandEncoder* overlayEncoder = cmdBuffer->renderCommandEncoder(overlayRPD);
+            MTL::RenderCommandEncoder* overlayEncoder = beginRenderPass(overlayRPD, "Overlay + UI");
             overlayEncoder->setDepthStencilState(depthState);
 
             if (camera.uiMode) {
@@ -1649,7 +1669,9 @@ int main() {
 
             // Free this frame's uniform-buffer slot for reuse once the GPU actually finishes
             // reading it, kMaxFramesInFlight frames from now.
-            cmdBuffer->addCompletedHandler([frameBoundarySemaphore](MTL::CommandBuffer*) {
+            // The timer reads this frame's samples first, while its slot is still ours.
+            cmdBuffer->addCompletedHandler([frameBoundarySemaphore, &gpuTimer, slot = frameIndex](MTL::CommandBuffer* finished) {
+                gpuTimer.endFrame(slot, finished);
                 dispatch_semaphore_signal(frameBoundarySemaphore);
             });
 

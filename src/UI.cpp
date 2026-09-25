@@ -2,6 +2,8 @@
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_metal.h"
+#include <algorithm>
+#include <vector>
 
 void initUI(GLFWwindow* window, MTL::Device* device) {
     IMGUI_CHECKVERSION();
@@ -26,7 +28,7 @@ void beginUIFrame(MTL::RenderPassDescriptor* renderPassDescriptor) {
     ImGui::NewFrame();
 }
 
-void drawFpsCounter(float deltaTime) {
+void drawPerformanceOverlay(float deltaTime, const GpuTimer& gpuTimer, bool showPassBreakdown) {
     // Averaged over a window (rather than shown per frame) so the numbers stay readable: the text
     // only changes every kRefreshSeconds, from the frames and time accumulated since the last change.
     constexpr float kRefreshSeconds = 0.5f;
@@ -53,6 +55,33 @@ void drawFpsCounter(float deltaTime) {
                  ImGuiWindowFlags_NoInputs);
     ImGui::Text("%.0f FPS", shownFps);
     ImGui::Text("%.2f ms", shownFrameMs);
+
+    std::vector<GpuTimer::Entry> passes;
+    float gpuMilliseconds = 0.0f;
+    gpuTimer.snapshot(passes, gpuMilliseconds);
+    ImGui::Text("GPU %.2f ms", gpuMilliseconds);
+
+    if (showPassBreakdown) {
+        if (!gpuTimer.passTimingSupported()) {
+            ImGui::TextDisabled("per-pass timing unsupported");
+        } else {
+            std::sort(passes.begin(), passes.end(),
+                      [](const GpuTimer::Entry& a, const GpuTimer::Entry& b) { return a.milliseconds > b.milliseconds; });
+            ImGui::Separator();
+            if (ImGui::BeginTable("##passes", 2, ImGuiTableFlags_SizingFixedFit)) {
+                for (const GpuTimer::Entry& pass : passes) {
+                    if (pass.milliseconds < 0.005f) continue; // a disabled effect's fading-out entry
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    ImGui::TextUnformatted(pass.label.c_str());
+                    ImGui::TableNextColumn();
+                    ImGui::Text("%.2f", pass.milliseconds);
+                }
+                ImGui::EndTable();
+            }
+        }
+        ImGui::TextDisabled("F3: hide");
+    }
     ImGui::End();
 }
 
