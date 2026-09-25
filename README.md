@@ -26,6 +26,7 @@
 - HDR & Tone Mapping
 
 ### Materials & Shading
+- [x] Linear Color Space & Gamma Correction
 - Physically Based Rendering (PBR)
 - [x] Normal Mapping
 - Bump/Parallax Mapping

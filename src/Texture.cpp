@@ -3,7 +3,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
-MTL::Texture* loadTexture(MTL::Device* device, const char* path) {
+MTL::Texture* loadTexture(MTL::Device* device, const char* path, bool isSRGB) {
     stbi_set_flip_vertically_on_load(true);
 
     int w, h, channels;
@@ -14,7 +14,7 @@ MTL::Texture* loadTexture(MTL::Device* device, const char* path) {
     }
 
     MTL::TextureDescriptor* desc = MTL::TextureDescriptor::texture2DDescriptor(
-        MTL::PixelFormatRGBA8Unorm, (NS::UInteger)w, (NS::UInteger)h, false
+        isSRGB ? MTL::PixelFormatRGBA8Unorm_sRGB : MTL::PixelFormatRGBA8Unorm, (NS::UInteger)w, (NS::UInteger)h, false
     );
     desc->setStorageMode(MTL::StorageModeShared);
     desc->setUsage(MTL::TextureUsageShaderRead);

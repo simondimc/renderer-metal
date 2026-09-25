@@ -221,7 +221,11 @@ fragment float4 fragmentMain(RasterData in [[stage_in]],
         litColor += shadow * (texColor.rgb * diffuse + specular) * radiance;
     }
 
-    return float4(litColor, texColor.a);
+    // texColor came from an sRGB texture, so the GPU already decoded it to linear on sample - all
+    // the lighting math above ran in linear space. The display expects gamma-encoded (sRGB) values
+    // though, so encode once here, at the very end, rather than per-input.
+    float3 gammaEncoded = pow(saturate(litColor), 1.0 / 2.2);
+    return float4(gammaEncoded, texColor.a);
 }
 
 // --- Axis gizmo: flat-colored lines, no lighting/texturing ---

@@ -20,7 +20,7 @@ light Light 2
 position 0 0 0
 lighttype directional
 color 1 1 1
-intensity 0.5
+intensity 0.3
 rotation -73 -34 10
 light Light 3
 position 2 2 2

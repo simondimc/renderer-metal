@@ -247,9 +247,10 @@ int main() {
     MTL::DepthStencilState* depthState = device->newDepthStencilState(depthDesc);
 
     // run.sh/clean_run.sh launch the binary with the build/ directory as cwd
-    MTL::Texture* colorTexture = loadTexture(device, "../texture/metal_plate_4k/textures/metal_plate_diff_4k.jpg");
-    // Converted offline from the source EXR (DWAA compression, unsupported by stb_image) via ffmpeg
-    MTL::Texture* normalTexture = loadTexture(device, "../texture/metal_plate_4k/textures/metal_plate_nor_gl_4k.png");
+    MTL::Texture* colorTexture = loadTexture(device, "../texture/metal_plate_4k/textures/metal_plate_diff_4k.jpg", /*isSRGB=*/true);
+    // Converted offline from the source EXR (DWAA compression, unsupported by stb_image) via ffmpeg.
+    // Normal maps store linear tangent-space vectors, not color, so this one stays non-sRGB.
+    MTL::Texture* normalTexture = loadTexture(device, "../texture/metal_plate_4k/textures/metal_plate_nor_gl_4k.png", /*isSRGB=*/false);
     if (!colorTexture || !normalTexture) return -1;
 
     MTL::SamplerDescriptor* samplerDesc = MTL::SamplerDescriptor::alloc()->init();
