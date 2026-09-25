@@ -10,7 +10,7 @@
 - [x] Interactive Camera
 
 ### Engine
-- Frame-Resource Synchronization
+- [x] Frame-Resource Synchronization
 - [x] Loading Assets
 - [x] Scene Editor
 - Offscreen Rendering & Post-Processing

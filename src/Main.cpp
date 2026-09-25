@@ -22,6 +22,7 @@
 #include "UI.hpp"
 #include "Uniforms.hpp"
 
+#include <dispatch/dispatch.h>
 #include <unordered_map>
 #include <vector>
 
@@ -169,7 +170,20 @@ int main() {
     constexpr NS::UInteger kLightMarkerUniformOffset = kGizmoUniformOffset + kUniformStride;
     constexpr NS::UInteger kLightRayUniformOffset = kLightMarkerUniformOffset + kMaxLights * kUniformStride;
     constexpr NS::UInteger kTotalUniformSlots = kMaxSceneObjects + 1 + kMaxLights + kMaxLights;
-    MTL::Buffer* uniformBuffer = device->newBuffer(kTotalUniformSlots * kUniformStride, MTL::ResourceStorageModeShared);
+
+    // The CPU writes this frame's Uniforms straight into mapped memory (ResourceStorageModeShared)
+    // while the GPU may still be reading last frame's - or the frame before that's - draw calls out
+    // of the same buffer, since commit() below doesn't block the CPU. One buffer per in-flight frame
+    // (rotated by frameIndex) plus frameBoundarySemaphore (signaled from each command buffer's
+    // completion handler, waited on before reusing that slot) keeps the CPU from overwriting data
+    // the GPU hasn't finished consuming yet.
+    constexpr int kMaxFramesInFlight = 3;
+    MTL::Buffer* uniformBuffers[kMaxFramesInFlight];
+    for (int i = 0; i < kMaxFramesInFlight; i++) {
+        uniformBuffers[i] = device->newBuffer(kTotalUniformSlots * kUniformStride, MTL::ResourceStorageModeShared);
+    }
+    dispatch_semaphore_t frameBoundarySemaphore = dispatch_semaphore_create(kMaxFramesInFlight);
+    int frameIndex = 0;
 
     // Compile the shader library
     NS::Error* error = nullptr;
@@ -315,6 +329,12 @@ int main() {
         CA::MetalDrawable* drawable = cppMetalLayer->nextDrawable();
 
         if (drawable) {
+            // Block here (not before nextDrawable() above) so waiting for a free uniform-buffer
+            // slot doesn't also hold up drawable acquisition - the two are independent resources.
+            // Released by this frame's command buffer completion handler, below.
+            dispatch_semaphore_wait(frameBoundarySemaphore, DISPATCH_TIME_FOREVER);
+            MTL::Buffer* uniformBuffer = uniformBuffers[frameIndex];
+
             // Configure the render pass
             MTL::RenderPassDescriptor* rpd = MTL::RenderPassDescriptor::renderPassDescriptor();
             auto colorAttachment = rpd->colorAttachments()->object(0);
@@ -577,10 +597,18 @@ int main() {
 
             endUIFrame(cmdBuffer, encoder);
 
+            // Free this frame's uniform-buffer slot for reuse once the GPU actually finishes
+            // reading it, kMaxFramesInFlight frames from now.
+            cmdBuffer->addCompletedHandler([frameBoundarySemaphore](MTL::CommandBuffer*) {
+                dispatch_semaphore_signal(frameBoundarySemaphore);
+            });
+
             // Present the texture onto the screen and submit to the GPU
             encoder->endEncoding();
             cmdBuffer->presentDrawable(drawable);
             cmdBuffer->commit();
+
+            frameIndex = (frameIndex + 1) % kMaxFramesInFlight;
         }
 
         // Drain the temporary memory pool for this frame
@@ -624,7 +652,13 @@ int main() {
         if (entry.second.vertexBuffer) entry.second.vertexBuffer->release();
         if (entry.second.indexBuffer) entry.second.indexBuffer->release();
     }
-    uniformBuffer->release();
+    // Drain every in-flight frame before releasing the buffers it may still be reading.
+    for (int i = 0; i < kMaxFramesInFlight; i++) {
+        dispatch_semaphore_wait(frameBoundarySemaphore, DISPATCH_TIME_FOREVER);
+    }
+    for (int i = 0; i < kMaxFramesInFlight; i++) {
+        uniformBuffers[i]->release();
+    }
     cmdQueue->release();
     device->release();
     pool->release();
