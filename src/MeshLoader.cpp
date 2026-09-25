@@ -315,29 +315,47 @@ std::vector<MeshMaterial> loadGltfMaterials(MTL::Device* device, const cgltf_dat
     for (size_t i = 0; i < data->materials_count; i++) {
         const cgltf_material& src = data->materials[i];
         MeshMaterial& dst = materials[i + 1];
-        if (!src.has_pbr_metallic_roughness) continue; // spec defaults, already in dst
 
-        const cgltf_pbr_metallic_roughness& pbr = src.pbr_metallic_roughness;
-        dst.params.baseColorFactor = simd_make_float4(pbr.base_color_factor[0], pbr.base_color_factor[1],
-                                                       pbr.base_color_factor[2], pbr.base_color_factor[3]);
-        dst.params.factors.x = pbr.metallic_factor;
-        dst.params.factors.y = pbr.roughness_factor;
+        if (src.has_pbr_metallic_roughness) { // else spec defaults, already in dst
+            const cgltf_pbr_metallic_roughness& pbr = src.pbr_metallic_roughness;
+            dst.params.baseColorFactor = simd_make_float4(pbr.base_color_factor[0], pbr.base_color_factor[1],
+                                                           pbr.base_color_factor[2], pbr.base_color_factor[3]);
+            dst.params.factors.x = pbr.metallic_factor;
+            dst.params.factors.y = pbr.roughness_factor;
 
-        if (pbr.base_color_texture.texture) {
-            dst.albedo = loadGltfImage(device, data, pbr.base_color_texture.texture->image, true, gltfPath, cache);
+            if (pbr.base_color_texture.texture) {
+                dst.albedo = loadGltfImage(device, data, pbr.base_color_texture.texture->image, true, gltfPath, cache);
+            }
+            if (pbr.metallic_roughness_texture.texture) {
+                dst.orm = loadGltfImage(device, data, pbr.metallic_roughness_texture.texture->image, false, gltfPath, cache);
+            }
         }
         if (src.normal_texture.texture) {
             dst.normal = loadGltfImage(device, data, src.normal_texture.texture->image, false, gltfPath, cache);
         }
-        if (pbr.metallic_roughness_texture.texture) {
-            const cgltf_image* ormImage = pbr.metallic_roughness_texture.texture->image;
-            dst.orm = loadGltfImage(device, data, ormImage, false, gltfPath, cache);
-            // Occlusion is only honored when it's packed into that same image's R channel (the
-            // usual glTF "ORM" layout) - a separate occlusion image is not loaded.
-            if (src.occlusion_texture.texture && src.occlusion_texture.texture->image == ormImage) {
-                dst.params.factors.z = src.occlusion_texture.scale;
-            }
+        // Occlusion is its own image slot: usually the same image as the metallic-roughness one (the
+        // ORM layout - the cache then hands back the same texture), but glTF allows a separate file.
+        if (src.occlusion_texture.texture) {
+            dst.occlusion = loadGltfImage(device, data, src.occlusion_texture.texture->image, false, gltfPath, cache);
+            dst.params.factors.z = src.occlusion_texture.scale;
         }
+
+        // Emissive: HDR radiance added on top of the lit result. KHR_materials_emissive_strength
+        // lets the factor exceed 1 (the base factor is clamped to [0, 1] by the spec).
+        float emissiveStrength = src.has_emissive_strength ? src.emissive_strength.emissive_strength : 1.0f;
+        dst.params.emissiveFactor = simd_make_float4(src.emissive_factor[0] * emissiveStrength,
+                                                      src.emissive_factor[1] * emissiveStrength,
+                                                      src.emissive_factor[2] * emissiveStrength, 0.0f);
+        if (src.emissive_texture.texture) {
+            dst.emissive = loadGltfImage(device, data, src.emissive_texture.texture->image, true, gltfPath, cache);
+        }
+
+        switch (src.alpha_mode) {
+            case cgltf_alpha_mode_mask:  dst.params.alphaParams.x = (float)AlphaMode::Mask; break;
+            case cgltf_alpha_mode_blend: dst.params.alphaParams.x = (float)AlphaMode::Blend; break;
+            default:                     dst.params.alphaParams.x = (float)AlphaMode::Opaque; break;
+        }
+        dst.params.alphaParams.y = src.alpha_cutoff;
     }
     return materials;
 }
@@ -387,13 +405,29 @@ MeshData loadMeshGltf(MTL::Device* device, const std::string& path) {
             if (added == 0) continue;
 
             size_t materialIndex = prim.material ? (size_t)cgltf_material_index(data, prim.material) + 1 : 0;
-            // Adjacent primitives with the same material share one submesh (one draw call).
-            if (!submeshes.empty() && submeshes.back().materialIndex == materialIndex) {
+            // Adjacent primitives with the same material share one submesh (one draw call) - except
+            // Blend ones, which stay separate so each is depth-sorted against the others by its own
+            // center (see MeshSubmesh::center) rather than as one big lump.
+            bool isBlend = prim.material && prim.material->alpha_mode == cgltf_alpha_mode_blend;
+            if (!isBlend && !submeshes.empty() && submeshes.back().materialIndex == materialIndex) {
                 submeshes.back().indexCount += added;
             } else {
                 submeshes.push_back({(NS::UInteger)indexBefore, (NS::UInteger)added, materialIndex});
             }
         }
+    }
+
+    // Each submesh's local bounding-box center, from the (already node-transformed) vertices.
+    for (MeshSubmesh& sub : submeshes) {
+        simd::float3 lo = simd_make_float3(INFINITY, INFINITY, INFINITY);
+        simd::float3 hi = simd_make_float3(-INFINITY, -INFINITY, -INFINITY);
+        for (NS::UInteger i = sub.indexOffset; i < sub.indexOffset + sub.indexCount; i++) {
+            const float* v = &vertexData[indexData[i] * kVertexStrideFloats];
+            simd::float3 p = simd_make_float3(v[0], v[1], v[2]);
+            lo = simd_min(lo, p);
+            hi = simd_max(hi, p);
+        }
+        sub.center = (lo + hi) * 0.5f;
     }
 
     std::vector<MeshMaterial> materials = loadGltfMaterials(device, data, path);
@@ -406,6 +440,9 @@ MeshData loadMeshGltf(MTL::Device* device, const std::string& path) {
     MeshData mesh = uploadMesh(device, vertexData, indexData);
     mesh.materials = std::move(materials);
     mesh.submeshes = std::move(submeshes);
+    for (const MeshSubmesh& sub : mesh.submeshes) {
+        if (mesh.materials[sub.materialIndex].alphaMode() != AlphaMode::Opaque) mesh.hasNonOpaqueSubmeshes = true;
+    }
     return mesh;
 }
 

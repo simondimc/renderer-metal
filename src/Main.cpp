@@ -313,6 +313,17 @@ int main() {
 
     MTL::RenderPipelineState* pipelineState = device->newRenderPipelineState(pipeDesc, &error);
 
+    // Blend PSO: same shaders and targets, but glTF alphaMode BLEND surfaces are mixed over what's
+    // already in the HDR buffer by the alpha fragmentMain returns (see the transparent pass below).
+    // Created from the same descriptor, changed only in the blend factors, after the opaque PSO.
+    auto blendColorAttachment = pipeDesc->colorAttachments()->object(0);
+    blendColorAttachment->setBlendingEnabled(true);
+    blendColorAttachment->setSourceRGBBlendFactor(MTL::BlendFactorSourceAlpha);
+    blendColorAttachment->setDestinationRGBBlendFactor(MTL::BlendFactorOneMinusSourceAlpha);
+    blendColorAttachment->setSourceAlphaBlendFactor(MTL::BlendFactorOne);
+    blendColorAttachment->setDestinationAlphaBlendFactor(MTL::BlendFactorOneMinusSourceAlpha);
+    MTL::RenderPipelineState* blendPipelineState = device->newRenderPipelineState(pipeDesc, &error);
+
     // Selection mask PSO: reuses vertFunc/vertexDesc unchanged (same mvpMatrix as the main HDR
     // pass) but a trivial fragment function (selectionMaskFragmentMain) that just writes flat
     // white - see the mask pass in the render loop below and Shader.metal's comment.
@@ -401,6 +412,14 @@ int main() {
     maskDepthDesc->setDepthCompareFunction(MTL::CompareFunctionLessEqual);
     maskDepthDesc->setDepthWriteEnabled(false);
     MTL::DepthStencilState* maskDepthState = device->newDepthStencilState(maskDepthDesc);
+
+    // Transparent pass depth state: tests against the opaque scene but never writes, so blended
+    // surfaces behind one another all still draw (they're sorted back to front instead) - and so the
+    // depth buffer Depth of Field/Motion Blur/Lens Flare read stays the opaque scene's.
+    MTL::DepthStencilDescriptor* blendDepthDesc = MTL::DepthStencilDescriptor::alloc()->init();
+    blendDepthDesc->setDepthCompareFunction(MTL::CompareFunctionLess);
+    blendDepthDesc->setDepthWriteEnabled(false);
+    MTL::DepthStencilState* blendDepthState = device->newDepthStencilState(blendDepthDesc);
 
     // Sky depth state: the sky is emitted at exactly the far plane (depth 1.0), which is also what the
     // depth buffer is cleared to - so LessEqual lets it fill precisely the pixels no geometry covered.
@@ -804,6 +823,51 @@ int main() {
             // Request a command buffer from the queue
             MTL::CommandBuffer* cmdBuffer = cmdQueue->commandBuffer();
 
+            // Fragment texture slots past the shadow maps/ORM/IBL inputs (see fragmentMain).
+            constexpr NS::UInteger kOrmTextureSlot = 2 + 2 * kMaxLights;
+            constexpr NS::UInteger kOcclusionTextureSlot = 6 + 2 * kMaxLights;
+            constexpr NS::UInteger kEmissiveTextureSlot = 7 + 2 * kMaxLights;
+            static const MaterialParams defaultParams;
+
+            // Binds one glTF material's textures and factors (missing maps get the neutral stand-ins).
+            auto bindMeshMaterial = [&](MTL::RenderCommandEncoder* encoder, const MeshMaterial& mat) {
+                encoder->setFragmentTexture(mat.albedo ? mat.albedo : whiteTexture, 0);
+                encoder->setFragmentTexture(mat.normal ? mat.normal : flatNormalTexture, 1);
+                encoder->setFragmentTexture(mat.orm ? mat.orm : whiteTexture, kOrmTextureSlot);
+                encoder->setFragmentTexture(mat.occlusion ? mat.occlusion : whiteTexture, kOcclusionTextureSlot);
+                encoder->setFragmentTexture(mat.emissive ? mat.emissive : whiteTexture, kEmissiveTextureSlot);
+                encoder->setFragmentBytes(&mat.params, sizeof(MaterialParams), 2);
+            };
+
+            // Draws every renderable into a shadow map. Only the albedo alpha matters here (Mask
+            // materials cut out their shadow, see cubeShadowFragmentMain), so a mesh with any
+            // Mask/Blend submesh goes submesh by submesh - skipping Blend, which casts no shadow -
+            // while everything else is still one draw over the whole index buffer.
+            auto drawShadowCasters = [&](MTL::RenderCommandEncoder* encoder) {
+                encoder->setFragmentTexture(whiteTexture, 0);
+                encoder->setFragmentBytes(&defaultParams, sizeof(MaterialParams), 4);
+                for (NS::UInteger i = 0; i < renderables.size(); i++) {
+                    const auto& r = renderables[i];
+                    encoder->setVertexBuffer(r.vertexBuffer, 0, 0);
+                    encoder->setVertexBuffer(uniformBuffer, i * kUniformStride, 1);
+                    if (r.mesh && r.mesh->hasNonOpaqueSubmeshes) {
+                        for (const MeshSubmesh& sub : r.mesh->submeshes) {
+                            const MeshMaterial& mat = r.mesh->materials[sub.materialIndex];
+                            if (mat.alphaMode() == AlphaMode::Blend) continue;
+                            encoder->setFragmentTexture(mat.albedo ? mat.albedo : whiteTexture, 0);
+                            encoder->setFragmentBytes(&mat.params, sizeof(MaterialParams), 4);
+                            encoder->drawIndexedPrimitives(MTL::PrimitiveTypeTriangle, sub.indexCount, r.indexType,
+                                                           r.indexBuffer, sub.indexOffset * sizeof(uint32_t));
+                        }
+                        encoder->setFragmentTexture(whiteTexture, 0);
+                        encoder->setFragmentBytes(&defaultParams, sizeof(MaterialParams), 4);
+                    } else {
+                        encoder->drawIndexedPrimitives(MTL::PrimitiveTypeTriangle, r.indexCount, r.indexType,
+                                                       r.indexBuffer, 0);
+                    }
+                }
+            };
+
             // Shadow pass: render every cube's depth/distance-from-light into each active light's
             // shadow map(s), before the main color pass that will sample them all. Point lights
             // get 6 encoders (one per cube face, see the earlier conversation on instanced/layered
@@ -831,14 +895,7 @@ int main() {
                         shadowEncoder->setRenderPipelineState(shadowPipelineState);
                         shadowEncoder->setVertexBytes(&cubeFaceMatrices[lightIndex][face], sizeof(simd::float4x4), 2);
                         shadowEncoder->setFragmentBytes(&lights[lightIndex].position, sizeof(simd::float3), 3);
-                        for (NS::UInteger i = 0; i < renderables.size(); i++) {
-                            const auto& r = renderables[i];
-                            shadowEncoder->setVertexBuffer(r.vertexBuffer, 0, 0);
-                            shadowEncoder->setVertexBuffer(uniformBuffer, i * kUniformStride, 1);
-                            shadowEncoder->drawIndexedPrimitives(
-                                MTL::PrimitiveTypeTriangle, r.indexCount, r.indexType, r.indexBuffer, 0
-                            );
-                        }
+                        drawShadowCasters(shadowEncoder);
                         shadowEncoder->endEncoding();
                     }
                 } else if (lightType == LightType::Directional || lightType == LightType::Spot) {
@@ -865,14 +922,7 @@ int main() {
                     shadow2DEncoder->setRenderPipelineState(shadowPipelineState);
                     shadow2DEncoder->setVertexBytes(&lights[lightIndex].shadowViewProj, sizeof(simd::float4x4), 2);
                     shadow2DEncoder->setFragmentBytes(&shadowEye, sizeof(simd::float3), 3);
-                    for (NS::UInteger i = 0; i < renderables.size(); i++) {
-                        const auto& r = renderables[i];
-                        shadow2DEncoder->setVertexBuffer(r.vertexBuffer, 0, 0);
-                        shadow2DEncoder->setVertexBuffer(uniformBuffer, i * kUniformStride, 1);
-                        shadow2DEncoder->drawIndexedPrimitives(
-                            MTL::PrimitiveTypeTriangle, r.indexCount, r.indexType, r.indexBuffer, 0
-                        );
-                    }
+                    drawShadowCasters(shadow2DEncoder);
                     shadow2DEncoder->endEncoding();
                 }
             }
@@ -896,7 +946,6 @@ int main() {
             MTL::RenderCommandEncoder* hdrEncoder = cmdBuffer->renderCommandEncoder(hdrRPD);
             hdrEncoder->setDepthStencilState(depthState);
             hdrEncoder->setRenderPipelineState(pipelineState);
-            constexpr NS::UInteger kOrmTextureSlot = 2 + 2 * kMaxLights;
             for (size_t i = 0; i < kMaxLights; i++) {
                 hdrEncoder->setFragmentTexture(shadowCubeMaps[i], 2 + i);
             }
@@ -923,12 +972,11 @@ int main() {
 
                 if (r.mesh && !r.mesh->submeshes.empty()) {
                     // glTF: one draw per material run, each with the file's own textures/factors.
+                    // Blend submeshes wait for the transparent pass below.
                     for (const MeshSubmesh& sub : r.mesh->submeshes) {
                         const MeshMaterial& mat = r.mesh->materials[sub.materialIndex];
-                        hdrEncoder->setFragmentTexture(mat.albedo ? mat.albedo : whiteTexture, 0);
-                        hdrEncoder->setFragmentTexture(mat.normal ? mat.normal : flatNormalTexture, 1);
-                        hdrEncoder->setFragmentTexture(mat.orm ? mat.orm : whiteTexture, kOrmTextureSlot);
-                        hdrEncoder->setFragmentBytes(&mat.params, sizeof(MaterialParams), 2);
+                        if (mat.alphaMode() == AlphaMode::Blend) continue;
+                        bindMeshMaterial(hdrEncoder, mat);
                         hdrEncoder->drawIndexedPrimitives(
                             MTL::PrimitiveTypeTriangle, sub.indexCount, r.indexType, r.indexBuffer,
                             sub.indexOffset * sizeof(uint32_t) // glTF meshes always use 32-bit indices
@@ -938,10 +986,12 @@ int main() {
                     // Cube / .obj: the object's Scene Editor texture set. An unknown or failed set
                     // falls back to the neutral stand-ins, so the material's flat values apply.
                     const TextureSet* set = textureLibrary.get(r.obj->material.textureSet);
-                    static const MaterialParams defaultParams;
                     hdrEncoder->setFragmentTexture(set && set->albedo ? set->albedo : whiteTexture, 0);
                     hdrEncoder->setFragmentTexture(set && set->normal ? set->normal : flatNormalTexture, 1);
                     hdrEncoder->setFragmentTexture(set && set->orm ? set->orm : whiteTexture, kOrmTextureSlot);
+                    // The set's ORM texture also carries its occlusion (R); no emission.
+                    hdrEncoder->setFragmentTexture(set && set->orm ? set->orm : whiteTexture, kOcclusionTextureSlot);
+                    hdrEncoder->setFragmentTexture(whiteTexture, kEmissiveTextureSlot);
                     hdrEncoder->setFragmentBytes(set ? &set->params : &defaultParams, sizeof(MaterialParams), 2);
                     hdrEncoder->drawIndexedPrimitives(
                         MTL::PrimitiveTypeTriangle,
@@ -970,6 +1020,46 @@ int main() {
                 hdrEncoder->setFragmentBytes(&skyParams, sizeof(skyParams), 0);
                 hdrEncoder->setFragmentTexture(environment.sky, 0);
                 hdrEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, (NS::UInteger)3);
+            }
+
+            // Transparent pass: glTF alphaMode BLEND submeshes, after the sky (which only fills
+            // pixels no opaque geometry covered, so glass in front of the sky blends against it).
+            // Sorted farthest to nearest by each submesh's center - the usual approximation:
+            // correct between separate objects/submeshes, not for one submesh overlapping itself.
+            struct TransparentDraw {
+                NS::UInteger renderableIndex;
+                const MeshSubmesh* submesh;
+                float distanceSquared;
+            };
+            std::vector<TransparentDraw> transparentDraws;
+            for (NS::UInteger i = 0; i < renderables.size(); i++) {
+                const auto& r = renderables[i];
+                if (!r.mesh || !r.mesh->hasNonOpaqueSubmeshes) continue;
+                simd::float4x4 modelMatrix = objectModelMatrix(*r.obj);
+                for (const MeshSubmesh& sub : r.mesh->submeshes) {
+                    if (r.mesh->materials[sub.materialIndex].alphaMode() != AlphaMode::Blend) continue;
+                    simd::float4 world = modelMatrix * simd_make_float4(sub.center.x, sub.center.y, sub.center.z, 1.0f);
+                    simd::float3 toCamera = simd_make_float3(world.x, world.y, world.z) - camera.position;
+                    transparentDraws.push_back({i, &sub, simd_length_squared(toCamera)});
+                }
+            }
+            if (!transparentDraws.empty()) {
+                std::sort(transparentDraws.begin(), transparentDraws.end(),
+                          [](const TransparentDraw& a, const TransparentDraw& b) { return a.distanceSquared > b.distanceSquared; });
+                hdrEncoder->setDepthStencilState(blendDepthState);
+                hdrEncoder->setRenderPipelineState(blendPipelineState);
+                for (const TransparentDraw& draw : transparentDraws) {
+                    const auto& r = renderables[draw.renderableIndex];
+                    NS::UInteger offset = draw.renderableIndex * kUniformStride;
+                    hdrEncoder->setVertexBuffer(r.vertexBuffer, 0, 0);
+                    hdrEncoder->setVertexBuffer(uniformBuffer, offset, 1);
+                    hdrEncoder->setFragmentBuffer(uniformBuffer, offset, 1);
+                    bindMeshMaterial(hdrEncoder, r.mesh->materials[draw.submesh->materialIndex]);
+                    hdrEncoder->drawIndexedPrimitives(
+                        MTL::PrimitiveTypeTriangle, draw.submesh->indexCount, r.indexType, r.indexBuffer,
+                        draw.submesh->indexOffset * sizeof(uint32_t)
+                    );
+                }
             }
             hdrEncoder->endEncoding();
 
@@ -1219,6 +1309,9 @@ int main() {
     maskDepthDesc->release();
     skyDepthState->release();
     skyDepthDesc->release();
+    blendDepthState->release();
+    blendDepthDesc->release();
+    blendPipelineState->release();
     skyPipelineState->release();
     skyPipeDesc->release();
     skyVertFunc->release();

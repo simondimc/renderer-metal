@@ -44,12 +44,19 @@ struct Uniforms {
     simd::float4 materialParams;              // x = metallic, y = roughness, z = ao, w = useTextures (0/1)
 };
 
+// glTF's alphaMode. Opaque ignores alpha entirely; Mask keeps or discards each pixel against a
+// cutoff (foliage, chain-link); Blend mixes the surface over what's behind it (glass, smoke) and
+// so is drawn in a separate, back-to-front sorted pass. Must match ALPHA_MODE_* in Shader.metal.
+enum class AlphaMode { Opaque = 0, Mask = 1, Blend = 2 };
+
 // Per-draw glTF material factors (one per submesh - see MeshLoader.hpp), bound at fragment buffer 2
 // and multiplied with the Scene Editor's per-object Material. Must stay layout-compatible with
 // MaterialParams in Shader.metal. The defaults are neutral, which is what non-glTF meshes use.
 struct MaterialParams {
     simd::float4 baseColorFactor = {1.0f, 1.0f, 1.0f, 1.0f};
     simd::float4 factors = {1.0f, 1.0f, 0.0f, 0.0f}; // x = metallic, y = roughness, z = occlusion strength
+    simd::float4 emissiveFactor = {0.0f, 0.0f, 0.0f, 0.0f}; // rgb = emissive color * emissive strength (HDR, may exceed 1)
+    simd::float4 alphaParams = {0.0f, 0.5f, 0.0f, 0.0f};    // x = AlphaMode, y = Mask cutoff
 };
 
 // Camera-only view-projection (no object model matrix) - see its own comment in Uniforms.cpp.

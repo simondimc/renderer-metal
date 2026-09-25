@@ -5,14 +5,18 @@
 #include <vector>
 #include "Uniforms.hpp" // MaterialParams
 
-// One glTF material as the renderer understands it (metallic-roughness only - emissive, alpha modes
-// and KHR_materials_* extensions such as transmission are ignored, so e.g. glass renders opaque).
+// One glTF material as the renderer understands it: metallic-roughness, emissive (incl.
+// KHR_materials_emissive_strength) and alphaMode (see AlphaMode). Other KHR_materials_* extensions
+// such as transmission are ignored, so e.g. glass without alphaMode BLEND renders opaque.
 // A null texture means "the material has none": Main.cpp substitutes a neutral 1x1 stand-in.
 struct MeshMaterial {
     MaterialParams params;
-    MTL::Texture* albedo = nullptr;  // sRGB
-    MTL::Texture* normal = nullptr;  // tangent-space, OpenGL (+Y up) convention as in glTF
-    MTL::Texture* orm = nullptr;     // glTF packing: R = occlusion, G = roughness, B = metallic
+    MTL::Texture* albedo = nullptr;    // sRGB; alpha channel drives Mask/Blend
+    MTL::Texture* normal = nullptr;    // tangent-space, OpenGL (+Y up) convention as in glTF
+    MTL::Texture* orm = nullptr;       // glTF packing: G = roughness, B = metallic (R unused, see occlusion)
+    MTL::Texture* occlusion = nullptr; // R = occlusion. Often the same image as orm, but glTF allows a separate one
+    MTL::Texture* emissive = nullptr;  // sRGB
+    AlphaMode alphaMode() const { return (AlphaMode)(int)params.alphaParams.x; }
 };
 
 // A contiguous run of the mesh's index buffer drawn with one material.
@@ -20,6 +24,9 @@ struct MeshSubmesh {
     NS::UInteger indexOffset = 0; // in indices, not bytes
     NS::UInteger indexCount = 0;
     size_t materialIndex = 0;     // into MeshData::materials
+    // Local-space center of the submesh's bounding box - what Blend submeshes are sorted by, so the
+    // sort distance follows the object's model matrix. Only computed for glTF.
+    simd::float3 center = {0.0f, 0.0f, 0.0f};
 };
 
 // GPU buffers for one loaded mesh. Vertex layout matches CubeMesh::vertexStrideFloats exactly:
@@ -39,6 +46,9 @@ struct MeshData {
     // .obj, which is drawn in one call with the renderer's default texture set.
     std::vector<MeshMaterial> materials;
     std::vector<MeshSubmesh> submeshes;
+    // True if any submesh uses Mask or Blend - the shadow pass then has to go submesh by submesh
+    // (cutting out Mask, skipping Blend) instead of drawing the whole index buffer at once.
+    bool hasNonOpaqueSubmeshes = false;
 };
 
 // Loads a mesh from disk into GPU buffers, dispatching on file extension:

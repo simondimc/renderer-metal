@@ -45,9 +45,9 @@
 - [x] Image-Based Lighting (IBL)
 - Anisotropic Shading
 - Transmission & Volume (glass)
-- Emissive Materials
-- Alpha Modes (Mask/Blend)
-- Separate Ambient Occlusion Texture
+- [x] Emissive Materials
+- [x] Alpha Modes (Mask/Blend)
+- [x] Separate Ambient Occlusion Texture
 
 ### Global Illumination
 - Ambient Occlusion (SSAO/HBAO/GTAO)

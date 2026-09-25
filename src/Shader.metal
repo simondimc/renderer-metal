@@ -9,6 +9,11 @@ using namespace metal;
 #define LIGHT_TYPE_SPOT 2
 #define LIGHT_TYPE_AREA 3
 
+// Must match the AlphaMode enum in Uniforms.hpp
+#define ALPHA_MODE_OPAQUE 0
+#define ALPHA_MODE_MASK 1
+#define ALPHA_MODE_BLEND 2
+
 // Must match the ToneMapOperator enum in Scene.hpp
 #define TONE_MAP_CLAMP 0
 #define TONE_MAP_REINHARD 1
@@ -56,7 +61,9 @@ struct Uniforms {
 // Uniforms.hpp. Neutral (all 1, occlusion strength 0) for anything that isn't a glTF submesh.
 struct MaterialParams {
     float4 baseColorFactor;
-    float4 factors; // x = metallic, y = roughness, z = occlusion strength
+    float4 factors;        // x = metallic, y = roughness, z = occlusion strength
+    float4 emissiveFactor; // rgb = emissive color * strength (HDR)
+    float4 alphaParams;    // x = alpha mode (ALPHA_MODE_*), y = Mask cutoff
 };
 
 // Vertex Shader
@@ -81,6 +88,7 @@ vertex RasterData vertexMain(VertexInput in [[stage_in]],
 struct CubeShadowRasterData {
     float4 position [[position]];
     float3 worldPosition;
+    float2 uv; // only for the Mask cutout test in cubeShadowFragmentMain
 };
 
 vertex CubeShadowRasterData cubeShadowVertexMain(VertexInput in [[stage_in]],
@@ -90,11 +98,22 @@ vertex CubeShadowRasterData cubeShadowVertexMain(VertexInput in [[stage_in]],
     float4 worldPos = uniforms.modelMatrix * float4(in.position, 1.0);
     out.position = lightViewProj * worldPos;
     out.worldPosition = worldPos.xyz;
+    out.uv = in.uv;
     return out;
 }
 
+// Mask materials cast a cut-out shadow (a leaf texture's transparent corners let light through), so
+// the shadow pass needs the material's alpha too. Opaque draws pay nothing but the mode check, and
+// Blend draws are skipped by the CPU side altogether (see Main.cpp) - glass doesn't cast a shadow.
 fragment float cubeShadowFragmentMain(CubeShadowRasterData in [[stage_in]],
-                                      constant float3& lightPosition [[buffer(3)]]) {
+                                      constant float3& lightPosition [[buffer(3)]],
+                                      constant MaterialParams& material [[buffer(4)]],
+                                      texture2d<float> albedoMap [[texture(0)]]) {
+    if (int(material.alphaParams.x + 0.5) == ALPHA_MODE_MASK) {
+        constexpr sampler alphaSampler(filter::linear, mip_filter::linear, address::repeat);
+        float alpha = albedoMap.sample(alphaSampler, in.uv).a * material.baseColorFactor.a;
+        if (alpha < material.alphaParams.y) discard_fragment();
+    }
     return length(in.worldPosition - lightPosition);
 }
 
@@ -297,6 +316,8 @@ fragment float4 fragmentMain(RasterData in [[stage_in]],
                              texturecube<float> irradianceMap [[texture(3 + 2 * MAX_LIGHTS)]],
                              texturecube<float> prefilterMap [[texture(4 + 2 * MAX_LIGHTS)]],
                              texture2d<float> brdfLUT [[texture(5 + 2 * MAX_LIGHTS)]],
+                             texture2d<float> occlusionMap [[texture(6 + 2 * MAX_LIGHTS)]],
+                             texture2d<float> emissiveMap [[texture(7 + 2 * MAX_LIGHTS)]],
                              constant MaterialParams& material [[buffer(2)]],
                              constant float& environmentIntensity [[buffer(3)]],
                              sampler smp [[sampler(0)]],
@@ -319,18 +340,24 @@ fragment float4 fragmentMain(RasterData in [[stage_in]],
 
     float3 viewDir = normalize(uniforms.cameraPosition.xyz - in.worldPosition);
     // Scene Editor material (uniforms.material*) x the draw's glTF factors and textures (see
-    // Material in Scene.hpp). ORM = glTF packing: R = occlusion, G = roughness, B = metallic.
+    // Material in Scene.hpp). ORM = glTF packing: G = roughness, B = metallic; occlusion (R of its
+    // own map - the same image as ORM in the usual packed layout, but glTF allows a separate one).
     float3 albedo = uniforms.materialAlbedo.rgb;
     float metallic = uniforms.materialParams.x;
     float roughness = uniforms.materialParams.y;
     float ao = uniforms.materialParams.z;
+    float alpha = material.baseColorFactor.a;
     if (useTextures) {
-        albedo *= tex.sample(smp, in.uv).rgb * material.baseColorFactor.rgb;
+        float4 baseColor = tex.sample(smp, in.uv);
+        albedo *= baseColor.rgb * material.baseColorFactor.rgb;
+        alpha *= baseColor.a;
         float3 orm = ormMap.sample(smp, in.uv).rgb;
         metallic *= material.factors.x * orm.b;
         roughness *= material.factors.y * orm.g;
-        ao *= mix(1.0, orm.r, material.factors.z);
+        ao *= mix(1.0, occlusionMap.sample(smp, in.uv).r, material.factors.z);
     }
+    int alphaMode = int(material.alphaParams.x + 0.5);
+    if (alphaMode == ALPHA_MODE_MASK && alpha < material.alphaParams.y) discard_fragment();
     metallic = saturate(metallic);
     // A perfectly smooth surface makes the GGX lobe infinitely narrow (a point light would vanish
     // or blow out to a single pixel), so keep a small floor.
@@ -441,11 +468,18 @@ fragment float4 fragmentMain(RasterData in [[stage_in]],
         litColor += shadow * brdf * radiance * NdotL;
     }
 
+    // Emissive: light the surface itself gives off, independent of any light or the environment
+    // (so not scaled by ao/environmentIntensity). Unbounded HDR, so a strong factor feeds Bloom.
+    float3 emissive = material.emissiveFactor.rgb;
+    if (useTextures) emissive *= emissiveMap.sample(smp, in.uv).rgb;
+    litColor += emissive;
+
     // litColor is unbounded linear HDR radiance (bright/overlapping lights can push it well past
     // 1.0) - written straight into the offscreen HDR color target, untouched. Exposure, tone
     // mapping, and gamma encoding all happen once, screen-space, in postProcessFragmentMain below,
     // rather than per-object here - see Main.cpp's HDR scene / post-process / overlay pass split.
-    return float4(litColor, 1.0);
+    // Alpha only matters to the Blend pipeline (blending on); the opaque one ignores it.
+    return float4(litColor, alphaMode == ALPHA_MODE_BLEND ? alpha : 1.0);
 }
 
 // --- Selection mask: renders just the Scene Editor's currently-selected object as flat white
