@@ -121,6 +121,11 @@ struct Scene {
     float ssrStrength = 0.0f;
     float ssrMaxDistance = 15.0f;
     float ssrThickness = 0.3f;
+    // Temporal anti-aliasing (see taaFragmentMain in Shader.metal and Main.cpp's TAA pass): the camera
+    // is jittered by a sub-pixel amount every frame and the frames are blended together. Feedback is
+    // the largest share of the previous frames kept in the blend: 0 = off (no jitter, no pass), higher =
+    // smoother and better at hiding noise (AO, SSR) but slower to catch up with change.
+    float taaFeedback = 0.0f;
     // Image-based lighting (see fragmentMain in Shader.metal): the environment lights every surface
     // from all directions and is what metals reflect. environment names an entry of the
     // EnvironmentLibrary; intensity scales both the lighting and the visible sky; showSky = false

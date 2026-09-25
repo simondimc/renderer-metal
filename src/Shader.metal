@@ -671,6 +671,7 @@ struct AOParams {
     float radius;        // world-space reach of the occlusion search
     float strength;      // power the visibility is raised to
     float mode;          // AO_MODE_* (cast to int)
+    float noiseSeed;     // 0..1, different every frame under TAA so it averages the noise away (0 = a fixed pattern)
 };
 
 // Must match the AmbientOcclusionMode enum in Scene.hpp
@@ -757,8 +758,8 @@ fragment float aoFragmentMain(PostProcessVertexOut in [[stage_in]],
 
     // Two decorrelated per-pixel noise values: a rotation of the slice pattern and a jitter of the
     // tap distances. The blur pass below averages the resulting noise away.
-    float noiseSlice = fract(0.5 + dot(float2(pixel), float2(0.7548776662, 0.5698402910)));
-    float noiseStep = fract(52.9829189 * fract(dot(float2(pixel), float2(0.06711056, 0.00583715))));
+    float noiseSlice = fract(0.5 + dot(float2(pixel), float2(0.7548776662, 0.5698402910)) + params.noiseSeed);
+    float noiseStep = fract(52.9829189 * fract(dot(float2(pixel), float2(0.06711056, 0.00583715))) + params.noiseSeed * 0.7548776662);
 
     // Samples fade out toward the edge of the radius so an occluder entering/leaving the search
     // sphere doesn't pop.
@@ -889,6 +890,7 @@ struct SSRParams {
     float maxDistance;        // Scene::ssrMaxDistance, world units
     float thickness;          // Scene::ssrThickness, world units
     float environmentIntensity;
+    float noiseSeed;          // 0..1, different every frame under TAA so it averages the noise away (0 = a fixed pattern)
 };
 
 #define SSR_MAX_STEPS 80          // depth-buffer taps per ray (the stride widens to cover long rays)
@@ -975,7 +977,7 @@ fragment float4 ssrFragmentMain(PostProcessVertexOut in [[stage_in]],
     int steps = int(min(float(SSR_MAX_STEPS), ceil(pixelLength)));
 
     // Per-pixel offset of the sample positions, so the stride's banding turns into fine noise.
-    float jitter = fract(52.9829189 * fract(dot(float2(pixel), float2(0.06711056, 0.00583715))));
+    float jitter = fract(52.9829189 * fract(dot(float2(pixel), float2(0.06711056, 0.00583715))) + params.noiseSeed);
 
     bool hit = false;
     float hitT = 0.0;
@@ -1048,6 +1050,114 @@ fragment float4 ssrFragmentMain(PostProcessVertexOut in [[stage_in]],
     float3 correction = confidence * (traced - environment) * weight;
     correction = max(correction, -sceneColor.read(pixel).rgb);
     return float4(correction, 0.0);
+}
+
+// --- Temporal anti-aliasing. The scene is rendered with a different sub-pixel camera offset every frame
+// (see Main.cpp's jitter), so each frame samples the geometry at slightly different positions inside
+// every pixel. This full-screen pass, run on the finished HDR frame (after SSR), reprojects last
+// frame's result to where each pixel was, and blends it with the current frame - accumulating those
+// samples turns jagged edges into properly anti-aliased ones, and averages away the per-frame noise the
+// AO and SSR passes leave. The catch is that history can be wrong (something moved, something was
+// uncovered), so it is clipped into the colour range of the current frame's 3x3 neighbourhood before it
+// is blended: history that disagrees with what is on screen now is pulled toward it instead of ghosting.
+//
+// Reprojection is from depth with the camera's own motion only (there is no per-object velocity buffer):
+// exact for the static scene, and an object that moves relative to it leaves a trail that the clip
+// shortens to a few frames.
+
+struct TAAParams {
+    float4x4 reprojectionMatrix; // previous frame's view-proj * inverse(this frame's), both un-jittered
+    float feedback;              // Scene::taaFeedback, the most history the blend keeps
+    float reset;                 // 1 = no usable history (first frame, resize, TAA just enabled): pass the frame through
+};
+
+// HDR colour to/from a bounded range (x / (1 + max channel)), so a few very bright pixels can't dominate
+// the neighbourhood statistics or the blend and make the result flicker.
+static float3 taaCompress(float3 c) {
+    c = clamp(c, 0.0, 60000.0);
+    return c / (1.0 + max(c.r, max(c.g, c.b)));
+}
+static float3 taaUncompress(float3 c) {
+    return c / max(1.0 - max(c.r, max(c.g, c.b)), 1e-4);
+}
+
+// Catmull-Rom filtered read (5 bilinear taps, the corner taps dropped): plain bilinear history reads
+// blur the image a little more every frame; this one keeps it sharp.
+static float3 taaSampleCatmullRom(texture2d<float> tex, sampler s, float2 uv, float2 size) {
+    float2 pos = uv * size;
+    float2 center = floor(pos - 0.5) + 0.5;
+    float2 f = pos - center;
+    float2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f));
+    float2 w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
+    float2 w2 = f * (0.5 + f * (2.0 - 1.5 * f));
+    float2 w3 = f * f * (-0.5 + 0.5 * f);
+    float2 w12 = w1 + w2;
+    float2 tc12 = (center + w2 / w12) / size;
+    float2 tc0 = (center - 1.0) / size;
+    float2 tc3 = (center + 2.0) / size;
+
+    float wTop = w12.x * w0.y, wLeft = w0.x * w12.y, wMid = w12.x * w12.y, wRight = w3.x * w12.y, wBottom = w12.x * w3.y;
+    float3 result = tex.sample(s, float2(tc12.x, tc0.y)).rgb * wTop
+                  + tex.sample(s, float2(tc0.x, tc12.y)).rgb * wLeft
+                  + tex.sample(s, tc12).rgb * wMid
+                  + tex.sample(s, float2(tc3.x, tc12.y)).rgb * wRight
+                  + tex.sample(s, float2(tc12.x, tc3.y)).rgb * wBottom;
+    return max(result / (wTop + wLeft + wMid + wRight + wBottom), 0.0);
+}
+
+fragment float4 taaFragmentMain(PostProcessVertexOut in [[stage_in]],
+                                texture2d<float> currentTexture [[texture(0)]],
+                                texture2d<float> historyTexture [[texture(1)]],
+                                depth2d<float> depthTexture [[texture(2)]],
+                                constant TAAParams& params [[buffer(0)]],
+                                sampler linearSampler [[sampler(0)]]) {
+    int2 pixel = int2(in.position.xy);
+    int2 maxPixel = int2(currentTexture.get_width() - 1, currentTexture.get_height() - 1);
+    float2 size = float2(currentTexture.get_width(), currentTexture.get_height());
+
+    float3 currentLinear = currentTexture.read(uint2(pixel)).rgb;
+    if (params.reset > 0.5) return float4(currentLinear, 1.0);
+
+    // The current frame's 3x3 neighbourhood, in compressed space: its mean and spread say what colours
+    // this pixel can plausibly have.
+    float3 current = taaCompress(currentLinear);
+    float3 sum = float3(0.0), sumSquares = float3(0.0);
+    for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+            float3 c = (dx == 0 && dy == 0)
+                ? current
+                : taaCompress(currentTexture.read(uint2(clamp(pixel + int2(dx, dy), int2(0), maxPixel))).rgb);
+            sum += c;
+            sumSquares += c * c;
+        }
+    }
+    float3 mean = sum / 9.0;
+    float3 deviation = sqrt(max(sumSquares / 9.0 - mean * mean, 0.0));
+
+    // Where this pixel was last frame: its depth back to a world point (through the un-jittered
+    // matrices), which last frame's camera then projected somewhere else.
+    float2 uv = (float2(pixel) + 0.5) / size;
+    float4 previousClip = params.reprojectionMatrix * float4(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0,
+                                                             depthTexture.read(uint2(pixel)), 1.0);
+    if (previousClip.w <= 0.0) return float4(currentLinear, 1.0);
+    float2 previousNDC = previousClip.xy / previousClip.w;
+    float2 previousUV = float2(previousNDC.x * 0.5 + 0.5, 0.5 - previousNDC.y * 0.5);
+    if (any(previousUV < 0.0) || any(previousUV > 1.0)) return float4(currentLinear, 1.0); // came from off-screen
+
+    float3 history = taaCompress(taaSampleCatmullRom(historyTexture, linearSampler, previousUV, size));
+
+    // Variance clipping: pull the history colour to the edge of the box mean +/- 1.5 sigma (along the
+    // line from the box centre) when it lies outside - it can't be trusted to be the same surface then.
+    float3 extent = 1.5 * deviation + 1e-4;
+    float3 offset = history - mean;
+    float outside = max(abs(offset.x) / extent.x, max(abs(offset.y) / extent.y, abs(offset.z) / extent.z));
+    if (outside > 1.0) history = mean + offset / outside;
+
+    // Less history while things are moving fast on screen: the reprojection is least exact there.
+    float motionPixels = length((previousUV - uv) * size);
+    float historyWeight = params.feedback * (1.0 - 0.5 * saturate(motionPixels / 8.0));
+
+    return float4(taaUncompress(mix(current, history, historyWeight)), 1.0);
 }
 
 struct PostProcessParams {

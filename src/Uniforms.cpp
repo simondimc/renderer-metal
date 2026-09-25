@@ -6,7 +6,7 @@
 // per-object model matrix) for motion blur's frame-to-frame reprojection, without duplicating the
 // projection setup (and risking it drifting out of sync with near/far here - see
 // CAMERA_NEAR_PLANE/FAR_PLANE's comment in Shader.metal, which must match these).
-simd::float4x4 computeProjection(int width, int height) {
+simd::float4x4 computeProjection(int width, int height, simd::float2 jitterNDC) {
     float fov = 60.0f * (M_PI / 180.0f);
     float aspect = (float)width / (float)height;
     float nearPlane = 0.1f;
@@ -19,21 +19,23 @@ simd::float4x4 computeProjection(int width, int height) {
     return simd_matrix(
         simd_make_float4(f / aspect, 0.0f,  0.0f,                             0.0f),  // Col 0
         simd_make_float4(0.0f,       f,     0.0f,                             0.0f),  // Col 1
-        simd_make_float4(0.0f,       0.0f,  farPlane / -zRange,              -1.0f),  // Col 2 (Negated for RH)
+        // Col 2: the -jitter terms add jitterNDC to x/w and y/w after the divide (w = -z_view), i.e. shift
+        // the whole rendered image by a sub-pixel amount without touching depth.
+        simd_make_float4(-jitterNDC.x, -jitterNDC.y, farPlane / -zRange,     -1.0f),  // Col 2 (Negated for RH)
         simd_make_float4(0.0f,       0.0f,  -(farPlane * nearPlane) / zRange, 0.0f)   // Col 3
     );
 }
 
-simd::float4x4 computeViewProj(const Camera& cam, int width, int height) {
-    return computeProjection(width, height) * viewMatrix(cam);
+simd::float4x4 computeViewProj(const Camera& cam, int width, int height, simd::float2 jitterNDC) {
+    return computeProjection(width, height, jitterNDC) * viewMatrix(cam);
 }
 
 Uniforms computeUniforms(const Camera& cam, const simd::float4x4& objectModel,
                           const SceneLight* lights, int lightCount,
-                          int width, int height, const Material* material) {
+                          int width, int height, const Material* material, simd::float2 jitterNDC) {
     Uniforms u;
 
-    simd::float4x4 viewProj = computeViewProj(cam, width, height);
+    simd::float4x4 viewProj = computeViewProj(cam, width, height, jitterNDC);
     u.modelMatrix = objectModel;
     u.mvpMatrix = viewProj * objectModel;
     u.viewProjMatrix = viewProj;

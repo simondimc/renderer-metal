@@ -222,6 +222,14 @@ int main() {
     MTL::Texture* ssrNormalTexture = makeAOTexture(MTL::PixelFormatRGBA16Float, (NS::UInteger)width, (NS::UInteger)height);
     MTL::Texture* ssrWeightTexture = makeAOTexture(MTL::PixelFormatRGBA16Float, (NS::UInteger)width, (NS::UInteger)height);
 
+    // Temporal anti-aliasing history (see taaFragmentMain in Shader.metal): the resolve pass reads last
+    // frame's result from one of these and writes this frame's into the other, then the two swap.
+    // Whatever the post-process chain reads as "the scene" is the one just written.
+    MTL::Texture* taaTextures[2] = {
+        makeAOTexture(MTL::PixelFormatRGBA16Float, (NS::UInteger)width, (NS::UInteger)height),
+        makeAOTexture(MTL::PixelFormatRGBA16Float, (NS::UInteger)width, (NS::UInteger)height),
+    };
+
     // Shadow cube maps: one 6-face cube texture per light slot, storing that light's distance to
     // the nearest occluder in every direction (see Shader.metal's cubeShadowFragmentMain). All
     // kMaxLights are allocated up front since the shader's fixed-size texture array (see
@@ -461,6 +469,15 @@ int main() {
     ssrColorAttachment->setDestinationAlphaBlendFactor(MTL::BlendFactorOne);
     MTL::RenderPipelineState* ssrPipelineState = device->newRenderPipelineState(ssrPipeDesc, &error);
 
+    // Temporal anti-aliasing PSO: full-screen resolve of the current HDR frame against the history into
+    // one of the taaTextures (see taaFragmentMain in Shader.metal).
+    MTL::Function* taaFragFunc = library->newFunction(NS::String::string("taaFragmentMain", NS::UTF8StringEncoding));
+    MTL::RenderPipelineDescriptor* taaPipeDesc = MTL::RenderPipelineDescriptor::alloc()->init();
+    taaPipeDesc->setVertexFunction(postProcessVertFunc);
+    taaPipeDesc->setFragmentFunction(taaFragFunc);
+    taaPipeDesc->colorAttachments()->object(0)->setPixelFormat(MTL::PixelFormatRGBA16Float);
+    MTL::RenderPipelineState* taaPipelineState = device->newRenderPipelineState(taaPipeDesc, &error);
+
     // Cube shadow pass PSO: outputs world-space distance-to-light as a color value (see
     // Shader.metal's cubeShadowFragmentMain) plus a scratch depth attachment for hidden-surface
     // removal within the pass.
@@ -595,6 +612,15 @@ int main() {
     simd::float3 smoothedVelPosition = simd_make_float3(0.0f, 0.0f, 0.0f);
     float smoothedVelYaw = 0.0f, smoothedVelPitch = 0.0f;
 
+    // Temporal anti-aliasing state (see the jitter and TAA pass in the loop below): a frame counter
+    // driving the jitter sequence and the AO/SSR noise, the previous frame's un-jittered view-proj for
+    // reprojection, which taaTextures slot the next resolve writes, and whether the slot before it
+    // holds a usable result (not after a resize, the first frame, or while TAA was off).
+    uint32_t renderFrameCounter = 0;
+    simd::float4x4 previousViewProj = matrix_identity_float4x4;
+    int taaWriteIndex = 0;
+    bool taaHistoryValid = false;
+
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
@@ -646,6 +672,9 @@ int main() {
             aoTextureB->release();
             ssrNormalTexture->release();
             ssrWeightTexture->release();
+            taaTextures[0]->release();
+            taaTextures[1]->release();
+            taaHistoryValid = false; // the old history has the wrong size
             width = liveWidth;
             height = liveHeight;
             cppMetalLayer->setDrawableSize(CGSizeMake(width, height));
@@ -687,6 +716,8 @@ int main() {
             aoTextureB = makeAOTexture(MTL::PixelFormatR16Float, (NS::UInteger)width, (NS::UInteger)height);
             ssrNormalTexture = makeAOTexture(MTL::PixelFormatRGBA16Float, (NS::UInteger)width, (NS::UInteger)height);
             ssrWeightTexture = makeAOTexture(MTL::PixelFormatRGBA16Float, (NS::UInteger)width, (NS::UInteger)height);
+            taaTextures[0] = makeAOTexture(MTL::PixelFormatRGBA16Float, (NS::UInteger)width, (NS::UInteger)height);
+            taaTextures[1] = makeAOTexture(MTL::PixelFormatRGBA16Float, (NS::UInteger)width, (NS::UInteger)height);
         }
 
         // Fetch the canvas
@@ -724,6 +755,26 @@ int main() {
             referenceCamera.yaw -= smoothedVelYaw * shutterSeconds;
             referenceCamera.pitch -= smoothedVelPitch * shutterSeconds;
             simd::float4x4 reprojectionMatrix = computeViewProj(referenceCamera, liveWidth, liveHeight) * simd_inverse(currentViewProj);
+
+            // TAA: jitter the scene pass's projection by a Halton(2,3) sub-pixel offset (8 frames, then
+            // repeat) - the resolve pass averages those different samples of each pixel into an
+            // anti-aliased one. currentViewProj above stays un-jittered (sky, reprojection, lens flare
+            // all want the true camera), only the scene geometry's own matrices take the jitter.
+            // noiseSeed gives AO and SSR a different noise pattern each frame for the same reason.
+            const bool taaActive = scene.taaFeedback > 0.0f;
+            simd::float2 jitterNDC = simd_make_float2(0.0f, 0.0f);
+            float noiseSeed = 0.0f;
+            if (taaActive) {
+                auto halton = [](uint32_t index, uint32_t base) {
+                    float result = 0.0f, fraction = 1.0f / base;
+                    for (; index > 0; index /= base, fraction /= base) result += fraction * (index % base);
+                    return result;
+                };
+                uint32_t sampleIndex = renderFrameCounter % 8 + 1;
+                jitterNDC = simd_make_float2((halton(sampleIndex, 2) - 0.5f) * 2.0f / (float)liveWidth,
+                                             (halton(sampleIndex, 3) - 0.5f) * 2.0f / (float)liveHeight);
+                noiseSeed = fmodf((float)renderFrameCounter * 0.61803398875f, 1.0f);
+            }
 
             // Overlay pass descriptor (gizmo/light markers/rays + ImGui - see the pass split
             // below): drawn on top of the already-resolved drawable, after the HDR scene pass and
@@ -896,7 +947,7 @@ int main() {
             // it yet, so overwriting the same slot before commit would corrupt earlier draws' data.
             for (NS::UInteger i = 0; i < renderables.size(); i++) {
                 Uniforms uniforms = computeUniforms(camera, objectModelMatrix(*renderables[i].obj), lights, lightCount,
-                                                     liveWidth, liveHeight, &renderables[i].obj->material);
+                                                     liveWidth, liveHeight, &renderables[i].obj->material, jitterNDC);
                 memcpy((uint8_t*)uniformBuffer->contents() + i * kUniformStride, &uniforms, sizeof(Uniforms));
             }
             if (camera.uiMode) {
@@ -1075,10 +1126,11 @@ int main() {
                     float radius;
                     float strength;
                     float mode; // AmbientOcclusionMode, cast to float - see AO_MODE_* in Shader.metal
+                    float noiseSeed;
                 } aoParams = {
                     viewMatrix(camera), projection.columns[0].x, projection.columns[1].y,
                     scene.ambientOcclusionRadius, scene.ambientOcclusionStrength,
-                    (float)(int)scene.ambientOcclusionMode
+                    (float)(int)scene.ambientOcclusionMode, noiseSeed
                 };
 
                 MTL::RenderPassDescriptor* aoRPD = MTL::RenderPassDescriptor::renderPassDescriptor();
@@ -1338,9 +1390,11 @@ int main() {
                     float maxDistance;
                     float thickness;
                     float environmentIntensity;
+                    float noiseSeed;
                 } ssrParams = {
                     viewMatrix(camera), ssrProjection.columns[0].x, ssrProjection.columns[1].y,
-                    scene.ssrStrength, scene.ssrMaxDistance, scene.ssrThickness, scene.environmentIntensity
+                    scene.ssrStrength, scene.ssrMaxDistance, scene.ssrThickness, scene.environmentIntensity,
+                    noiseSeed
                 };
 
                 MTL::RenderPassDescriptor* ssrRPD = MTL::RenderPassDescriptor::renderPassDescriptor();
@@ -1360,6 +1414,40 @@ int main() {
                 ssrEncoder->setFragmentBytes(&ssrParams, sizeof(ssrParams), 0);
                 ssrEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, (NS::UInteger)3);
                 ssrEncoder->endEncoding();
+            }
+
+            // --- Temporal anti-aliasing (see taaFragmentMain in Shader.metal): blends this frame's finished
+            // HDR image (scene, glass, SSR) with the reprojected result of the previous frame. The
+            // output goes to the taaTextures slot not holding the history, and that slot is what bloom
+            // and the post-process pass then read instead of hdrColorTexture. Skipped at feedback 0,
+            // where they read hdrColorTexture directly.
+            MTL::Texture* finalSceneColor = hdrColorTexture;
+            if (taaActive) {
+                MTL::Texture* taaOutput = taaTextures[taaWriteIndex];
+                MTL::Texture* taaHistory = taaTextures[1 - taaWriteIndex];
+                struct {
+                    simd::float4x4 reprojectionMatrix;
+                    float feedback;
+                    float reset;
+                } taaParams = {
+                    previousViewProj * simd_inverse(currentViewProj), scene.taaFeedback, taaHistoryValid ? 0.0f : 1.0f
+                };
+
+                MTL::RenderPassDescriptor* taaRPD = MTL::RenderPassDescriptor::renderPassDescriptor();
+                auto taaColor = taaRPD->colorAttachments()->object(0);
+                taaColor->setTexture(taaOutput);
+                taaColor->setLoadAction(MTL::LoadActionDontCare);
+                taaColor->setStoreAction(MTL::StoreActionStore);
+                MTL::RenderCommandEncoder* taaEncoder = cmdBuffer->renderCommandEncoder(taaRPD);
+                taaEncoder->setRenderPipelineState(taaPipelineState);
+                taaEncoder->setFragmentTexture(hdrColorTexture, 0);
+                taaEncoder->setFragmentTexture(taaHistory, 1);
+                taaEncoder->setFragmentTexture(depthTexture, 2);
+                taaEncoder->setFragmentSamplerState(postProcessSamplerState, 0);
+                taaEncoder->setFragmentBytes(&taaParams, sizeof(taaParams), 0);
+                taaEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, (NS::UInteger)3);
+                taaEncoder->endEncoding();
+                finalSceneColor = taaOutput;
             }
 
             // --- Selection mask pass: draws just the selected renderable's silhouette (if any)
@@ -1414,7 +1502,7 @@ int main() {
 
                 MTL::RenderCommandEncoder* bloomExtractEncoder = cmdBuffer->renderCommandEncoder(bloomExtractRPD);
                 bloomExtractEncoder->setRenderPipelineState(bloomExtractPipelineState);
-                bloomExtractEncoder->setFragmentTexture(hdrColorTexture, 0);
+                bloomExtractEncoder->setFragmentTexture(finalSceneColor, 0);
                 bloomExtractEncoder->setFragmentSamplerState(postProcessSamplerState, 0);
                 bloomExtractEncoder->setFragmentBytes(&scene.bloomThreshold, sizeof(float), 0);
                 bloomExtractEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, (NS::UInteger)0, (NS::UInteger)3);
@@ -1462,7 +1550,7 @@ int main() {
 
             MTL::RenderCommandEncoder* postEncoder = cmdBuffer->renderCommandEncoder(postRPD);
             postEncoder->setRenderPipelineState(postProcessPipelineState);
-            postEncoder->setFragmentTexture(hdrColorTexture, 0);
+            postEncoder->setFragmentTexture(finalSceneColor, 0);
             postEncoder->setFragmentTexture(bloomTextureA, 1);
             postEncoder->setFragmentTexture(depthTexture, 2);
             postEncoder->setFragmentTexture(selectionMaskTexture, 3);
@@ -1570,6 +1658,12 @@ int main() {
             cmdBuffer->commit();
 
             frameIndex = (frameIndex + 1) % kMaxFramesInFlight;
+
+            // Hand this frame's un-jittered view-proj and TAA result on to the next frame's resolve.
+            previousViewProj = currentViewProj;
+            taaHistoryValid = taaActive;
+            if (taaActive) taaWriteIndex = 1 - taaWriteIndex;
+            renderFrameCounter++;
         }
 
         // Drain the temporary memory pool for this frame
@@ -1609,6 +1703,8 @@ int main() {
     aoTextureB->release();
     ssrNormalTexture->release();
     ssrWeightTexture->release();
+    taaTextures[0]->release();
+    taaTextures[1]->release();
     depthTexture->release();
     depthState->release();
     depthDesc->release();
@@ -1650,6 +1746,9 @@ int main() {
     ssrPipelineState->release();
     ssrPipeDesc->release();
     ssrFragFunc->release();
+    taaPipelineState->release();
+    taaPipeDesc->release();
+    taaFragFunc->release();
     selectionMaskPipelineState->release();
     selectionMaskPipeDesc->release();
     selectionMaskFragFunc->release();

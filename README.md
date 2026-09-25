@@ -22,7 +22,7 @@
 ### Rendering Pipeline
 - Deferred Shading
 - Clustered/Tiled Rendering
-- Temporal Anti-Aliasing (TAA)
+- [x] Temporal Anti-Aliasing (TAA)
 - [x] HDR & Tone Mapping
 
 ### Post-Processing

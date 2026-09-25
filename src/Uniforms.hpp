@@ -66,11 +66,13 @@ struct MaterialParams {
 
 // The camera's perspective projection alone (no view, no model) - see computeViewProj. Main.cpp reads
 // its [0][0]/[1][1] scales to reconstruct view-space positions from depth for ambient occlusion.
-simd::float4x4 computeProjection(int width, int height);
+// jitterNDC shifts the whole image by that much in normalized device coordinates (2 units = the full
+// screen) - temporal anti-aliasing's per-frame sub-pixel offset. Zero = the plain, unshifted projection.
+simd::float4x4 computeProjection(int width, int height, simd::float2 jitterNDC = {0.0f, 0.0f});
 
 // Camera-only view-projection (no object model matrix) - see its own comment in Uniforms.cpp.
 // Main.cpp uses this directly for motion blur's frame-to-frame reprojection.
-simd::float4x4 computeViewProj(const Camera& cam, int width, int height);
+simd::float4x4 computeViewProj(const Camera& cam, int width, int height, simd::float2 jitterNDC = {0.0f, 0.0f});
 
 // Builds the per-object Uniforms: projects/views objectModel through the camera, lit by up to
 // kMaxLights lights of any type (extras beyond that are ignored). Call once per object per frame
@@ -79,4 +81,5 @@ simd::float4x4 computeViewProj(const Camera& cam, int width, int height);
 // material may be null (gizmo/markers, which don't use it) - a neutral default is written then.
 Uniforms computeUniforms(const Camera& cam, const simd::float4x4& objectModel,
                           const SceneLight* lights, int lightCount,
-                          int width, int height, const Material* material = nullptr);
+                          int width, int height, const Material* material = nullptr,
+                          simd::float2 jitterNDC = {0.0f, 0.0f});

@@ -81,6 +81,12 @@ void drawSceneEditorPanel(Scene& scene, int& selectedIndex, TextureLibrary& text
         ImGui::TreePop();
     }
 
+    if (ImGui::TreeNode("Temporal Anti-Aliasing")) {
+        ImGui::DragFloat("TAA History Weight", &scene.taaFeedback, 0.005f, 0.0f, 0.98f);
+        ImGui::TextDisabled("(0 = off)");
+        ImGui::TreePop();
+    }
+
     if (ImGui::TreeNode("Post-Processing")) {
         ImGui::DragFloat("Vignette", &scene.vignetteStrength, 0.01f, 0.0f, 2.0f);
         ImGui::DragFloat("Chromatic Aberration", &scene.chromaticAberrationStrength, 0.01f, 0.0f, 2.0f);
